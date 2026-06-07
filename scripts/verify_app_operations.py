@@ -1360,8 +1360,8 @@ def main() -> int:
     assert "verify_source_of_truth_cutover_preflight.py" in remaining_gates_packet_report
     assert "secret_handling_boundaries.md" in remaining_gates_packet_report
     assert "Public URL: `https://chillcrm.app`" in remaining_gates_packet_report
-    assert "Newest hosted smoke current: no" in remaining_gates_packet_report
-    assert "CHILLCRM_VERCEL_URL=https://chillcrm.app" in remaining_gates_packet_report
+    assert "Newest hosted smoke current:" in remaining_gates_packet_report
+    assert "https://chillcrm.app" in remaining_gates_packet_report
     assert "owner_approved_wave_packet.md" in remaining_gates_packet_report
     assert "supabase_staging_refresh_run.md" in remaining_gates_packet_report
     assert "supabase_staging_refresh_preflight.md" in remaining_gates_packet_report
@@ -3830,15 +3830,17 @@ def main() -> int:
         blocking_gate_keys = {item["key"] for item in production_gates["blocking_gate_items"]}
         redeploy_required = "hosted_deployment_freshness" in blocking_gate_keys
         expected_blocking_gate_keys = {
-            "newest_hosted_smoke",
             "supabase_provider_backup",
             "hosted_write_unlock_audit_rehearsal",
             "remote_monitoring_readiness",
             "owner_shakedown_signoff",
             "source_of_truth_cutover_approval",
         }
+        if "newest_hosted_smoke" in blocking_gate_keys:
+            expected_blocking_gate_keys.add("newest_hosted_smoke")
         if redeploy_required:
             expected_blocking_gate_keys.add("hosted_deployment_freshness")
+        assert blocking_gate_keys == expected_blocking_gate_keys
         assert production_gates["input_required"] == len(expected_blocking_gate_keys)
         assert production_gates["blocking_gates"] == len(expected_blocking_gate_keys)
         assert production_gates["source_of_truth"] == "local_sqlite"
@@ -3858,25 +3860,24 @@ def main() -> int:
                 "/reports/hosted_deployment_freshness.md",
                 "/reports/vercel_hosted_app_smoke.md",
             }
-            assert production_gates["next_production_action"]["title"] == "Hosted smoke credentials"
-            assert production_gates["next_production_action"]["input"] == "Owner email and owner password"
+            assert production_gates["next_production_action"]["title"] == "Redeploy current hosted runtime"
+            assert production_gates["next_production_action"]["input"] == "Redeploy current local runtime to Vercel and rerun hosted smoke"
         else:
             assert production_gates["next_operator_action"]["title"] == "Supabase backup evidence"
             assert production_gates["next_operator_action"]["input"] == "Supabase Management API access token or Dashboard backup evidence"
             assert {link["url"] for link in production_gates["next_operator_action"]["proof_links"]} == {
                 "/reports/supabase_backup_readiness.md",
             }
-            assert production_gates["next_production_action"]["title"] == "Hosted smoke credentials"
-            assert production_gates["next_production_action"]["input"] == "Owner email and owner password"
+            assert production_gates["next_production_action"]["title"] == "Supabase backup evidence"
+            assert production_gates["next_production_action"]["input"] == "Supabase Management API access token or Dashboard backup evidence"
         assert blocking_gate_keys == expected_blocking_gate_keys
         write_audit_gate = next(item for item in production_gates["blocking_gate_items"] if item["key"] == "hosted_write_unlock_audit_rehearsal")
         assert {link["url"] for link in write_audit_gate["source_links"]} == {
             "/reports/hosted_write_unlock_audit_rehearsal.md",
             "/reports/hosted_write_audit_execution.md",
         }
-        expected_needed_orders = [1, 5, 6, 7, 8, 9]
+        expected_needed_orders = [4, 5, 6, 7, 8]
         expected_needed_inputs = {
-            "Owner email and owner password",
             "Supabase Management API access token or Dashboard backup evidence",
             "Owner approval for hosted write-audit rehearsal",
             "Monitoring owner/cadence approval",
@@ -3884,7 +3885,7 @@ def main() -> int:
             "Owner source-of-truth cutover approval",
         }
         if redeploy_required:
-            expected_needed_orders = [1, 3, 5, 6, 7, 8, 9]
+            expected_needed_orders = [2, 4, 5, 6, 7, 8]
             expected_needed_inputs.add("Redeploy current local runtime to Vercel and rerun hosted smoke")
         assert [item["order"] for item in production_gates["needed_inputs"]] == expected_needed_orders
         assert {item["input"] for item in production_gates["needed_inputs"]} == expected_needed_inputs

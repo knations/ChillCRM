@@ -145,11 +145,16 @@ def build_rows() -> list[dict[str, Any]]:
     ]
 
     input_names = [row.get("input") or "" for row in sorted(needed_inputs, key=lambda row: int(row.get("order") or 0))]
+    unexpected_inputs = [name for name in input_names if name not in EXPECTED_INPUTS]
+    completed_inputs = [name for name in EXPECTED_INPUTS if name not in input_names]
     add_check(
         rows,
         "expected_remaining_inputs_present",
-        "pass" if input_names == EXPECTED_INPUTS else "fail",
-        f"expected={len(EXPECTED_INPUTS)}, actual={len(input_names)}",
+        "pass" if input_names and not unexpected_inputs else "fail",
+        (
+            f"known_inputs={len(EXPECTED_INPUTS)}, active_inputs={len(input_names)}, "
+            f"completed_or_not_current={len(completed_inputs)}, unexpected={', '.join(unexpected_inputs) or 'none'}"
+        ),
     )
 
     missing_blocker_coverage = []

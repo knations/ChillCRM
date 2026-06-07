@@ -135,10 +135,13 @@ def build_rows(args: argparse.Namespace) -> list[dict[str, Any]]:
     smoke = read_text("reports/vercel_hosted_app_smoke.md")
     environment = read_text("reports/vercel_environment_readiness.md")
     readiness = read_text("reports/remote_production_readiness.md")
+    custom_domain = read_text("reports/custom_domain_readiness.md")
     server_py = read_text("crm_app/server.py")
     requested_url = normalize_url(args.target_url)
     latest_url = normalize_url(backtick_value(deployment, "URL"))
-    target_url = requested_url or latest_url
+    public_url = normalize_url(backtick_value(readiness, "Public URL") or backtick_value(custom_domain, "Canonical URL"))
+    target_url = requested_url or public_url or latest_url
+    target_equivalents = {value for value in [latest_url, public_url] if value}
     deployment_state = backtick_value(deployment, "Ready state")
     smoke_url = normalize_url(backtick_value(smoke, "URL"))
     smoke_passed = int_value(backtick_value(smoke, "Passed"))
@@ -150,16 +153,22 @@ def build_rows(args: argparse.Namespace) -> list[dict[str, Any]]:
     add_check(
         rows,
         "target_deployment_ready",
-        "pass" if target_url and latest_url == target_url and deployment_state == "READY" else "input_required",
-        f"target_url={target_url or 'missing'}, latest_url={latest_url or 'missing'}, state={deployment_state or 'missing'}",
-        "reports/vercel_staging_deployment_status.md",
+        "pass" if target_url in target_equivalents and latest_url and deployment_state == "READY" else "input_required",
+        (
+            f"target_url={target_url or 'missing'}, latest_url={latest_url or 'missing'}, "
+            f"public_url={public_url or 'missing'}, state={deployment_state or 'missing'}"
+        ),
+        "reports/vercel_staging_deployment_status.md; reports/custom_domain_readiness.md",
     )
     add_check(
         rows,
         "newest_hosted_smoke_current",
-        "pass" if smoke_url == target_url and smoke_passed >= 14 and smoke_failed == 0 else "input_required",
-        f"smoke_url={smoke_url or 'missing'}, passed={smoke_passed}, failed={smoke_failed}",
-        "reports/vercel_hosted_app_smoke.md",
+        "pass" if smoke_url in target_equivalents and smoke_passed >= 14 and smoke_failed == 0 else "input_required",
+        (
+            f"smoke_url={smoke_url or 'missing'}, target_url={target_url or 'missing'}, "
+            f"public_url={public_url or 'missing'}, passed={smoke_passed}, failed={smoke_failed}"
+        ),
+        "reports/vercel_hosted_app_smoke.md; reports/custom_domain_readiness.md",
     )
     lock_evidence = all(
         token in smoke

@@ -94,6 +94,7 @@ def add_gate(gates: list[Gate], key: str, gate: str, status: str, blocks: bool, 
 def build_gates() -> tuple[dict[str, Any], list[Gate]]:
     gates: list[Gate] = []
     deployment = read_text("reports/vercel_staging_deployment_status.md")
+    git_deployment = read_text("reports/vercel_git_deployment_status.md")
     diagnostics = read_text("reports/vercel_deployment_diagnostics.md")
     vercel_environment = read_text("reports/vercel_environment_readiness.md")
     public_protection = read_text("reports/vercel_public_protection.md")
@@ -129,8 +130,18 @@ def build_gates() -> tuple[dict[str, Any], list[Gate]]:
     diagnostics_id = backtick_value(diagnostics, "ID")
     diagnostics_state = backtick_value(diagnostics, "State")
     diagnostics_url = backtick_value(diagnostics, "URL")
+    git_deployment_status = plain_value(git_deployment, "Status")
+    git_deployment_gate = plain_value(git_deployment, "Production gate")
+    git_deployment_id = backtick_value(git_deployment, "Deployment ID")
+    git_deployment_sha = backtick_value(git_deployment, "Deployment SHA")
     smoke_url, smoke_passed, smoke_failed = smoke_summary(smoke_report)
     public_url = backtick_value(custom_domain, "Canonical URL")
+    diagnostics_entrypoint_present = "`api/index.py` present: `yes`" in diagnostics
+    git_deployment_current = (
+        git_deployment_status == "vercel_git_deployment_current"
+        and git_deployment_gate == "pass"
+        and git_deployment_id == deployment_id
+    )
 
     add_gate(
         gates,
@@ -166,11 +177,23 @@ def build_gates() -> tuple[dict[str, Any], list[Gate]]:
         gates,
         "vercel_diagnostics_match_latest",
         "Vercel diagnostics match latest deployment",
-        "pass" if diagnostics_id == deployment_id and diagnostics_state == "READY" and diagnostics_url == latest_url and "`api/index.py` present: `yes`" in diagnostics else "fail",
+        (
+            "pass"
+            if diagnostics_id == deployment_id
+            and diagnostics_state == "READY"
+            and diagnostics_url == latest_url
+            and (diagnostics_entrypoint_present or git_deployment_current)
+            else "fail"
+        ),
         True,
-        f"diagnostics_id={diagnostics_id or 'missing'}, deployment_id={deployment_id or 'missing'}, api/index.py present={'yes' if '`api/index.py` present: `yes`' in diagnostics else 'no'}",
-        "reports/vercel_deployment_diagnostics.md",
-        "Refresh scripts/inspect_vercel_deployment.py after each deployment.",
+        (
+            f"diagnostics_id={diagnostics_id or 'missing'}, deployment_id={deployment_id or 'missing'}, "
+            f"api/index.py present={'yes' if diagnostics_entrypoint_present else 'no'}, "
+            f"git_deployment_current={'yes' if git_deployment_current else 'no'}, "
+            f"git_sha={git_deployment_sha[:12] if git_deployment_sha else 'missing'}"
+        ),
+        "reports/vercel_deployment_diagnostics.md; reports/vercel_git_deployment_status.md",
+        "Refresh scripts/inspect_vercel_deployment.py and scripts/refresh_vercel_git_deployment_status.py after each deployment.",
     )
     deployment_freshness_status = plain_value(deployment_freshness, "Status")
     deployment_freshness_gate = plain_value(deployment_freshness, "Production gate")

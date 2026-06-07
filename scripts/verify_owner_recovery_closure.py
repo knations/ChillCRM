@@ -52,8 +52,11 @@ def write_csv(path: Path, rows: list[dict[str, Any]]) -> None:
 
 def build_rows() -> list[dict[str, Any]]:
     deployment = read_text("reports/vercel_staging_deployment_status.md")
+    custom_domain = read_text("reports/custom_domain_readiness.md")
     smoke = read_text("reports/vercel_hosted_app_smoke.md")
-    recovery_value = recovery_switch_value(deployment)
+    deployment_recovery_value = recovery_switch_value(deployment)
+    custom_domain_recovery_disabled = "Owner recovery: disabled" in custom_domain or "owner_recovery=False" in custom_domain
+    recovery_value = "false" if deployment_recovery_value == "false" or custom_domain_recovery_disabled else deployment_recovery_value
     status = (
         "owner_recovery_closed"
         if recovery_value == "false"
@@ -71,6 +74,7 @@ def build_rows() -> list[dict[str, Any]]:
             "latest_deployment_id": backtick_value(deployment, "Deployment ID"),
             "latest_url": backtick_value(deployment, "URL"),
             "owner_recovery_switch": recovery_value,
+            "runtime_recovery_disabled": "yes" if custom_domain_recovery_disabled else "no",
             "hosted_recovery_smoke_seen": "yes" if "owner_password_recovery | passed" in smoke else "no",
             "secret_values_stored": "no",
             "crm_record_writes": "no",
@@ -82,7 +86,9 @@ def build_rows() -> list[dict[str, Any]]:
             "key": "owner_recovery_switch_disabled",
             "status": "pass" if recovery_value == "false" else "input_required",
             "evidence": (
-                "CHILLCRM_OWNER_PASSWORD_RECOVERY_ENABLED=false"
+                "Owner recovery is disabled in deployment/runtime evidence."
+                if recovery_value == "false" and custom_domain_recovery_disabled
+                else "CHILLCRM_OWNER_PASSWORD_RECOVERY_ENABLED=false"
                 if recovery_value == "false"
                 else f"CHILLCRM_OWNER_PASSWORD_RECOVERY_ENABLED={recovery_value}"
             ),
@@ -95,8 +101,14 @@ def build_rows() -> list[dict[str, Any]]:
         {
             "row_type": "check",
             "key": "owner_login_recovery_path",
-            "status": "pass" if "owner_password_recovery | passed" in smoke else "input_required",
-            "evidence": "Latest hosted smoke includes owner_password_recovery." if "owner_password_recovery | passed" in smoke else "Latest hosted smoke does not include owner_password_recovery.",
+            "status": "pass" if recovery_value == "false" or "owner_password_recovery | passed" in smoke else "input_required",
+            "evidence": (
+                "Owner recovery is disabled; recovery smoke is not required after owner login is confirmed."
+                if recovery_value == "false"
+                else "Latest hosted smoke includes owner_password_recovery."
+                if "owner_password_recovery | passed" in smoke
+                else "Latest hosted smoke does not include owner_password_recovery."
+            ),
             "next_action": "Use owner recovery only to restore owner access, then disable it.",
         },
     ]
@@ -120,6 +132,7 @@ def write_report(path: Path, rows: list[dict[str, Any]]) -> None:
         f"- Latest deployment: `{summary.get('latest_deployment_id') or 'missing'}`.",
         f"- Latest URL: `{summary.get('latest_url') or 'missing'}`.",
         f"- Owner recovery switch: {summary.get('owner_recovery_switch')}.",
+        f"- Runtime recovery disabled: {summary.get('runtime_recovery_disabled')}.",
         f"- Hosted recovery smoke seen: {summary.get('hosted_recovery_smoke_seen')}.",
         "- Secret values stored: no.",
         "- CRM record writes: no.",

@@ -2188,10 +2188,30 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             ),
         }
 
+    def reports_health_check(self, database_url_configured: bool) -> dict[str, Any]:
+        reports_present = REPORTS_DIR.exists() and REPORTS_DIR.is_dir()
+        reports_required = env_flag("CHILLCRM_REPORTS_REQUIRED", default=not database_url_configured)
+        if reports_present:
+            status = "ok"
+            note = "Local report artifacts are available in this runtime."
+        elif reports_required:
+            status = "missing"
+            note = "Report artifacts are required for this runtime and were not found."
+        else:
+            status = "omitted"
+            note = "Report artifacts are private local outputs and are intentionally omitted from hosted source deployments."
+        return {
+            "status": status,
+            "present": reports_present,
+            "required": reports_required,
+            "source": "private_local_artifacts",
+            "note": note,
+        }
+
     def health_status(self) -> tuple[dict[str, Any], int]:
         checks: dict[str, dict[str, Any]] = {
             "database": {"status": "checking", "mode": "sqlite", "reachable": False},
-            "reports": {"status": "checking", "present": False},
+            "reports": {"status": "checking", "present": False, "required": True},
         }
         ok = True
         database_url = self.database_url()
@@ -2215,9 +2235,8 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                     "reachable": False,
                     "error": exc.__class__.__name__,
                 }
-        reports_present = REPORTS_DIR.exists() and REPORTS_DIR.is_dir()
-        checks["reports"] = {"status": "ok" if reports_present else "missing", "present": reports_present}
-        if not reports_present:
+        checks["reports"] = self.reports_health_check(bool(database_url))
+        if checks["reports"]["status"] == "missing":
             ok = False
         return (
             {

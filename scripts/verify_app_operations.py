@@ -2055,15 +2055,24 @@ def main() -> int:
         assert summary["runtime"]["bulk_package_exports"]["mode"] == "enabled"
         assert summary["runtime"]["document_file_access"]["enabled"] is True
         assert summary["runtime"]["document_file_access"]["mode"] == "enabled"
-        health_payload, health_status = handler.health_status()
-        assert health_status == 200
-        assert health_payload["ok"] is True
-        assert health_payload["service"] == "local_crm"
-        assert health_payload["checks"]["database"]["status"] == "ok"
-        assert health_payload["checks"]["database"]["reachable"] is True
-        assert health_payload["checks"]["reports"]["status"] == "ok"
-        assert health_payload["runtime"]["environment"] == "local"
-        assert "people" not in health_payload
+        original_health_reports_required = os.environ.pop("CHILLCRM_REPORTS_REQUIRED", None)
+        try:
+            health_payload, health_status = handler.health_status()
+            assert health_status == 200
+            assert health_payload["ok"] is True
+            assert health_payload["service"] == "local_crm"
+            assert health_payload["checks"]["database"]["status"] == "ok"
+            assert health_payload["checks"]["database"]["reachable"] is True
+            assert health_payload["checks"]["reports"]["status"] == "ok"
+            assert health_payload["checks"]["reports"]["present"] is True
+            assert health_payload["checks"]["reports"]["required"] is True
+            assert health_payload["runtime"]["environment"] == "local"
+            assert "people" not in health_payload
+        finally:
+            if original_health_reports_required is None:
+                os.environ.pop("CHILLCRM_REPORTS_REQUIRED", None)
+            else:
+                os.environ["CHILLCRM_REPORTS_REQUIRED"] = original_health_reports_required
         original_crm_env = os.environ.get("CRM_ENV")
         try:
             os.environ["CRM_ENV"] = "staging"
@@ -2078,14 +2087,24 @@ def main() -> int:
         original_database_url = os.environ.get("DATABASE_URL")
         original_adapter = os.environ.pop("CHILLCRM_DATABASE_ADAPTER", None)
         original_legacy_adapter = os.environ.pop("CRM_DATABASE_ADAPTER", None)
+        original_hosted_reports_required = os.environ.pop("CHILLCRM_REPORTS_REQUIRED", None)
         try:
             os.environ["DATABASE_URL"] = "postgresql://"
-            hosted_payload, hosted_status = handler.health_status()
+            with tempfile.TemporaryDirectory() as missing_reports_root:
+                original_reports_dir = server.REPORTS_DIR
+                try:
+                    server.REPORTS_DIR = Path(missing_reports_root) / "missing_reports"
+                    hosted_payload, hosted_status = handler.health_status()
+                finally:
+                    server.REPORTS_DIR = original_reports_dir
             assert hosted_status == 503
             assert hosted_payload["runtime"]["database_url_configured"] is True
             assert hosted_payload["checks"]["database"]["mode"] == "hosted_postgres"
             assert hosted_payload["checks"]["database"]["status"] == "invalid_database_url"
             assert hosted_payload["checks"]["database"]["adapter"] == "pending"
+            assert hosted_payload["checks"]["reports"]["status"] == "omitted"
+            assert hosted_payload["checks"]["reports"]["present"] is False
+            assert hosted_payload["checks"]["reports"]["required"] is False
         finally:
             if original_database_url is None:
                 os.environ.pop("DATABASE_URL", None)
@@ -2099,6 +2118,10 @@ def main() -> int:
                 os.environ["CRM_DATABASE_ADAPTER"] = original_legacy_adapter
             else:
                 os.environ.pop("CRM_DATABASE_ADAPTER", None)
+            if original_hosted_reports_required is None:
+                os.environ.pop("CHILLCRM_REPORTS_REQUIRED", None)
+            else:
+                os.environ["CHILLCRM_REPORTS_REQUIRED"] = original_hosted_reports_required
         original_export_package_enabled = os.environ.get("EXPORT_PACKAGE_ENABLED")
         try:
             os.environ["EXPORT_PACKAGE_ENABLED"] = "false"

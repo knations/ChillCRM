@@ -66,6 +66,29 @@ def git_remote_repo() -> str:
     return value.strip("/")
 
 
+def normalize_github_repo(value: str) -> str:
+    value = value.strip().removesuffix(".git").strip("/")
+    if value.startswith("git@github.com:"):
+        value = value.removeprefix("git@github.com:")
+    elif "github.com/" in value:
+        value = value.split("github.com/", 1)[1]
+    return value.strip("/")
+
+
+def repo_matches_expected(expected_repo: str, link_summary: dict[str, Any]) -> bool:
+    expected_repo = normalize_github_repo(expected_repo).lower()
+    repo = str(link_summary.get("repo") or "").strip("/").lower()
+    org_repo = "/".join(
+        part
+        for part in [
+            str(link_summary.get("org") or "").strip("/"),
+            str(link_summary.get("repo") or "").strip("/"),
+        ]
+        if part
+    ).lower()
+    return expected_repo in {repo, org_repo}
+
+
 def request_project(project_id: str, team_slug: str, token: str) -> dict[str, Any]:
     query = urllib.parse.urlencode({"slug": team_slug}) if team_slug else ""
     url = f"{VERCEL_API}/v9/projects/{urllib.parse.quote(project_id)}"
@@ -129,7 +152,7 @@ def build_rows(args: argparse.Namespace) -> list[dict[str, Any]]:
     local_link = read_vercel_link()
     project_id = args.project_id.strip() or local_link.get("projectId", "")
     team_slug = args.team_slug.strip() or local_link.get("teamSlug", "")
-    expected_repo = args.expected_repo.strip().removesuffix(".git").strip("/")
+    expected_repo = normalize_github_repo(args.expected_repo)
     if not expected_repo:
         expected_repo = git_remote_repo()
 
@@ -171,12 +194,13 @@ def build_rows(args: argparse.Namespace) -> list[dict[str, Any]]:
     )
 
     if expected_repo:
-        expected_status = "pass" if link_summary["repo"].lower() == expected_repo.lower() else ("input_required" if not token else "fail")
+        expected_status = "pass" if repo_matches_expected(expected_repo, link_summary) else ("input_required" if not token else "fail")
+        actual_repo = "/".join(part for part in [link_summary["org"], link_summary["repo"]] if part) or link_summary["repo"] or "missing"
         add_check(
             rows,
             "expected_repo_matches",
             expected_status,
-            f"expected={expected_repo}, actual={link_summary['repo'] or 'missing'}",
+            f"expected={expected_repo}, actual={actual_repo}",
         )
     else:
         add_check(

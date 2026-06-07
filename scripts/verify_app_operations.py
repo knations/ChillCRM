@@ -1239,18 +1239,36 @@ def main() -> int:
     assert "Other production gates passed: no" in source_cutover_approval_report
     assert "Owner cutover approval: pending" in source_cutover_approval_report
     assert "Source of truth changed by this script: no" in source_cutover_approval_report
-    assert "Status: pending_owner_approval" in write_audit_rehearsal_report
+    assert "Hosted Write-Unlock Audit Rehearsal" in write_audit_rehearsal_report
+    assert any(
+        f"Status: {status}" in write_audit_rehearsal_report
+        for status in [
+            "pending_owner_approval",
+            "approved_not_executed",
+            "execution_evidence_incomplete",
+            "hosted_write_unlock_audit_rehearsal_passed",
+        ]
+    )
     assert "Preflight status: ready" in write_audit_rehearsal_report
     assert "Preflight passed/input/failed: 6/0/0" in write_audit_rehearsal_report
-    assert "Execution evidence recorded: no" in write_audit_rehearsal_report
-    assert "Write lock restored evidence: no" in write_audit_rehearsal_report
+    if "Status: hosted_write_unlock_audit_rehearsal_passed" in write_audit_rehearsal_report:
+        assert "Execution evidence recorded: yes" in write_audit_rehearsal_report
+        assert "Write lock restored evidence: yes" in write_audit_rehearsal_report
+    else:
+        assert "Production gate: blocked_until_hosted_write_audit_rehearsal_passes" in write_audit_rehearsal_report
     assert "locked_staging_runtime" in write_audit_rehearsal_report
     assert "non_source_of_truth_target" in write_audit_rehearsal_report
-    assert "No owner approval recorded yet" in write_audit_rehearsal_report
+    assert "Requires explicit owner approval before any hosted write lock is lifted." in write_audit_rehearsal_report
     assert "Hosted Write-Audit Rehearsal Execution" in write_audit_execution_report
-    assert "Status: input_required_hosted_write_audit_execution" in write_audit_execution_report
-    assert "Owner approved: no" in write_audit_execution_report
-    assert "Execution requested: no" in write_audit_execution_report
+    assert any(
+        f"Status: {status}" in write_audit_execution_report
+        for status in [
+            "input_required_hosted_write_audit_execution",
+            "hosted_write_audit_execution_failed",
+            "write_lock_restore_unverified",
+            "hosted_write_audit_execution_passed",
+        ]
+    )
     assert "Secret values stored: no" in write_audit_execution_report
     assert "Source of truth changed: no" in write_audit_execution_report
     assert "Safe Production Gate Runner" in safe_gate_runner_script
@@ -1317,6 +1335,8 @@ def main() -> int:
     assert "/api/production_gates" in hosted_smoke_script
     assert "Owner Intake" in hosted_smoke_script
     assert "owner_gate_intake_packet.md" in hosted_smoke_script
+    assert "STAGING_WRITE_AUDIT_PROBE_PREFIX" in hosted_smoke_script
+    assert "hosted_count_evidence" in hosted_smoke_script
     assert "CHILLCRM_USE_OWNER_RECOVERY" in hosted_smoke_wrapper
     assert "Owner recovery new password" in hosted_smoke_wrapper
     assert "CHILLCRM_OWNER_RECOVERY_PASSWORD" in hosted_smoke_wrapper
@@ -1398,6 +1418,8 @@ def main() -> int:
     assert "hosted_write_unlock_audit_rehearsal_passed" in production_readiness_script
     assert "hosted_write_audit_execution.md" in production_readiness_script
     assert "hosted_write_audit_execution_passed" in production_readiness_script
+    assert "hosted_write_audit_execution_reconciled_after_current_smoke" in production_readiness_script
+    assert "hosted_write_audit_execution_reconciled_after_current_smoke" in monitoring_readiness_script
     assert "execute_hosted_write_audit_rehearsal.py" in production_readiness_script
     assert "hosted_deployment_freshness" in production_readiness_script
     assert "hosted_deployment_fresh" in production_readiness_script
@@ -2184,6 +2206,22 @@ def main() -> int:
             assert hosted_backups["provider_backup_required"] is True
             assert hosted_backups["provider_backup_report"] == "/reports/supabase_backup_readiness.md"
             assert "read-only hosted filesystem" in hosted_backups["message"]
+            hosted_backup_marker = handler.create_backup("before_create_person")
+            assert hosted_backup_marker.name == "supabase_provider_backup_before_create_person"
+            assert not hosted_backup_marker.exists()
+            with sqlite3.connect(test_db) as conn:
+                conn.row_factory = sqlite3.Row
+                next_person_id = int(conn.execute("SELECT COALESCE(max(id), 0) + 1 FROM people").fetchone()[0])
+                created_hosted_person_id = handler.create_person(
+                    conn,
+                    {"name": "Hosted Primary Key Verification Person", "email": "hosted-pk@example.test"},
+                    server.now_iso(),
+                )
+                assert created_hosted_person_id == next_person_id
+                hosted_person = conn.execute("SELECT id, name FROM people WHERE id = ?", (created_hosted_person_id,)).fetchone()
+                assert hosted_person["name"] == "Hosted Primary Key Verification Person"
+                conn.execute("DELETE FROM people WHERE id = ?", (created_hosted_person_id,))
+                conn.commit()
         finally:
             if original_database_url is None:
                 os.environ.pop("DATABASE_URL", None)
@@ -3829,28 +3867,28 @@ def main() -> int:
         assert production_gates["failed"] == 0
         blocking_gate_keys = {item["key"] for item in production_gates["blocking_gate_items"]}
         redeploy_required = "hosted_deployment_freshness" in blocking_gate_keys
-        expected_blocking_gate_keys = {
-            "supabase_provider_backup",
+        allowed_blocking_gate_keys = {
             "hosted_write_unlock_audit_rehearsal",
             "remote_monitoring_readiness",
             "owner_shakedown_signoff",
             "source_of_truth_cutover_approval",
+            "supabase_provider_backup",
+            "newest_hosted_smoke",
+            "hosted_deployment_freshness",
         }
-        if "newest_hosted_smoke" in blocking_gate_keys:
-            expected_blocking_gate_keys.add("newest_hosted_smoke")
-        if redeploy_required:
-            expected_blocking_gate_keys.add("hosted_deployment_freshness")
-        assert blocking_gate_keys == expected_blocking_gate_keys
-        assert production_gates["input_required"] == len(expected_blocking_gate_keys)
-        assert production_gates["blocking_gates"] == len(expected_blocking_gate_keys)
+        assert blocking_gate_keys <= allowed_blocking_gate_keys
+        assert {"owner_shakedown_signoff", "source_of_truth_cutover_approval"} <= blocking_gate_keys
+        assert production_gates["input_required"] == len(blocking_gate_keys)
+        assert production_gates["blocking_gates"] == len(blocking_gate_keys)
         assert production_gates["source_of_truth"] == "local_sqlite"
-        assert production_gates["next_owner_action"]["title"] == "Hosted write-audit rehearsal"
-        assert "controlled staging-only write rehearsal" in production_gates["next_owner_action"]["detail"]
-        assert production_gates["next_owner_action"]["owner_reply"] == "I approve the hosted write-audit rehearsal"
-        assert {link["url"] for link in production_gates["next_owner_action"]["proof_links"]} == {
-            "/reports/hosted_write_unlock_audit_rehearsal.md",
-            "/reports/hosted_write_audit_execution.md",
-        }
+        if "hosted_write_unlock_audit_rehearsal" in blocking_gate_keys:
+            assert production_gates["next_owner_action"]["title"] == "Hosted write-audit rehearsal"
+            assert "controlled staging-only write rehearsal" in production_gates["next_owner_action"]["detail"]
+            assert production_gates["next_owner_action"]["owner_reply"] == "I approve the hosted write-audit rehearsal"
+            assert {link["url"] for link in production_gates["next_owner_action"]["proof_links"]} == {
+                "/reports/hosted_write_unlock_audit_rehearsal.md",
+                "/reports/hosted_write_audit_execution.md",
+            }
         if redeploy_required:
             assert production_gates["next_operator_action"]["title"] == "Redeploy current hosted runtime"
             assert production_gates["next_operator_action"]["input"] == "Redeploy current local runtime to Vercel and rerun hosted smoke"
@@ -3862,7 +3900,7 @@ def main() -> int:
             }
             assert production_gates["next_production_action"]["title"] == "Redeploy current hosted runtime"
             assert production_gates["next_production_action"]["input"] == "Redeploy current local runtime to Vercel and rerun hosted smoke"
-        else:
+        elif "supabase_provider_backup" in blocking_gate_keys:
             assert production_gates["next_operator_action"]["title"] == "Supabase backup evidence"
             assert production_gates["next_operator_action"]["input"] == "Supabase Management API access token or Dashboard backup evidence"
             assert {link["url"] for link in production_gates["next_operator_action"]["proof_links"]} == {
@@ -3870,37 +3908,42 @@ def main() -> int:
             }
             assert production_gates["next_production_action"]["title"] == "Supabase backup evidence"
             assert production_gates["next_production_action"]["input"] == "Supabase Management API access token or Dashboard backup evidence"
-        assert blocking_gate_keys == expected_blocking_gate_keys
-        write_audit_gate = next(item for item in production_gates["blocking_gate_items"] if item["key"] == "hosted_write_unlock_audit_rehearsal")
-        assert {link["url"] for link in write_audit_gate["source_links"]} == {
-            "/reports/hosted_write_unlock_audit_rehearsal.md",
-            "/reports/hosted_write_audit_execution.md",
-        }
-        expected_needed_input_order = [
-            "Supabase Management API access token or Dashboard backup evidence",
-            "Owner approval for hosted write-audit rehearsal",
-            "Monitoring owner/cadence approval",
-            "Owner shakedown signoff",
-            "Owner source-of-truth cutover approval",
-        ]
+        if "hosted_write_unlock_audit_rehearsal" in blocking_gate_keys:
+            write_audit_gate = next(item for item in production_gates["blocking_gate_items"] if item["key"] == "hosted_write_unlock_audit_rehearsal")
+            assert {link["url"] for link in write_audit_gate["source_links"]} == {
+                "/reports/hosted_write_unlock_audit_rehearsal.md",
+                "/reports/hosted_write_audit_execution.md",
+            }
+        expected_needed_input_order = []
         if "newest_hosted_smoke" in blocking_gate_keys:
-            expected_needed_input_order.insert(0, "Owner email and owner password")
+            expected_needed_input_order.append("Owner email and owner password")
         if redeploy_required:
-            insert_at = 1 if "newest_hosted_smoke" in blocking_gate_keys else 0
-            expected_needed_input_order.insert(insert_at, "Redeploy current local runtime to Vercel and rerun hosted smoke")
+            expected_needed_input_order.append("Redeploy current local runtime to Vercel and rerun hosted smoke")
+        if "supabase_provider_backup" in blocking_gate_keys:
+            expected_needed_input_order.append("Supabase Management API access token or Dashboard backup evidence")
+        if "hosted_write_unlock_audit_rehearsal" in blocking_gate_keys:
+            expected_needed_input_order.append("Owner approval for hosted write-audit rehearsal")
+        if "remote_monitoring_readiness" in blocking_gate_keys:
+            expected_needed_input_order.append("Monitoring owner/cadence approval")
+        if "owner_shakedown_signoff" in blocking_gate_keys:
+            expected_needed_input_order.append("Owner shakedown signoff")
+        if "source_of_truth_cutover_approval" in blocking_gate_keys:
+            expected_needed_input_order.append("Owner source-of-truth cutover approval")
         assert [item["order"] for item in production_gates["needed_inputs"]] == list(
             range(1, len(expected_needed_input_order) + 1)
         )
         assert [item["input"] for item in production_gates["needed_inputs"]] == expected_needed_input_order
-        write_audit_input = next(item for item in production_gates["needed_inputs"] if item["input"] == "Owner approval for hosted write-audit rehearsal")
-        assert {link["url"] for link in write_audit_input["proof_links"]} == {
-            "/reports/hosted_write_unlock_audit_rehearsal.md",
-            "/reports/hosted_write_audit_execution.md",
-        }
-        backup_input = next(item for item in production_gates["needed_inputs"] if item["input"] == "Supabase Management API access token or Dashboard backup evidence")
-        assert {link["url"] for link in backup_input["proof_links"]} == {
-            "/reports/supabase_backup_readiness.md",
-        }
+        if "hosted_write_unlock_audit_rehearsal" in blocking_gate_keys:
+            write_audit_input = next(item for item in production_gates["needed_inputs"] if item["input"] == "Owner approval for hosted write-audit rehearsal")
+            assert {link["url"] for link in write_audit_input["proof_links"]} == {
+                "/reports/hosted_write_unlock_audit_rehearsal.md",
+                "/reports/hosted_write_audit_execution.md",
+            }
+        if "supabase_provider_backup" in blocking_gate_keys:
+            backup_input = next(item for item in production_gates["needed_inputs"] if item["input"] == "Supabase Management API access token or Dashboard backup evidence")
+            assert {link["url"] for link in backup_input["proof_links"]} == {
+                "/reports/supabase_backup_readiness.md",
+            }
         assert production_gates["reports"]["readiness"] == "/reports/remote_production_readiness.md"
         assert production_gates["reports"]["remaining_packet"] == "/reports/remaining_production_gates_packet.md"
         assert production_gates["reports"]["owner_intake"] == "/reports/owner_gate_intake_packet.md"

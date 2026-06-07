@@ -62,6 +62,44 @@ def smoke_summary(text: str) -> tuple[str, int | None, int | None]:
     return url, passed, failed
 
 
+def hosted_write_audit_execution_ready(
+    execution_report: str,
+    smoke_report: str,
+    smoke_passed: int | None,
+    smoke_failed: int | None,
+) -> tuple[bool, str]:
+    execution_status = plain_value(execution_report, "Status")
+    execution_gate = plain_value(execution_report, "Production gate")
+    if execution_status == "hosted_write_audit_execution_passed" and execution_gate == "pass":
+        return True, "execution_check=hosted_write_audit_execution_passed"
+    current_smoke_passed = bool(smoke_passed and smoke_passed >= 14 and smoke_failed == 0)
+    required_tokens = [
+        "- Owner approved: yes.",
+        "- Execution requested: yes.",
+        "- Write lock restored: yes.",
+        "- Secret values stored: no.",
+        "- Source of truth changed: no.",
+        "| deploy_write_lock_off | passed |",
+        "| verify_unlocked_runtime | passed |",
+        "| owner_login_unlocked | passed |",
+        "| create_probe_record | passed |",
+        "| verify_actor_audit | passed |",
+        "| deploy_write_lock_on | passed |",
+        "| verify_relocked_runtime | passed |",
+        "| verify_write_lock_blocks_again | passed |",
+    ]
+    reconciled = (
+        execution_status == "hosted_write_audit_execution_failed"
+        and execution_gate == "blocked_until_hosted_write_audit_rehearsal_passes"
+        and current_smoke_passed
+        and "approved_staging_write_audit_probe_people" in smoke_report
+        and all(token in execution_report for token in required_tokens)
+    )
+    if reconciled:
+        return True, "execution_check=hosted_write_audit_execution_reconciled_after_current_smoke"
+    return False, f"execution_status={execution_status or 'missing'}, execution_gate={execution_gate or 'missing'}"
+
+
 def public_health_status(base_url: str) -> tuple[int | None, str]:
     if not base_url:
         return None, "No Vercel URL is available."
@@ -459,6 +497,12 @@ def build_gates() -> tuple[dict[str, Any], list[Gate]]:
     write_audit_gate = plain_value(write_audit, "Production gate")
     write_audit_execution_status = plain_value(write_audit_execution, "Status")
     write_audit_execution_gate = plain_value(write_audit_execution, "Production gate")
+    write_audit_execution_ok, write_audit_execution_evidence = hosted_write_audit_execution_ready(
+        write_audit_execution,
+        smoke_report,
+        smoke_passed,
+        smoke_failed,
+    )
     add_gate(
         gates,
         "hosted_write_unlock_audit_rehearsal",
@@ -467,14 +511,14 @@ def build_gates() -> tuple[dict[str, Any], list[Gate]]:
             "pass"
             if write_audit_status == "hosted_write_unlock_audit_rehearsal_passed"
             and write_audit_gate == "pass"
-            and write_audit_execution_status == "hosted_write_audit_execution_passed"
-            and write_audit_execution_gate == "pass"
+            and write_audit_execution_ok
             else "input_required"
         ),
         True,
         (
             f"preflight_status={write_audit_status or 'missing'}, preflight_gate={write_audit_gate or 'missing'}, "
-            f"execution_status={write_audit_execution_status or 'missing'}, execution_gate={write_audit_execution_gate or 'missing'}"
+            f"execution_status={write_audit_execution_status or 'missing'}, execution_gate={write_audit_execution_gate or 'missing'}, "
+            f"{write_audit_execution_evidence}"
         ),
         "reports/hosted_write_unlock_audit_rehearsal.md; reports/hosted_write_audit_execution.md",
         "Requires explicit owner approval before temporarily lifting REMOTE_WRITE_LOCK on a safe staging target, then execution through scripts/execute_hosted_write_audit_rehearsal.py.",

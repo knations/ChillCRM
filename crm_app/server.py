@@ -18621,8 +18621,11 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         return {"backups": backups}
 
     def create_backup(self, reason: str) -> Path:
-        BACKUP_DIR.mkdir(parents=True, exist_ok=True)
         safe_reason = "".join(ch if ch.isalnum() or ch in {"_", "-"} else "_" for ch in reason)[:40]
+        if self.hosted_postgres_adapter_enabled():
+            marker = safe_reason or "change"
+            return Path(f"supabase_provider_backup_{marker}")
+        BACKUP_DIR.mkdir(parents=True, exist_ok=True)
         path = BACKUP_DIR / f"local_crm_{backup_stamp()}_{safe_reason or 'change'}.sqlite"
         src = sqlite3.connect(self.db_path)
         dst = sqlite3.connect(path)
@@ -18997,6 +19000,14 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                 return
             raise ValueError(f"{record_type.title()} name is required.")
 
+    def next_hosted_primary_key(self, conn: Any, table_name: str) -> int | None:
+        if not self.hosted_postgres_adapter_enabled():
+            return None
+        if table_name not in {"people", "companies", "leads", "deals"}:
+            raise ValueError(f"Unsupported hosted primary key table: {table_name}")
+        row = conn.execute(f"SELECT COALESCE(max(id), 0) + 1 AS next_id FROM {table_name}").fetchone()
+        return int(row["next_id"] if row else 1)
+
     def create_person(self, conn: sqlite3.Connection, fields: dict[str, Any], timestamp: str) -> int:
         name = str(fields.get("name") or "").strip()
         first_name = str(fields.get("first_name") or "").strip() or None
@@ -19008,16 +19019,20 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         company_id = self.clean_update_id(conn, "company_id", fields.get("company_id"))
         owner_user_id = self.clean_update_id(conn, "owner_user_id", fields.get("owner_user_id"))
         email = self.clean_optional(fields.get("email"))
+        hosted_id = self.next_hosted_primary_key(conn, "people")
+        id_column = "id, " if hosted_id is not None else ""
+        id_placeholder = "?, " if hosted_id is not None else ""
         conn.execute(
-            """
+            f"""
             INSERT INTO people (
-                zendesk_contact_id, company_id, first_name, last_name, name, normalized_name,
+                {id_column}zendesk_contact_id, company_id, first_name, last_name, name, normalized_name,
                 email, normalized_email, phone, mobile, title, owner_user_id,
                 customer_status, prospect_status, created_at, updated_at, source_json
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES ({id_placeholder}?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
+                *((hosted_id,) if hosted_id is not None else ()),
                 None,
                 company_id,
                 first_name,
@@ -19037,7 +19052,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                 "{}",
             ),
         )
-        return conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+        return hosted_id if hosted_id is not None else conn.execute("SELECT last_insert_rowid()").fetchone()[0]
 
     def create_company(self, conn: sqlite3.Connection, fields: dict[str, Any], timestamp: str) -> int:
         name = str(fields.get("name") or "").strip()
@@ -19045,16 +19060,20 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             raise ValueError("Company name is required.")
         email = self.clean_optional(fields.get("email"))
         owner_user_id = self.clean_update_id(conn, "owner_user_id", fields.get("owner_user_id"))
+        hosted_id = self.next_hosted_primary_key(conn, "companies")
+        id_column = "id, " if hosted_id is not None else ""
+        id_placeholder = "?, " if hosted_id is not None else ""
         conn.execute(
-            """
+            f"""
             INSERT INTO companies (
-                zendesk_contact_id, name, normalized_name, email, normalized_email,
+                {id_column}zendesk_contact_id, name, normalized_name, email, normalized_email,
                 phone, website, owner_user_id, customer_status, prospect_status,
                 created_at, updated_at, source_json
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES ({id_placeholder}?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
+                *((hosted_id,) if hosted_id is not None else ()),
                 None,
                 name,
                 normalize_text(name),
@@ -19070,7 +19089,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                 "{}",
             ),
         )
-        return conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+        return hosted_id if hosted_id is not None else conn.execute("SELECT last_insert_rowid()").fetchone()[0]
 
     def create_lead(self, conn: sqlite3.Connection, fields: dict[str, Any], timestamp: str) -> int:
         name = str(fields.get("name") or "").strip()
@@ -19089,16 +19108,20 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                 (normalize_text(email),),
             ).fetchone()
             possible_person_id = person["id"] if person else None
+        hosted_id = self.next_hosted_primary_key(conn, "leads")
+        id_column = "id, " if hosted_id is not None else ""
+        id_placeholder = "?, " if hosted_id is not None else ""
         conn.execute(
-            """
+            f"""
             INSERT INTO leads (
-                zendesk_lead_id, possible_person_id, first_name, last_name, name, normalized_name,
+                {id_column}zendesk_lead_id, possible_person_id, first_name, last_name, name, normalized_name,
                 organization_name, email, normalized_email, phone, mobile, status, source_id,
                 unqualified_reason_id, owner_user_id, created_at, updated_at, source_json
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES ({id_placeholder}?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
+                *((hosted_id,) if hosted_id is not None else ()),
                 None,
                 possible_person_id,
                 first_name,
@@ -19119,7 +19142,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                 "{}",
             ),
         )
-        lead_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+        lead_id = hosted_id if hosted_id is not None else conn.execute("SELECT last_insert_rowid()").fetchone()[0]
         if possible_person_id:
             conn.execute(
                 """
@@ -19158,16 +19181,20 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             if not stage:
                 raise ValueError(f"Stage {stage_id} not found.")
             pipeline_id = stage["pipeline_id"]
+        hosted_id = self.next_hosted_primary_key(conn, "deals")
+        id_column = "id, " if hosted_id is not None else ""
+        id_placeholder = "?, " if hosted_id is not None else ""
         conn.execute(
-            """
+            f"""
             INSERT INTO deals (
-                zendesk_deal_id, person_id, company_id, pipeline_id, stage_id, name, value,
+                {id_column}zendesk_deal_id, person_id, company_id, pipeline_id, stage_id, name, value,
                 currency, source_id, loss_reason_id, unqualified_reason_id, hot,
                 estimated_close_date, last_activity_at, created_at, updated_at, source_json
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES ({id_placeholder}?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
+                *((hosted_id,) if hosted_id is not None else ()),
                 None,
                 person_id,
                 company_id,
@@ -19187,7 +19214,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                 "{}",
             ),
         )
-        return conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+        return hosted_id if hosted_id is not None else conn.execute("SELECT last_insert_rowid()").fetchone()[0]
 
     def editable_fields(self, record_type: str) -> tuple[str, set[str]]:
         if record_type == "person":

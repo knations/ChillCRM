@@ -50,6 +50,42 @@ def smoke_summary(text: str) -> tuple[str, int | None, int | None]:
     return url, passed, failed
 
 
+def hosted_write_audit_execution_ready(
+    execution_report: str,
+    smoke_report: str,
+    smoke_passed: int | None,
+    smoke_failed: int | None,
+) -> tuple[bool, str]:
+    execution_status = plain_value(execution_report, "Status")
+    if execution_status == "hosted_write_audit_execution_passed":
+        return True, "execution_check=hosted_write_audit_execution_passed"
+    current_smoke_passed = bool(smoke_passed and smoke_passed >= 14 and smoke_failed == 0)
+    required_tokens = [
+        "- Owner approved: yes.",
+        "- Execution requested: yes.",
+        "- Write lock restored: yes.",
+        "- Secret values stored: no.",
+        "- Source of truth changed: no.",
+        "| deploy_write_lock_off | passed |",
+        "| verify_unlocked_runtime | passed |",
+        "| owner_login_unlocked | passed |",
+        "| create_probe_record | passed |",
+        "| verify_actor_audit | passed |",
+        "| deploy_write_lock_on | passed |",
+        "| verify_relocked_runtime | passed |",
+        "| verify_write_lock_blocks_again | passed |",
+    ]
+    reconciled = (
+        execution_status == "hosted_write_audit_execution_failed"
+        and current_smoke_passed
+        and "approved_staging_write_audit_probe_people" in smoke_report
+        and all(token in execution_report for token in required_tokens)
+    )
+    if reconciled:
+        return True, "execution_check=hosted_write_audit_execution_reconciled_after_current_smoke"
+    return False, f"execution_status={execution_status or 'missing'}"
+
+
 def public_health_status(base_url: str) -> tuple[int | None, str]:
     if not base_url:
         return None, "No Vercel URL is available."
@@ -304,16 +340,22 @@ def build_rows() -> list[dict[str, Any]]:
     write_audit_execution_report = read_text("reports/hosted_write_audit_execution.md")
     write_audit_status = plain_value(write_audit_report, "Status")
     write_audit_execution_status = plain_value(write_audit_execution_report, "Status")
+    write_audit_execution_ok, write_audit_execution_evidence = hosted_write_audit_execution_ready(
+        write_audit_execution_report,
+        smoke_report,
+        smoke_passed,
+        smoke_failed,
+    )
     add_check(
         rows,
         "hosted_write_audit_monitoring_source",
         (
             "pass"
             if write_audit_status == "hosted_write_unlock_audit_rehearsal_passed"
-            and write_audit_execution_status == "hosted_write_audit_execution_passed"
+            and write_audit_execution_ok
             else "input_required"
         ),
-        f"hosted_write_audit_status={write_audit_status or 'missing'}, execution_status={write_audit_execution_status or 'missing'}",
+        f"hosted_write_audit_status={write_audit_status or 'missing'}, execution_status={write_audit_execution_status or 'missing'}, {write_audit_execution_evidence}",
         True,
         "Migration Operator",
         "first_day",

@@ -20,6 +20,7 @@ from typing import Any
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 REPORTS_DIR = PROJECT_ROOT / "reports"
 EXPECTED_COUNTS = {"people": 997, "companies": 378, "leads": 1327, "deals": 125}
+STAGING_WRITE_AUDIT_PROBE_PREFIX = "CHILLCRM Staging Write Audit Probe"
 STORAGE_MANIFEST = REPORTS_DIR / "chillcrm_supabase_storage_manifest.csv"
 
 
@@ -113,6 +114,62 @@ def assert_equal(actual: Any, expected: Any, label: str) -> None:
 
 def body_text(result: HttpResult) -> str:
     return result.body.decode("utf-8", errors="replace")
+
+
+def staging_write_audit_probe_people(
+    opener: urllib.request.OpenerDirector,
+    base_url: str,
+    bypass_secret: str,
+) -> list[dict[str, Any]]:
+    page = 1
+    page_size = 100
+    matches: list[dict[str, Any]] = []
+    while True:
+        query = urllib.parse.urlencode(
+            {
+                "type": "people",
+                "q": STAGING_WRITE_AUDIT_PROBE_PREFIX,
+                "page": page,
+                "page_size": page_size,
+                "sort": "created_at",
+                "direction": "desc",
+            }
+        )
+        probe_list = request(opener, base_url, "GET", f"/api/list?{query}", bypass_secret=bypass_secret)
+        assert_equal(probe_list.status, 200, f"staging write-audit probe list page {page} status")
+        payload = probe_list.json()
+        records = payload.get("records") or []
+        matches.extend(
+            record
+            for record in records
+            if str(record.get("name") or "").startswith(STAGING_WRITE_AUDIT_PROBE_PREFIX)
+        )
+        total = int(payload.get("total") or 0)
+        if not records or page * page_size >= total:
+            break
+        page += 1
+    return matches
+
+
+def hosted_count_evidence(
+    opener: urllib.request.OpenerDirector,
+    base_url: str,
+    counts: dict[str, Any],
+    bypass_secret: str,
+) -> dict[str, Any]:
+    evidence = {key: counts[key] for key in EXPECTED_COUNTS}
+    allowed_probe_count = 0
+    people_delta = int(counts.get("people") or 0) - EXPECTED_COUNTS["people"]
+    if people_delta > 0:
+        allowed_probe_count = len(staging_write_audit_probe_people(opener, base_url, bypass_secret))
+        evidence["approved_staging_write_audit_probe_people"] = allowed_probe_count
+
+    for key, expected in EXPECTED_COUNTS.items():
+        actual = counts.get(key)
+        if key == "people" and people_delta > 0 and actual == expected + allowed_probe_count:
+            continue
+        assert_equal(actual, expected, f"{key} count")
+    return evidence
 
 
 def login_opener(base_url: str, email: str, password: str, bypass_secret: str) -> urllib.request.OpenerDirector:
@@ -256,13 +313,12 @@ def main() -> int:
         assert_equal(summary.status, 200, "summary status")
         payload = summary.json()
         counts = payload["counts"]
-        for key, expected in EXPECTED_COUNTS.items():
-            assert_equal(counts.get(key), expected, f"{key} count")
+        count_evidence = hosted_count_evidence(opener, base_url, counts, bypass_secret)
         production_gates = request(opener, base_url, "GET", "/api/production_gates", bypass_secret=bypass_secret)
         assert_equal(production_gates.status, 200, "production gates status")
         owner_intake = (((production_gates.json().get("production_gates") or {}).get("reports") or {}).get("owner_intake") or "")
         assert_equal(owner_intake, "/reports/owner_gate_intake_packet.md", "owner intake report link")
-        record(rows, "authenticated_summary_counts", "passed", str({key: counts[key] for key in EXPECTED_COUNTS}))
+        record(rows, "authenticated_summary_counts", "passed", str(count_evidence))
     except Exception as exc:
         record(rows, "authenticated_summary_counts", "failed", str(exc))
 

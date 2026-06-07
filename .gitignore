@@ -1,0 +1,55 @@
+# CHILLCRM local/private data
+crm_database/
+staging_database/
+backups/
+raw_api_exports/
+exports/
+logs/
+reports/
+
+# Local provider links and secrets
+.vercel/
+.env
+.env.*
+!.env.example
+*.env
+!*.env.example
+
+# Python/runtime artifacts
+.venv/
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Databases and generated archives
+*.sqlite
+*.sqlite-*
+*.db
+*.db-*
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+
+# Secret/key material
+*.key
+*.pem
+*.p12
+*.pfx
+id_rsa*
+id_ed25519*
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.idea/
+.vscode/
+
+# Local Python version files are fine to commit when intentional.
+!.python-version

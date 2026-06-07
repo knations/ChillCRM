@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Local CRM</title>
+    <link rel="stylesheet" href="/static/styles.css">
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-mark">CRM</div>
+          <div>
+            <h1>Local CRM</h1>
+            <p>Zendesk Sell snapshot</p>
+          </div>
+        </div>
+        <nav class="nav" aria-label="Main">
+          <button class="nav-button active" data-view="dashboard">Dashboard</button>
+          <button class="nav-button" data-view="migrationStatus">Status</button>
+          <button class="nav-button" data-view="people">People</button>
+          <button class="nav-button" data-view="companies">Companies</button>
+          <button class="nav-button" data-view="leads">Leads</button>
+          <button class="nav-button" data-view="deals">Deals</button>
+          <button class="nav-button" data-view="tags">Tags</button>
+          <button class="nav-button" data-view="customFields">Custom Fields</button>
+          <button class="nav-button" data-view="linkedResources">Linked Resources</button>
+          <button class="nav-button" data-view="archive">Archive</button>
+          <button class="nav-button" data-view="followup">Follow Up</button>
+          <button class="nav-button" data-view="activity">Activity</button>
+          <button class="nav-button" data-view="exports">Exports</button>
+          <button class="nav-button owner-only-nav" data-view="users" hidden>Users</button>
+          <button class="nav-button" data-view="cleanup">Cleanup</button>
+        </nav>
+      </aside>
+
+      <main class="main">
+        <header class="topbar">
+          <div class="search-wrap">
+            <span class="search-icon" aria-hidden="true">⌕</span>
+            <input id="globalSearch" type="search" placeholder="Search names, emails, phones, related records, notes, tasks, tags, links" autocomplete="off">
+          </div>
+          <div id="environmentBadge" class="environment-badge">Local</div>
+          <div id="authControl" class="auth-control" hidden></div>
+          <div id="statusText" class="status-text">Loading</div>
+        </header>
+
+        <section id="dashboardView" class="view active-view" aria-label="Dashboard"></section>
+        <section id="migrationStatusView" class="view" aria-label="Migration Status"></section>
+        <section id="listView" class="view" aria-label="Records"></section>
+        <section id="tagsView" class="view" aria-label="Tags"></section>
+        <section id="customFieldsView" class="view" aria-label="Custom Fields"></section>
+        <section id="linkedResourcesView" class="view" aria-label="Linked Resources"></section>
+        <section id="archiveView" class="view" aria-label="Archive"></section>
+        <section id="followupView" class="view" aria-label="Follow Up"></section>
+        <section id="activityView" class="view" aria-label="Activity"></section>
+        <section id="exportsView" class="view" aria-label="Exports"></section>
+        <section id="usersView" class="view" aria-label="Users"></section>
+        <section id="cleanupView" class="view" aria-label="Cleanup"></section>
+      </main>
+
+      <aside id="detailPanel" class="detail-panel" aria-label="Details">
+        <div class="empty-detail">
+          <div class="empty-mark">ID</div>
+          <h2>Select a record</h2>
+          <p>Details will appear here.</p>
+        </div>
+      </aside>
+    </div>
+
+    <div id="authOverlay" class="auth-overlay" hidden>
+      <form id="authLoginForm" class="auth-panel">
+        <div class="brand-mark">CRM</div>
+        <h2>Sign In</h2>
+        <label>
+          <span>Email</span>
+          <input name="email" type="email" autocomplete="email" required>
+        </label>
+        <label>
+          <span>Password</span>
+          <input name="password" type="password" autocomplete="current-password" required>
+        </label>
+        <p id="authMessage" class="auth-message"></p>
+        <button type="submit">Sign In</button>
+        <button id="ownerRecoveryOpen" class="secondary" type="button" hidden>Set Owner Password</button>
+        <p class="auth-help">Owner password recovery is available only when the private recovery switch is enabled.</p>
+      </form>
+    </div>
+
+    <div id="ownerRecoveryOverlay" class="auth-overlay" hidden>
+      <form id="ownerRecoveryForm" class="auth-panel">
+        <div class="brand-mark">CRM</div>
+        <h2>Owner Recovery</h2>
+        <label>
+          <span>Owner Email</span>
+          <input name="email" type="email" autocomplete="email" required>
+        </label>
+        <label>
+          <span>New Password</span>
+          <input name="new_password" type="password" autocomplete="new-password" minlength="12" required>
+        </label>
+        <label>
+          <span>Confirm Password</span>
+          <input name="confirm_password" type="password" autocomplete="new-password" minlength="12" required>
+        </label>
+        <p id="ownerRecoveryMessage" class="auth-message"></p>
+        <div class="auth-panel-actions">
+          <button type="submit">Set Password</button>
+          <button type="button" class="secondary" id="cancelOwnerRecovery">Cancel</button>
+        </div>
+        <p class="auth-help">This path is audited and should be turned off after access is restored.</p>
+      </form>
+    </div>
+
+    <div id="passwordOverlay" class="auth-overlay" hidden>
+      <form id="passwordChangeForm" class="auth-panel">
+        <div class="brand-mark">CRM</div>
+        <h2>Change Password</h2>
+        <label>
+          <span>Current Password</span>
+          <input name="current_password" type="password" autocomplete="current-password" required>
+        </label>
+        <label>
+          <span>New Password</span>
+          <input name="new_password" type="password" autocomplete="new-password" minlength="12" required>
+        </label>
+        <label>
+          <span>Confirm Password</span>
+          <input name="confirm_password" type="password" autocomplete="new-password" minlength="12" required>
+        </label>
+        <p id="passwordMessage" class="auth-message"></p>
+        <div class="auth-panel-actions">
+          <button type="submit">Save Password</button>
+          <button type="button" class="secondary" id="cancelPasswordChange">Cancel</button>
+        </div>
+      </form>
+    </div>
+
+    <script src="/static/app.js"></script>
+  </body>
+</html>

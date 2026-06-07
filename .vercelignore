@@ -1,0 +1,11 @@
+.venv/
+raw_api_exports/
+backups/
+exports/
+logs/
+staging_database/
+crm_database/
+*.sqlite
+*.sqlite-*
+__pycache__/
+*.pyc

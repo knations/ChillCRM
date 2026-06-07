@@ -43,6 +43,10 @@ button {
   min-height: 100vh;
 }
 
+.app-shell.record-workspace {
+  grid-template-columns: 232px minmax(300px, 34vw) minmax(560px, 1fr);
+}
+
 .sidebar {
   background: #28251f;
   color: #fffaf0;
@@ -50,6 +54,12 @@ button {
   display: flex;
   flex-direction: column;
   gap: 28px;
+  height: 100vh;
+  max-height: 100vh;
+  overflow: auto;
+  overscroll-behavior: contain;
+  position: sticky;
+  top: 0;
 }
 
 .brand {
@@ -2145,13 +2155,26 @@ button {
 .detail-panel {
   border-left: 1px solid var(--line);
   background: var(--surface);
+  height: 100vh;
   min-width: 0;
   max-height: 100vh;
   overflow: auto;
+  position: sticky;
+  top: 0;
+}
+
+.record-workspace .detail-panel {
+  background: #fffdf8;
+  box-shadow: -18px 0 34px rgba(44, 38, 28, 0.06);
 }
 
 .detail-content {
   padding: 24px 22px 32px;
+}
+
+.record-workspace .detail-content {
+  max-width: 980px;
+  padding: 28px 32px 44px;
 }
 
 .detail-masthead {
@@ -2162,6 +2185,13 @@ button {
   position: sticky;
   top: 0;
   z-index: 3;
+}
+
+.record-workspace .detail-masthead {
+  margin-left: -32px;
+  margin-right: -32px;
+  padding-left: 32px;
+  padding-right: 32px;
 }
 
 .detail-title {
@@ -3846,6 +3876,10 @@ button {
     grid-template-columns: 208px minmax(0, 1fr) 360px;
   }
 
+  .app-shell.record-workspace {
+    grid-template-columns: 208px minmax(280px, 32vw) minmax(500px, 1fr);
+  }
+
   .main {
     padding-left: 18px;
     padding-right: 18px;
@@ -3861,6 +3895,18 @@ button {
     margin-right: -18px;
     padding-left: 18px;
     padding-right: 18px;
+  }
+
+  .record-workspace .detail-content {
+    padding-left: 26px;
+    padding-right: 26px;
+  }
+
+  .record-workspace .detail-masthead {
+    margin-left: -26px;
+    margin-right: -26px;
+    padding-left: 26px;
+    padding-right: 26px;
   }
 
   .detail-panel .edit-grid,
@@ -3910,11 +3956,17 @@ button {
     grid-template-columns: 208px minmax(0, 1fr);
   }
 
+  .app-shell.record-workspace {
+    grid-template-columns: 208px minmax(0, 1fr);
+  }
+
   .detail-panel {
     grid-column: 1 / -1;
     max-height: none;
     border-left: 0;
     border-top: 1px solid var(--line);
+    height: auto;
+    position: static;
   }
 
   .detail-panel .edit-grid,
@@ -3950,6 +4002,9 @@ button {
     top: 0;
     z-index: 4;
     padding: 14px;
+    height: auto;
+    max-height: 100svh;
+    overflow: auto;
   }
 
   .brand {

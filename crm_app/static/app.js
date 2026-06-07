@@ -102,6 +102,7 @@ const state = {
 const els = {
   status: document.querySelector("#statusText"),
   environmentBadge: document.querySelector("#environmentBadge"),
+  shell: document.querySelector(".app-shell"),
   dashboard: document.querySelector("#dashboardView"),
   migrationStatus: document.querySelector("#migrationStatusView"),
   list: document.querySelector("#listView"),
@@ -599,6 +600,7 @@ function setView(view) {
   els.exports.classList.toggle("active-view", view === "exports");
   els.users.classList.toggle("active-view", view === "users");
   els.cleanup.classList.toggle("active-view", view === "cleanup");
+  updateRecordWorkspaceForView(view);
   if (view === "migrationStatus") {
     renderMigrationStatus();
   } else if (["people", "companies", "leads", "deals"].includes(view)) {
@@ -636,6 +638,26 @@ function setView(view) {
   } else {
     renderDashboard();
   }
+}
+
+function recordWorkspaceView(view = state.view) {
+  return ["people", "companies", "leads", "deals"].includes(view);
+}
+
+function setRecordWorkspace(active) {
+  els.shell?.classList.toggle("record-workspace", Boolean(active));
+}
+
+function resetDetailScroll() {
+  if (els.detail) els.detail.scrollTop = 0;
+}
+
+function updateRecordWorkspaceForView(view = state.view) {
+  if (!recordWorkspaceView(view)) {
+    setRecordWorkspace(false);
+    return;
+  }
+  setRecordWorkspace(Boolean(state.currentDetail && listTypeForDetailType(state.currentDetail.type) === view));
 }
 
 function roleLabel(roleKey, roles = []) {
@@ -3729,6 +3751,7 @@ async function renderList() {
 
 async function renderCreateForm(listType) {
   setStatus("Loading create form");
+  setRecordWorkspace(true);
   const type = listType === "people" ? "person" : listType === "companies" ? "company" : listType === "leads" ? "lead" : "deal";
   const fields = createFields(type);
   const options = await fetchJson(`/api/create_options?type=${encodeURIComponent(type)}`);
@@ -3748,6 +3771,7 @@ async function renderCreateForm(listType) {
       </div>
     </div>
   `;
+  resetDetailScroll();
   const createButton = document.querySelector("#createRecordButton");
   createButton.addEventListener("click", async () => {
     const form = document.querySelector("#createRecordForm");
@@ -4135,6 +4159,7 @@ async function showArchiveItem(id) {
 
 function renderArchiveItemDetail(detail) {
   const item = detail.item || {};
+  setRecordWorkspace(false);
   state.currentDetail = null;
   state.currentArchiveItem = item;
   const title = item.title || item.label || "Archive Item";
@@ -4148,6 +4173,7 @@ function renderArchiveItemDetail(detail) {
       ${archiveItemFacts(item)}
     </div>
   `;
+  resetDetailScroll();
   wireRecordButtons(els.detail);
   wireArchiveReviewForm(els.detail, item);
   wireArchiveLinkForm(els.detail, item);
@@ -4482,6 +4508,7 @@ async function nextCleanupReviewGroup(detail) {
 }
 
 function renderDetail(detail) {
+  setRecordWorkspace(true);
   state.currentDetail = detail;
   state.currentArchiveItem = null;
   state.currentCleanupGroup = null;
@@ -4517,6 +4544,7 @@ function renderDetail(detail) {
       ${tasksSection(detail.tasks || [])}
     </div>
   `;
+  resetDetailScroll();
   wireRecordButtons(els.detail);
   wireDetailForms(detail);
   syncActiveListRows();
@@ -4692,6 +4720,7 @@ function contactWebsiteHref(value) {
 }
 
 function renderTagDetail(detail) {
+  setRecordWorkspace(false);
   state.currentDetail = null;
   state.currentCleanupGroup = null;
   const tag = detail.tag;
@@ -4728,10 +4757,12 @@ function renderTagDetail(detail) {
       </div>
     </div>
   `;
+  resetDetailScroll();
   wireRecordButtons(els.detail);
 }
 
 function renderCustomFieldDetail(detail) {
+  setRecordWorkspace(false);
   state.currentDetail = null;
   state.currentCleanupGroup = null;
   const field = detail.field;
@@ -4766,10 +4797,12 @@ function renderCustomFieldDetail(detail) {
       </div>
     </div>
   `;
+  resetDetailScroll();
   wireRecordButtons(els.detail);
 }
 
 function renderCleanupGroupDetail(detail) {
+  setRecordWorkspace(false);
   state.currentDetail = null;
   state.currentCleanupGroup = { type: detail.type, key: detail.group_key };
   const isTagGroup = detail.type === "duplicate_tags";
@@ -4877,6 +4910,7 @@ function renderCleanupGroupDetail(detail) {
       </div>
     </div>
   `;
+  resetDetailScroll();
   wireRecordButtons(els.detail);
   wireCleanupFlagButtons(els.detail);
   const saveCleanupDecision = async (openNext = false) => {

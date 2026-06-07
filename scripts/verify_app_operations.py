@@ -3876,19 +3876,22 @@ def main() -> int:
             "/reports/hosted_write_unlock_audit_rehearsal.md",
             "/reports/hosted_write_audit_execution.md",
         }
-        expected_needed_orders = [4, 5, 6, 7, 8]
-        expected_needed_inputs = {
+        expected_needed_input_order = [
             "Supabase Management API access token or Dashboard backup evidence",
             "Owner approval for hosted write-audit rehearsal",
             "Monitoring owner/cadence approval",
             "Owner shakedown signoff",
             "Owner source-of-truth cutover approval",
-        }
+        ]
+        if "newest_hosted_smoke" in blocking_gate_keys:
+            expected_needed_input_order.insert(0, "Owner email and owner password")
         if redeploy_required:
-            expected_needed_orders = [2, 4, 5, 6, 7, 8]
-            expected_needed_inputs.add("Redeploy current local runtime to Vercel and rerun hosted smoke")
-        assert [item["order"] for item in production_gates["needed_inputs"]] == expected_needed_orders
-        assert {item["input"] for item in production_gates["needed_inputs"]} == expected_needed_inputs
+            insert_at = 1 if "newest_hosted_smoke" in blocking_gate_keys else 0
+            expected_needed_input_order.insert(insert_at, "Redeploy current local runtime to Vercel and rerun hosted smoke")
+        assert [item["order"] for item in production_gates["needed_inputs"]] == list(
+            range(1, len(expected_needed_input_order) + 1)
+        )
+        assert [item["input"] for item in production_gates["needed_inputs"]] == expected_needed_input_order
         write_audit_input = next(item for item in production_gates["needed_inputs"] if item["input"] == "Owner approval for hosted write-audit rehearsal")
         assert {link["url"] for link in write_audit_input["proof_links"]} == {
             "/reports/hosted_write_unlock_audit_rehearsal.md",

@@ -46,6 +46,14 @@ def write_csv(path: Path, rows: list[dict[str, Any]]) -> None:
         writer.writerows(rows)
 
 
+def read_csv(relative_path: str) -> list[dict[str, str]]:
+    path = PROJECT_ROOT / relative_path
+    if not path.exists():
+        return []
+    with path.open(newline="", encoding="utf-8") as handle:
+        return list(csv.DictReader(handle))
+
+
 def safe_command_lines(command: str) -> list[str]:
     return [line for line in command.split("\n") if line.strip()]
 
@@ -53,6 +61,7 @@ def safe_command_lines(command: str) -> list[str]:
 def write_report(path: Path, rows: list[dict[str, Any]]) -> None:
     summary = next(row for row in rows if row["row_type"] == "summary")
     inputs = [row for row in rows if row["row_type"] == "input"]
+    completed_inputs = [row for row in rows if row["row_type"] == "completed_input"]
     phases = [row for row in rows if row["row_type"] == "phase"]
     lines = [
         "# Remaining Production Gates Packet",
@@ -95,6 +104,28 @@ def write_report(path: Path, rows: list[dict[str, Any]]) -> None:
             )
     else:
         lines.append("| - | None right now | pass | No remaining external input recorded. | - | - |")
+    if completed_inputs:
+        lines.extend(
+            [
+                "",
+                "## Already Cleared Inputs",
+                "",
+                "| Input | Cleared By | Proof Report |",
+                "| --- | --- | --- |",
+            ]
+        )
+        for row in completed_inputs:
+            lines.append(
+                "| "
+                + " | ".join(
+                    [
+                        str(row.get("input")),
+                        str(row.get("cleared_by")),
+                        str(row.get("proof_report")),
+                    ]
+                )
+                + " |"
+            )
     lines.extend(
         [
             "",
@@ -202,6 +233,12 @@ def write_report(path: Path, rows: list[dict[str, Any]]) -> None:
 def build_rows() -> list[dict[str, Any]]:
     production = read_text("reports/remote_production_readiness.md")
     monitoring = read_text("reports/remote_monitoring_readiness.md")
+    readiness_rows = read_csv("reports/remote_production_readiness.csv")
+    gate_status = {
+        row.get("key") or "": row.get("status") or ""
+        for row in readiness_rows
+        if row.get("row_type") == "gate"
+    }
     latest_url = backtick_value(production, "Latest URL")
     public_url = backtick_value(production, "Public URL")
     latest_smoke_url = backtick_value(production, "Latest smoke-tested URL")
@@ -236,6 +273,7 @@ def build_rows() -> list[dict[str, Any]]:
     if not newest_hosted_smoke_current:
         input_specs.append(
             (
+                "newest_hosted_smoke",
                 "Owner email and owner password",
                 "input_required",
                 "Password is secret. Use hidden prompt or one-shot env var; do not write to reports. Vercel bypass is not required for https://chillcrm.app.",
@@ -246,6 +284,7 @@ def build_rows() -> list[dict[str, Any]]:
     input_specs.extend(
         [
         (
+            "owner_recovery_closure",
             "Owner access restored and recovery disable approval",
             "input_required",
             "Approval only. Do not share the password; confirm the owner can sign in and the temporary recovery switch can be disabled.",
@@ -253,6 +292,7 @@ def build_rows() -> list[dict[str, Any]]:
             "reports/owner_approved_wave_packet.md; reports/owner_recovery_disable_run.md",
         ),
         (
+            "hosted_deployment_freshness",
             "Redeploy current local runtime to Vercel and rerun hosted smoke",
             "input_required",
             "Vercel token and owner password are secret. Use hidden prompts or one-shot environment variables only.",
@@ -260,6 +300,7 @@ def build_rows() -> list[dict[str, Any]]:
             "reports/owner_approved_wave_packet.md; reports/hosted_redeploy_preflight.md; reports/hosted_deployment_freshness.md; reports/vercel_hosted_app_smoke.md",
         ),
         (
+            "supabase_staging_data_parity",
             "Reload current local audit/data changes to Supabase staging",
             "input_required",
             "Supabase database connection string is secret. Use hidden prompt or one-shot environment variable only.",
@@ -267,6 +308,7 @@ def build_rows() -> list[dict[str, Any]]:
             "reports/supabase_staging_refresh_run.md; reports/supabase_staging_refresh_preflight.md; reports/chillcrm_supabase_staging_validation.md; reports/supabase_staging_data_parity.md; reports/remote_production_readiness.md",
         ),
         (
+            "supabase_provider_backup",
             "Supabase Management API access token or Dashboard backup evidence",
             "input_required",
             "Token is secret; Dashboard backup facts are non-secret. Do not write token values to reports.",
@@ -274,6 +316,7 @@ def build_rows() -> list[dict[str, Any]]:
             "reports/supabase_backup_readiness.md",
         ),
         (
+            "hosted_write_unlock_audit_rehearsal",
             "Owner approval for hosted write-audit rehearsal",
             "input_required",
             "Approval only. No secret value; must be explicit before any write lock change.",
@@ -281,6 +324,7 @@ def build_rows() -> list[dict[str, Any]]:
             "reports/hosted_write_unlock_audit_rehearsal.md; reports/hosted_write_audit_execution.md",
         ),
         (
+            "remote_monitoring_readiness",
             "Monitoring owner/cadence approval",
             "input_required",
             "Approval only. No secret value.",
@@ -288,6 +332,7 @@ def build_rows() -> list[dict[str, Any]]:
             "reports/remote_monitoring_signoff.md",
         ),
         (
+            "owner_shakedown_signoff",
             "Owner shakedown signoff",
             "input_required",
             "Approval only. No secret value; should happen after smoke, backup, audit, and monitoring are green.",
@@ -295,6 +340,7 @@ def build_rows() -> list[dict[str, Any]]:
             "reports/owner_shakedown_signoff.md",
         ),
         (
+            "source_of_truth_cutover_approval",
             "Owner source-of-truth cutover approval",
             "input_required",
             "Approval only. No secret value; should happen only after every other blocking production gate is green.",
@@ -303,7 +349,9 @@ def build_rows() -> list[dict[str, Any]]:
         ),
         ]
     )
-    for order, (input_name, status, secret_handling, consumed_by, proof_report) in enumerate(input_specs, start=1):
+    active_input_specs = [spec for spec in input_specs if gate_status.get(spec[0], "input_required") != "pass"]
+    completed_input_specs = [spec for spec in input_specs if gate_status.get(spec[0], "input_required") == "pass"]
+    for order, (_, input_name, status, secret_handling, consumed_by, proof_report) in enumerate(active_input_specs, start=1):
         rows.append(
             {
                 "row_type": "input",
@@ -312,6 +360,15 @@ def build_rows() -> list[dict[str, Any]]:
                 "status": status,
                 "secret_handling": secret_handling,
                 "consumed_by": consumed_by,
+                "proof_report": proof_report,
+            }
+        )
+    for _, input_name, _, _, _, proof_report in completed_input_specs:
+        rows.append(
+            {
+                "row_type": "completed_input",
+                "input": input_name,
+                "cleared_by": "Current production readiness gate is pass.",
                 "proof_report": proof_report,
             }
         )

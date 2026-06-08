@@ -91,6 +91,12 @@ def main() -> int:
         "ORDER BY name COLLATE NOCASE LIMIT ?"
     )
     assert "%s" in translated_sql
+    assert "ILIKE" in server.translate_sqlite_sql_for_postgres(
+        "SELECT * FROM people WHERE name LIKE ? OR email NOT LIKE ?"
+    )
+    assert "NOT ILIKE" in server.translate_sqlite_sql_for_postgres(
+        "SELECT * FROM people WHERE email NOT LIKE ?"
+    )
     assert "source_json::jsonb ->> 'resource_id'" in translated_sql
     assert "CAST(updated_at AS date) >= CURRENT_DATE" in translated_sql
     assert "COLLATE NOCASE" not in translated_sql

@@ -3093,6 +3093,7 @@ function recordTable(records, context) {
                   <button class="record-button" data-type="${detailType}" data-id="${record.source_id}">
                     ${escapeHtml(record.name || "(blank)")}
                   </button>
+                  ${lifecyclePillForRecord(record)}
                 </td>
                 <td><span class="pill">${escapeHtml(badge)}</span></td>
                 <td class="muted">${escapeHtml(third)}</td>
@@ -3825,7 +3826,7 @@ function listTable(records) {
           ${records
             .map((record) => `
               <tr ${listRowAttributes("deal", record.source_id)}>
-                <td><button class="record-button" data-type="deal" data-id="${record.source_id}">${escapeHtml(record.name || "(blank)")}</button></td>
+                <td><button class="record-button" data-type="deal" data-id="${record.source_id}">${escapeHtml(record.name || "(blank)")}</button>${lifecyclePillForRecord(record)}</td>
                 <td><span class="pill gold">${escapeHtml(record.stage_name || "")}</span></td>
                 <td>${formatMoney(record.value, record.currency || "USD")}</td>
                 <td class="muted">${escapeHtml(record.contact_name || record.organization_name || "")}</td>
@@ -3862,7 +3863,7 @@ function listTable(records) {
         ${records
           .map((record) => `
             <tr ${listRowAttributes(type, record.source_id)}>
-              <td><button class="record-button" data-type="${type}" data-id="${record.source_id}">${escapeHtml(record.name || "(blank)")}</button></td>
+              <td><button class="record-button" data-type="${type}" data-id="${record.source_id}">${escapeHtml(record.name || "(blank)")}</button>${lifecyclePillForRecord(record)}</td>
               <td class="muted">${escapeHtml(record.email || "")}</td>
               <td class="muted">${escapeHtml(record.phone || record.mobile || "")}</td>
               <td>${record.status ? `<span class="pill">${escapeHtml(record.status)}</span>` : ""}</td>
@@ -4516,9 +4517,11 @@ function renderDetail(detail) {
   const subtitle = [record.email, record.phone, record.mobile, record.stage_name].filter(Boolean).join(" · ");
   els.detail.innerHTML = `
     <div class="detail-content">
-      ${detailHeader(record.name || "(blank)", subtitle || detail.type)}
+      ${detailHeader(record.name || "(blank)", subtitle || detail.type, detail)}
       <div id="detailActionError" class="form-error" hidden></div>
+      ${recordFileHero(detail)}
       ${recordSnapshot(detail)}
+      ${recordLifecycleSection(detail)}
       ${detailQualityPanel(detail)}
       ${contactActions(detail)}
       ${editForm(detail)}
@@ -4550,19 +4553,70 @@ function renderDetail(detail) {
   syncActiveListRows();
 }
 
-function detailHeader(title, subtitle) {
+function detailHeader(title, subtitle, detail = null) {
   return `
     <div class="detail-masthead">
-      <h2 class="detail-title">${escapeHtml(title || "")}</h2>
+      <div class="detail-title-row">
+        <h2 class="detail-title">${escapeHtml(title || "")}</h2>
+        ${detail ? lifecyclePill(detail.lifecycle) : ""}
+      </div>
       <div class="detail-subtitle">${escapeHtml(subtitle || "")}</div>
     </div>
   `;
+}
+
+function recordFileHero(detail) {
+  const facts = recordFileFacts(detail);
+  if (!facts.length) return "";
+  return `
+    <div class="record-file-hero">
+      <div class="record-file-facts">
+        ${facts
+          .map(
+            (fact) => `
+              <div class="record-file-fact">
+                <span>${escapeHtml(fact.label)}</span>
+                <strong>${escapeHtml(fact.value)}</strong>
+              </div>
+            `
+          )
+          .join("")}
+      </div>
+    </div>
+  `;
+}
+
+function recordFileFacts(detail) {
+  const record = detail.record || {};
+  const provenance = detail.provenance || {};
+  const facts = [];
+  const add = (label, value) => {
+    const text = String(value || "").trim();
+    if (text) facts.push({ label, value: text });
+  };
+  add("Email", record.email);
+  add("Phone", record.phone || record.mobile);
+  add("Website", record.website);
+  add("Owner", detail.owner?.name || record.owner_name);
+  add("Status", recordSnapshotStatus(detail));
+  if (detail.company) add("Company", detail.company.name || `Company #${detail.company.source_id}`);
+  if (detail.organization) add("Organization", detail.organization.name || `Company #${detail.organization.source_id}`);
+  if (detail.contact) add("Contact", detail.contact.name || `Person #${detail.contact.source_id}`);
+  if (record.organization_name && detail.type === "lead") add("Organization", record.organization_name);
+  if (detail.type === "deal") {
+    add("Value", formatMoney(record.value, record.currency || "USD"));
+    add("Close Date", formatDate(record.estimated_close_date));
+  }
+  add("Source", provenance.label);
+  add("Updated", formatDate(record.updated_at));
+  return facts.slice(0, 10);
 }
 
 function recordSnapshot(detail) {
   const record = detail.record || {};
   const provenance = detail.provenance || {};
   const status = recordSnapshotStatus(detail);
+  const lifecycle = detail.lifecycle || {};
   const openTasks = (detail.tasks || []).filter((task) => !task.completed).length;
   const reviewFlags = (detail.review_flags || []).length;
   const tags = (detail.tags || []).length;
@@ -4574,6 +4628,7 @@ function recordSnapshot(detail) {
   const lastLocalChange = provenance.last_local_change_at ? formatDate(provenance.last_local_change_at) : "";
   const items = [
     ["Type", labelize(detail.type || "record")],
+    lifecycle.status ? ["Record Status", lifecycle.label || labelize(lifecycle.status)] : null,
     provenance.label ? ["Source", provenance.label] : null,
     status ? ["Status", status] : null,
     owner ? ["Owner", owner] : null,
@@ -4610,6 +4665,44 @@ function recordSnapshotStatus(detail) {
   const statuses = [record.customer_status, record.prospect_status].filter(Boolean);
   if (!statuses.length) return "";
   return [...new Set(statuses)].join(" / ");
+}
+
+function lifecyclePill(lifecycle) {
+  const status = String(lifecycle?.status || "active").toLowerCase();
+  const label = lifecycle?.label || (status === "inactive" ? "Inactive" : "Active");
+  return `<span class="pill lifecycle-pill ${status === "inactive" ? "coral" : "green"}">${escapeHtml(label)}</span>`;
+}
+
+function lifecyclePillForRecord(record) {
+  if (String(record.lifecycle_status || "active").toLowerCase() !== "inactive") return "";
+  return `<span class="pill coral">Inactive</span>`;
+}
+
+function recordLifecycleSection(detail) {
+  if (!detailTypeSupported(detail.type)) return "";
+  const lifecycle = detail.lifecycle || { status: "active", label: "Active" };
+  const inactive = String(lifecycle.status || "active").toLowerCase() === "inactive";
+  const nextStatus = inactive ? "active" : "inactive";
+  const buttonLabel = inactive ? "Reactivate" : "Mark Inactive";
+  return `
+    <div class="detail-section record-lifecycle-section ${inactive ? "inactive" : ""}">
+      <div class="inline-header">
+        <h3>Record Status</h3>
+        ${lifecyclePill(lifecycle)}
+      </div>
+      <div class="record-lifecycle-body">
+        <label>
+          <span>Note</span>
+          <textarea id="lifecycleNote" class="note-input" rows="3">${escapeHtml(lifecycle.note || "")}</textarea>
+        </label>
+        <div class="record-lifecycle-meta">
+          ${lifecycle.updated_at ? `<span>Updated ${escapeHtml(formatDate(lifecycle.updated_at))}</span>` : ""}
+          ${lifecycle.deactivated_at ? `<span>Inactive since ${escapeHtml(formatDate(lifecycle.deactivated_at))}</span>` : ""}
+        </div>
+        <button class="text-button ${inactive ? "" : "danger"}" id="setLifecycleButton" data-status="${nextStatus}" type="button">${buttonLabel}</button>
+      </div>
+    </div>
+  `;
 }
 
 function detailQualityPanel(detail) {
@@ -5189,6 +5282,37 @@ function wireDetailForms(detail) {
       } finally {
         saveButton.disabled = false;
       }
+    });
+  }
+
+  const lifecycleButton = document.querySelector("#setLifecycleButton");
+  if (lifecycleButton) {
+    lifecycleButton.addEventListener("click", async () => {
+      const nextStatus = lifecycleButton.dataset.status || "";
+      const inactive = nextStatus === "inactive";
+      const ok = window.confirm(inactive ? "Mark this record inactive?" : "Reactivate this record?");
+      if (!ok) return;
+      const note = document.querySelector("#lifecycleNote")?.value.trim() || "";
+      await runDetailAction(
+        lifecycleButton,
+        {
+          progress: inactive ? "Marking inactive" : "Reactivating",
+          success: inactive ? "Record marked inactive" : "Record reactivated",
+          failure: "Record status update failed",
+        },
+        async () => {
+          const updated = await postJson("/api/set_record_lifecycle", {
+            type: detail.type,
+            id: detail.record.source_id,
+            status: nextStatus,
+            note,
+          });
+          renderDetail(updated.detail);
+          await refreshCurrentListForDetail(updated.detail);
+          if (state.view === "dashboard") await renderDashboard();
+          if (state.view === "activity") await renderActivity();
+        }
+      );
     });
   }
 

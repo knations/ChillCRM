@@ -859,6 +859,21 @@ def ensure_runtime_schema(db_path: Path) -> None:
             CREATE INDEX IF NOT EXISTS idx_local_addresses_record
             ON local_addresses(record_type, record_id);
 
+            CREATE TABLE IF NOT EXISTS local_record_lifecycle (
+                record_type TEXT NOT NULL,
+                record_id INTEGER NOT NULL,
+                lifecycle_status TEXT NOT NULL DEFAULT 'active',
+                lifecycle_note TEXT,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                deactivated_at TEXT,
+                reactivated_at TEXT,
+                PRIMARY KEY(record_type, record_id)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_local_record_lifecycle_status
+            ON local_record_lifecycle(lifecycle_status, updated_at DESC);
+
             CREATE TABLE IF NOT EXISTS local_list_views (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 list_type TEXT NOT NULL,
@@ -1041,6 +1056,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         {
             "/api/update_record",
             "/api/create_record",
+            "/api/set_record_lifecycle",
             "/api/update_tags",
             "/api/update_addresses",
             "/api/add_note",
@@ -1116,6 +1132,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
     post_permission_actions = {
         "/api/update_record": "create_edit_records",
         "/api/create_record": "create_edit_records",
+        "/api/set_record_lifecycle": "create_edit_records",
         "/api/update_tags": "edit_addresses_tags",
         "/api/update_addresses": "edit_addresses_tags",
         "/api/add_note": "notes_tasks_followups",
@@ -2599,6 +2616,8 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                 self.send_json(self.update_record(payload, auth_user, action_key))
             elif path == "/api/create_record":
                 self.send_json(self.create_record(payload, auth_user, action_key))
+            elif path == "/api/set_record_lifecycle":
+                self.send_json(self.set_record_lifecycle(payload, auth_user, action_key))
             elif path == "/api/update_tags":
                 self.send_json(self.update_tags(payload, auth_user, action_key))
             elif path == "/api/update_addresses":
@@ -5928,6 +5947,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         )
         self.attach_profile_summaries(conn, "person", records)
         self.attach_quality_summaries("people", records)
+        self.attach_lifecycle_summaries(conn, "person", records)
         return total, records
 
     def list_companies(
@@ -5992,6 +6012,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             ).fetchall()
         )
         self.attach_quality_summaries("companies", records)
+        self.attach_lifecycle_summaries(conn, "company", records)
         return total, records
 
     def list_leads(
@@ -6073,6 +6094,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         )
         self.attach_profile_summaries(conn, "lead", records)
         self.attach_quality_summaries("leads", records)
+        self.attach_lifecycle_summaries(conn, "lead", records)
         return total, records
 
     def list_deals(
@@ -6138,6 +6160,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             ).fetchall()
         )
         self.attach_quality_summaries("deals", records)
+        self.attach_lifecycle_summaries(conn, "deal", records)
         return total, records
 
     def attach_quality_summaries(self, record_type: str, records: list[dict[str, Any]]) -> None:
@@ -7838,6 +7861,11 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             return "Added task"
         if action == "create_record":
             return "Created record"
+        if action == "set_record_lifecycle":
+            status = str(row["new_value"] or "").lower()
+            note = self.audit_user_note(row["note"])
+            note_text = f": {note}" if note else ""
+            return f"Marked record {'inactive' if status == 'inactive' else 'active'}{note_text}"
         if action == "update_task":
             return "Updated task"
         if action == "complete_task":
@@ -15845,6 +15873,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         return {
             "type": "person",
             "record": self.clean_record_with_quality("people", {**record, "kind": "person", "source_id": record_id}),
+            "lifecycle": self.record_lifecycle_for(conn, "person", record_id),
             "provenance": self.record_provenance(conn, "person", record_id, record),
             "edit_options": self.edit_options(conn, "person"),
             "owner": self.owner_for(conn, record.get("owner_user_id")),
@@ -15880,6 +15909,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         return {
             "type": "company",
             "record": self.clean_record_with_quality("companies", {**record, "kind": "company", "source_id": record_id}),
+            "lifecycle": self.record_lifecycle_for(conn, "company", record_id),
             "provenance": self.record_provenance(conn, "company", record_id, record),
             "edit_options": self.edit_options(conn, "company"),
             "owner": self.owner_for(conn, record.get("owner_user_id")),
@@ -15911,6 +15941,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         return {
             "type": "lead",
             "record": self.clean_record_with_quality("leads", {**record, "kind": "lead", "source_id": record_id}),
+            "lifecycle": self.record_lifecycle_for(conn, "lead", record_id),
             "provenance": self.record_provenance(conn, "lead", record_id, record),
             "edit_options": self.edit_options(conn, "lead"),
             "owner": self.owner_for(conn, record.get("owner_user_id")),
@@ -15948,6 +15979,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         return {
             "type": "deal",
             "record": self.clean_record_with_quality("deals", {**record, "kind": "deal", "source_id": record_id}),
+            "lifecycle": self.record_lifecycle_for(conn, "deal", record_id),
             "provenance": self.record_provenance(conn, "deal", record_id, record),
             "edit_options": self.edit_options(conn, "deal"),
             "contact": contact,
@@ -18683,6 +18715,164 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             )
             conn.commit()
         return {"ok": True, "restored": restore_path.name, "pre_restore_backup": pre_restore.name, "summary": self.summary()}
+
+    def record_table_name(self, record_type: str) -> str:
+        table = {"person": "people", "company": "companies", "lead": "leads", "deal": "deals"}.get(record_type)
+        if not table:
+            raise ValueError(f"Unsupported record type: {record_type}")
+        return table
+
+    def ensure_record_lifecycle_schema(self, conn: Any) -> None:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS local_record_lifecycle (
+                record_type TEXT NOT NULL,
+                record_id INTEGER NOT NULL,
+                lifecycle_status TEXT NOT NULL DEFAULT 'active',
+                lifecycle_note TEXT,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                deactivated_at TEXT,
+                reactivated_at TEXT,
+                PRIMARY KEY(record_type, record_id)
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_local_record_lifecycle_status
+            ON local_record_lifecycle(lifecycle_status, updated_at DESC)
+            """
+        )
+
+    def record_lifecycle_table_exists(self, conn: Any) -> bool:
+        if self.hosted_postgres_adapter_enabled():
+            row = conn.execute("SELECT to_regclass('crm.local_record_lifecycle') IS NOT NULL AS table_exists").fetchone()
+            return bool(row and row["table_exists"])
+        row = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
+            ("local_record_lifecycle",),
+        ).fetchone()
+        return row is not None
+
+    def default_record_lifecycle(self) -> dict[str, Any]:
+        return {
+            "status": "active",
+            "label": "Active",
+            "note": "",
+            "updated_at": None,
+            "deactivated_at": None,
+            "reactivated_at": None,
+        }
+
+    def record_lifecycle_for(self, conn: Any, record_type: str, record_id: int) -> dict[str, Any]:
+        if not self.record_lifecycle_table_exists(conn):
+            return self.default_record_lifecycle()
+        row = row_to_dict(
+            conn.execute(
+                """
+                SELECT lifecycle_status, lifecycle_note, updated_at, deactivated_at, reactivated_at
+                FROM local_record_lifecycle
+                WHERE record_type = ? AND record_id = ?
+                """,
+                (record_type, record_id),
+            ).fetchone()
+        )
+        if not row:
+            return self.default_record_lifecycle()
+        status = str(row.get("lifecycle_status") or "active").lower()
+        if status not in {"active", "inactive"}:
+            status = "active"
+        return {
+            "status": status,
+            "label": "Inactive" if status == "inactive" else "Active",
+            "note": row.get("lifecycle_note") or "",
+            "updated_at": row.get("updated_at"),
+            "deactivated_at": row.get("deactivated_at"),
+            "reactivated_at": row.get("reactivated_at"),
+        }
+
+    def attach_lifecycle_summaries(self, conn: Any, record_type: str, records: list[dict[str, Any]]) -> None:
+        for record in records:
+            record["lifecycle_status"] = "active"
+            record["lifecycle_label"] = "Active"
+            record["lifecycle_note"] = ""
+        ids = [int(record.get("source_id") or 0) for record in records if int(record.get("source_id") or 0)]
+        if not ids or not self.record_lifecycle_table_exists(conn):
+            return
+        placeholders = ",".join("?" for _ in ids)
+        rows = rows_to_dicts(
+            conn.execute(
+                f"""
+                SELECT record_id, lifecycle_status, lifecycle_note
+                FROM local_record_lifecycle
+                WHERE record_type = ? AND record_id IN ({placeholders})
+                """,
+                [record_type, *ids],
+            ).fetchall()
+        )
+        by_id = {int(row["record_id"]): row for row in rows}
+        for record in records:
+            lifecycle = by_id.get(int(record.get("source_id") or 0))
+            if not lifecycle:
+                continue
+            status = str(lifecycle.get("lifecycle_status") or "active").lower()
+            if status not in {"active", "inactive"}:
+                status = "active"
+            record["lifecycle_status"] = status
+            record["lifecycle_label"] = "Inactive" if status == "inactive" else "Active"
+            record["lifecycle_note"] = lifecycle.get("lifecycle_note") or ""
+
+    def set_record_lifecycle(self, payload: dict[str, Any], actor_user: dict[str, Any] | None = None, permission_action: str | None = "create_edit_records") -> dict[str, Any]:
+        record_type = str(payload.get("type", "")).lower()
+        record_id = int(payload.get("id", 0))
+        status = str(payload.get("status") or "").strip().lower()
+        note = self.clean_optional(payload.get("note")) or ""
+        if status not in {"active", "inactive"}:
+            raise ValueError("Choose Active or Inactive.")
+        table = self.record_table_name(record_type)
+        backup_path = self.create_backup(f"before_lifecycle_{record_type}_{record_id}")
+        timestamp = now_iso()
+        with self.db() as conn:
+            existing_record = conn.execute(f"SELECT * FROM {table} WHERE id = ?", (record_id,)).fetchone()
+            if not existing_record:
+                raise ValueError(f"{record_type} {record_id} not found.")
+            self.ensure_record_lifecycle_schema(conn)
+            existing_lifecycle = self.record_lifecycle_for(conn, record_type, record_id)
+            old_status = existing_lifecycle["status"]
+            deactivated_at = timestamp if status == "inactive" else existing_lifecycle.get("deactivated_at")
+            reactivated_at = timestamp if status == "active" and old_status == "inactive" else existing_lifecycle.get("reactivated_at")
+            conn.execute(
+                """
+                INSERT INTO local_record_lifecycle (
+                    record_type, record_id, lifecycle_status, lifecycle_note,
+                    created_at, updated_at, deactivated_at, reactivated_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(record_type, record_id) DO UPDATE SET
+                    lifecycle_status = excluded.lifecycle_status,
+                    lifecycle_note = excluded.lifecycle_note,
+                    updated_at = excluded.updated_at,
+                    deactivated_at = excluded.deactivated_at,
+                    reactivated_at = excluded.reactivated_at
+                """,
+                (record_type, record_id, status, note, timestamp, timestamp, deactivated_at, reactivated_at),
+            )
+            conn.execute(f"UPDATE {table} SET updated_at = ? WHERE id = ?", (timestamp, record_id))
+            self.insert_audit_log(
+                conn,
+                action="set_record_lifecycle",
+                record_type=record_type,
+                record_id=record_id,
+                field_name="lifecycle_status",
+                old_value=old_status,
+                new_value=status,
+                note=f"Backup: {backup_path.name}; {note or ''}".strip(),
+                actor_user=actor_user,
+                permission_action=permission_action,
+            )
+            conn.commit()
+        return {"ok": True, "backup": str(backup_path), "detail": self.record_detail({"type": [record_type], "id": [str(record_id)]})}
 
     def update_record(self, payload: dict[str, Any], actor_user: dict[str, Any] | None = None, permission_action: str | None = "create_edit_records") -> dict[str, Any]:
         record_type = str(payload.get("type", "")).lower()

@@ -44,7 +44,7 @@ button {
 }
 
 .app-shell.record-workspace {
-  grid-template-columns: 232px minmax(300px, 34vw) minmax(560px, 1fr);
+  grid-template-columns: 232px minmax(280px, 30vw) minmax(620px, 1fr);
 }
 
 .sidebar {
@@ -1966,6 +1966,11 @@ button {
   color: var(--accent);
 }
 
+.data-table .record-button + .pill {
+  margin-left: 7px;
+  vertical-align: middle;
+}
+
 .task-table td:first-child {
   max-width: 360px;
 }
@@ -2212,6 +2217,51 @@ button {
   margin-bottom: 0;
 }
 
+.detail-title-row {
+  align-items: start;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.lifecycle-pill {
+  margin-top: 2px;
+}
+
+.record-file-hero {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  margin-bottom: 14px;
+  padding: 14px;
+}
+
+.record-file-facts {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.record-file-fact {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.record-file-fact span,
+.record-lifecycle-body label span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.record-file-fact strong {
+  font-size: 14px;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
 .record-snapshot {
   border-top: 1px solid var(--line);
   display: grid;
@@ -2252,6 +2302,36 @@ button {
   font-size: 13px;
   text-transform: uppercase;
   color: var(--muted);
+}
+
+.record-lifecycle-section {
+  border-color: #b9d7c2;
+}
+
+.record-lifecycle-section.inactive {
+  border-color: #e0b6aa;
+}
+
+.record-lifecycle-body {
+  align-items: end;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.record-lifecycle-body label {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.record-lifecycle-meta {
+  color: var(--muted);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  grid-column: 1 / -1;
+  line-height: 1.35;
 }
 
 .contact-actions {
@@ -3910,7 +3990,9 @@ button {
   }
 
   .detail-panel .edit-grid,
-  .detail-panel .address-fields {
+  .detail-panel .address-fields,
+  .record-file-facts,
+  .record-lifecycle-body {
     grid-template-columns: 1fr;
   }
 
@@ -4216,7 +4298,10 @@ button {
   .edit-grid,
   .address-fields,
   .contact-action-row,
-  .review-flag {
+  .review-flag,
+  .record-file-facts,
+  .record-lifecycle-body,
+  .detail-title-row {
     grid-template-columns: 1fr;
   }
 

@@ -160,11 +160,15 @@ def main() -> int:
     assert "overflow-x: auto" in styles_css
     assert "min-width: 720px" in styles_css
     assert '<div class="table-scroll">' in app_js
-    assert ".detail-panel .edit-grid,\n  .detail-panel .address-fields {\n    grid-template-columns: 1fr;" in styles_css
+    assert ".detail-panel .edit-grid" in styles_css
+    assert ".detail-panel .address-fields" in styles_css
+    assert ".record-file-facts" in styles_css
+    assert ".record-lifecycle-body" in styles_css
+    assert "grid-template-columns: 1fr;" in styles_css
     assert ".detail-panel .contact-action-row {\n    grid-template-columns: 1fr;" in styles_css
     assert ".detail-panel .task-edit-row {\n    grid-template-columns: 1fr;" in styles_css
     assert ".detail-panel .task-line {\n    flex-wrap: wrap;\n    justify-content: flex-start;" in styles_css
-    assert ".detail-panel .edit-grid,\n  .detail-panel .address-fields {\n    grid-template-columns: 1fr 1fr;" in styles_css
+    assert "grid-template-columns: 1fr 1fr;" in styles_css
     assert "detailHeader(" in app_js
     assert "detail-masthead" in app_js
     assert ".detail-masthead" in styles_css

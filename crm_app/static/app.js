@@ -356,10 +356,26 @@ function formatDate(value) {
 }
 
 async function fetchJson(url, options = {}) {
-  const response = await fetch(url, {
-    credentials: "same-origin",
-    ...options,
-  });
+  const { timeoutMs, ...fetchOptions } = options;
+  const controller = timeoutMs ? new AbortController() : null;
+  const timeoutId = timeoutMs
+    ? window.setTimeout(() => controller.abort(), timeoutMs)
+    : null;
+  let response;
+  try {
+    response = await fetch(url, {
+      credentials: "same-origin",
+      ...fetchOptions,
+      signal: controller?.signal || fetchOptions.signal,
+    });
+  } catch (error) {
+    if (error.name === "AbortError") {
+      throw new Error("Search took too long. Try a narrower term or use a list filter.");
+    }
+    throw error;
+  } finally {
+    if (timeoutId) window.clearTimeout(timeoutId);
+  }
   const text = await response.text();
   let payload = null;
   if (text) {
@@ -8803,7 +8819,7 @@ async function runSearch(query) {
     </div>
   `;
   try {
-    const data = await fetchJson(`/api/search?q=${encodeURIComponent(trimmedQuery)}`);
+    const data = await fetchJson(`/api/search?q=${encodeURIComponent(trimmedQuery)}&mode=quick`, { timeoutMs: 12000 });
     if (requestId !== state.searchRequestId) return;
     activateSearchWorkspace();
     els.list.innerHTML = `
@@ -8811,6 +8827,7 @@ async function runSearch(query) {
         <div>
           <h2>Search</h2>
           <p>${formatNumber(data.results.length)} quick results for ${escapeHtml(data.q || trimmedQuery)}</p>
+          ${data.search_note ? `<p class="muted">${escapeHtml(data.search_note)}</p>` : ""}
         </div>
       </div>
       ${recordTable(data.results, "search")}

@@ -2330,6 +2330,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "application/json; charset=utf-8")
         for key, value in (headers or {}).items():
             self.send_header(key, value)
+        self.send_header("Cache-Control", "no-store")
         self.send_header("Content-Length", str(len(encoded)))
         self.end_headers()
         self.wfile.write(encoded)
@@ -16633,6 +16634,8 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         q = (params.get("q", [""])[0] or "").strip()
         if not q:
             return {"q": q, "results": []}
+        mode = (params.get("mode", ["full"])[0] or "full").strip().lower()
+        quick_mode = mode in {"quick", "top", "fast"}
         like = f"%{q}%"
         with self.db() as conn:
             people = rows_to_dicts(
@@ -16684,6 +16687,14 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                 ).fetchall()
             )
             relationship_matches = self.search_relationships(conn, q)
+            primary_matches = people + companies + leads + deals
+            if quick_mode:
+                return {
+                    "q": q,
+                    "mode": "quick",
+                    "search_note": "Fast search covers records and direct relationships. Use section filters for archive, links, and deeper history.",
+                    "results": self.merge_search_results(primary_matches, relationship_matches),
+                }
             address_matches = self.search_addresses(conn, q)
             note_matches = self.search_notes(conn, q)
             task_matches = self.search_tasks(conn, q)
@@ -16694,7 +16705,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         return {
             "q": q,
             "results": self.merge_search_results(
-                people + companies + leads + deals,
+                primary_matches,
                 relationship_matches
                 + address_matches
                 + note_matches

@@ -197,12 +197,17 @@ def main() -> int:
     assert "showOnlyMainView(els.list)" in app_js
     assert "state.searchRequestId" in app_js
     assert "searchReturnView" in app_js
+    assert "timeoutMs: 12000" in app_js
+    assert "mode=quick" in app_js
+    assert "Search took too long" in app_js
     assert "Search did not complete" in app_js
     assert 'event.key !== "Enter"' in app_js
     assert "globalSearchForm" in index_html
     assert "globalSearchClear" in index_html
     assert ".search-form" in styles_css
     assert 'self.send_header("Cache-Control", "no-store")' in server_py
+    assert '"mode": "quick"' in server_py
+    assert "Fast search covers records and direct relationships" in server_py
     assert "mobileDetailBackLabel(" in app_js
     assert "Back to ${state.mobileDetailReturnLabel" in app_js
     assert "state.mobileDetailReturnLabel = \"Search\"" in app_js

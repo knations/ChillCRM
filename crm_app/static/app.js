@@ -391,7 +391,7 @@ async function fetchJson(url, options = {}) {
       message = payload.error || payload.message || text;
     }
     if (response.status === 401 && payload?.auth) {
-      state.auth = payload.auth;
+      setAuthState(payload.auth);
       renderAuthControl();
       showAuthOverlay(payload.auth);
     }
@@ -425,6 +425,11 @@ function setRuntimeContext(runtime = {}) {
   els.environmentBadge.title = lockMode ? `${label} · Write lock ${lockMode}` : label;
 }
 
+function setAuthState(auth = {}) {
+  state.auth = auth;
+  setRuntimeContext(state.auth.runtime);
+}
+
 function renderAuthControl() {
   if (!els.authControl) return;
   const auth = state.auth || {};
@@ -451,7 +456,7 @@ function renderAuthControl() {
   els.authControl.querySelector(".auth-logout")?.addEventListener("click", async () => {
     setStatus("Signing out");
     await postJson("/api/auth/logout", {});
-    state.auth = await fetchJson("/api/auth/status");
+    setAuthState(await fetchJson("/api/auth/status"));
     state.appUsers = null;
     state.editingAppUserId = null;
     state.appUserNotice = null;
@@ -528,7 +533,7 @@ async function submitOwnerRecovery(form, button) {
       email,
       new_password: newPassword,
     });
-    state.auth = result.auth || (await fetchJson("/api/auth/status"));
+    setAuthState(result.auth || (await fetchJson("/api/auth/status")));
     renderAuthControl();
     showOwnerRecoveryOverlay(false);
     showAuthOverlay(state.auth);
@@ -573,7 +578,7 @@ async function submitPasswordChange(form, button) {
       current_password: currentPassword,
       new_password: newPassword,
     });
-    state.auth = result.auth || (await fetchJson("/api/auth/status"));
+    setAuthState(result.auth || (await fetchJson("/api/auth/status")));
     renderAuthControl();
     showPasswordOverlay(false);
     setStatus("Password changed");
@@ -586,7 +591,7 @@ async function submitPasswordChange(form, button) {
 }
 
 async function initializeAuth() {
-  state.auth = await fetchJson("/api/auth/status");
+  setAuthState(await fetchJson("/api/auth/status"));
   renderAuthControl();
   showAuthOverlay(state.auth);
   return !state.auth.auth_required || state.auth.authenticated;
@@ -8910,7 +8915,7 @@ els.authLoginForm?.addEventListener("submit", async (event) => {
       email: form.get("email"),
       password: form.get("password"),
     });
-    state.auth = result.auth;
+    setAuthState(result.auth);
     renderAuthControl();
     showAuthOverlay(state.auth);
     await renderDashboard();

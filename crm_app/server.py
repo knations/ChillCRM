@@ -2031,6 +2031,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             "user": self.public_auth_user(current_user),
             "setup": setup,
             "owner_password_recovery_enabled": setup["owner_password_recovery_enabled"],
+            "runtime": self.runtime_context(),
         }
 
     def session_cookie_header(self, token: str) -> str:

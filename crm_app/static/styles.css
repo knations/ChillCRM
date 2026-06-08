@@ -2381,6 +2381,48 @@ button {
   gap: 8px;
 }
 
+.contact-card-strip {
+  align-items: center;
+  background: #edf8f1;
+  border: 1px solid #b7d7c5;
+  border-radius: 8px;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  margin-bottom: 10px;
+  padding: 10px;
+}
+
+.contact-card-strip strong,
+.contact-card-strip span {
+  display: block;
+}
+
+.contact-card-strip span {
+  color: #396755;
+  font-size: 12px;
+  line-height: 1.35;
+  margin-top: 3px;
+  overflow-wrap: anywhere;
+}
+
+.contact-card-buttons {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.contact-card-button {
+  border-color: #a8cdb8;
+  color: #276749;
+  font-weight: 800;
+}
+
+.contact-card-button:hover {
+  border-color: var(--green);
+}
+
 .contact-action-row {
   align-items: center;
   border: 1px solid var(--line);
@@ -4362,6 +4404,7 @@ button {
   .app-profile-grid,
   .edit-grid,
   .address-fields,
+  .contact-card-strip,
   .contact-action-row,
   .review-flag,
   .record-file-facts,
@@ -4370,6 +4413,7 @@ button {
     grid-template-columns: 1fr;
   }
 
+  .contact-card-buttons,
   .contact-action-buttons {
     justify-content: flex-start;
   }

@@ -1104,6 +1104,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         "/api/project_decisions": "view_dashboard_reports",
         "/api/list": "view_dashboard_reports",
         "/api/detail": "view_dashboard_reports",
+        "/api/vcard": "view_dashboard_reports",
         "/api/tasks": "view_dashboard_reports",
         "/api/activity": "view_dashboard_reports",
         "/api/archive": "view_dashboard_reports",
@@ -2363,6 +2364,17 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         writer.writerows(rows)
         return output.getvalue().encode("utf-8")
 
+    def send_vcard(self, filename: str, text: str) -> None:
+        encoded = text.encode("utf-8")
+        safe_filename = filename.replace('"', "")
+        self.send_response(200)
+        self.send_header("Content-Type", "text/vcard; charset=utf-8")
+        self.send_header("Content-Disposition", f'inline; filename="{safe_filename}"')
+        self.send_header("Cache-Control", "private, no-store")
+        self.send_header("Content-Length", str(len(encoded)))
+        self.end_headers()
+        self.wfile.write(encoded)
+
     def send_zip(self, filename: str, payload: bytes) -> None:
         self.send_response(200)
         self.send_header("Content-Type", "application/zip")
@@ -2518,6 +2530,12 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                 self.send_json(self.list_records(params))
             elif path == "/api/detail":
                 self.send_json(self.record_detail(params))
+            elif path == "/api/vcard":
+                card = self.vcard_contact_card(params)
+                if card.get("error"):
+                    self.send_text(card["error"], card.get("status", 404))
+                else:
+                    self.send_vcard(card["filename"], card["content"])
             elif path == "/api/tasks":
                 self.send_json(self.tasks(params))
             elif path == "/api/activity":
@@ -15816,6 +15834,156 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                 )
                 return self.deal_detail(conn, record) if record else {"error": "Deal not found"}
         return {"error": f"Unknown type: {record_type}"}
+
+    def vcard_contact_card(self, params: dict[str, list[str]]) -> dict[str, Any]:
+        try:
+            detail = self.record_detail(params)
+        except (TypeError, ValueError):
+            return {"error": "Invalid contact card request", "status": 400}
+        if detail.get("error"):
+            return {"error": detail["error"], "status": 404}
+        contact = self.vcard_contact_payload(detail)
+        if not contact:
+            return {"error": "No contact card data found", "status": 404}
+        filename = self.vcard_filename(contact["name"] or contact["organization"] or "CHILLCRM Contact")
+        return {"filename": filename, "content": self.render_vcard(contact)}
+
+    def vcard_contact_payload(self, detail: dict[str, Any]) -> dict[str, Any] | None:
+        record_type = detail.get("type") or "record"
+        record = detail.get("record") or {}
+        source = record
+        card_type = record_type
+        organization = ""
+        addresses = detail.get("addresses") or []
+        if record_type == "person":
+            organization = (detail.get("company") or {}).get("name") or ""
+        elif record_type == "company":
+            organization = record.get("name") or ""
+        elif record_type == "lead":
+            organization = record.get("organization_name") or ""
+        elif record_type == "deal":
+            if detail.get("contact"):
+                source = detail["contact"]
+                card_type = "person"
+                organization = (detail.get("organization") or {}).get("name") or ""
+            elif detail.get("organization"):
+                source = detail["organization"]
+                card_type = "company"
+                organization = source.get("name") or ""
+            else:
+                organization = record.get("organization_name") or ""
+
+        name = self.clean_optional(source.get("name")) or self.clean_optional(record.get("name")) or ""
+        first_name = self.clean_optional(source.get("first_name")) or self.clean_optional(record.get("first_name")) or ""
+        last_name = self.clean_optional(source.get("last_name")) or self.clean_optional(record.get("last_name")) or ""
+        if not (first_name or last_name) and name and card_type != "company":
+            parts = name.split()
+            if len(parts) > 1:
+                first_name = " ".join(parts[:-1])
+                last_name = parts[-1]
+            else:
+                first_name = name
+        email = self.clean_optional(source.get("email")) or ""
+        phone = self.clean_optional(source.get("phone")) or ""
+        mobile = self.clean_optional(source.get("mobile")) or ""
+        website = self.clean_optional(source.get("website")) or ""
+        title = self.clean_optional(source.get("title")) or self.clean_optional(record.get("title")) or ""
+        address = next((item for item in addresses if item.get("has_values")), None)
+        if not any([name, first_name, last_name, organization, email, phone, mobile, website, title, address]):
+            return None
+        record_id = source.get("source_id") or source.get("id") or record.get("source_id") or record.get("id") or ""
+        return {
+            "record_type": card_type,
+            "record_id": record_id,
+            "name": name or organization or f"{labelize(card_type)} #{record_id}".strip(),
+            "first_name": first_name,
+            "last_name": last_name,
+            "organization": organization,
+            "email": email,
+            "phone": phone,
+            "mobile": mobile,
+            "website": website,
+            "title": title,
+            "address": address,
+        }
+
+    def render_vcard(self, contact: dict[str, Any]) -> str:
+        lines = [
+            "BEGIN:VCARD",
+            "VERSION:3.0",
+            "PRODID:-//CHILLCRM//Contact Card//EN",
+        ]
+        first_name = contact.get("first_name") or ""
+        last_name = contact.get("last_name") or ""
+        if contact.get("record_type") == "company" and not (first_name or last_name):
+            n_value = f";{self.vcard_escape(contact.get('name'))};;;"
+        else:
+            n_value = f"{self.vcard_escape(last_name)};{self.vcard_escape(first_name)};;;"
+        lines.append(f"N:{n_value}")
+        lines.append(f"FN:{self.vcard_escape(contact.get('name'))}")
+        if contact.get("organization"):
+            lines.append(f"ORG:{self.vcard_escape(contact.get('organization'))}")
+        if contact.get("title"):
+            lines.append(f"TITLE:{self.vcard_escape(contact.get('title'))}")
+        if contact.get("email"):
+            lines.append(f"EMAIL;TYPE=INTERNET,WORK:{self.vcard_escape(contact.get('email'))}")
+        if contact.get("phone"):
+            lines.append(f"TEL;TYPE=WORK,VOICE:{self.vcard_escape(contact.get('phone'))}")
+        if contact.get("mobile") and contact.get("mobile") != contact.get("phone"):
+            lines.append(f"TEL;TYPE=CELL,VOICE:{self.vcard_escape(contact.get('mobile'))}")
+        if contact.get("website"):
+            lines.append(f"URL:{self.vcard_escape(contact.get('website'))}")
+        address = contact.get("address") or {}
+        if address:
+            street = "\\n".join(
+                self.vcard_escape(address.get(key))
+                for key in ("line1", "line2")
+                if address.get(key)
+            )
+            lines.append(
+                "ADR;TYPE=WORK:;;"
+                + ";".join(
+                    [
+                        street,
+                        self.vcard_escape(address.get("city")),
+                        self.vcard_escape(address.get("state")),
+                        self.vcard_escape(address.get("postal_code")),
+                        self.vcard_escape(address.get("country")),
+                    ]
+                )
+            )
+        if contact.get("record_id"):
+            lines.append(
+                f"UID:chillcrm-{self.vcard_escape(contact.get('record_type'))}-{self.vcard_escape(contact.get('record_id'))}@chillcrm"
+            )
+        lines.append(f"REV:{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}")
+        lines.append("END:VCARD")
+        return "\r\n".join(self.fold_vcard_line(line) for line in lines) + "\r\n"
+
+    def vcard_escape(self, value: Any) -> str:
+        text = str(value or "").replace("\r", "").strip()
+        return text.replace("\\", "\\\\").replace("\n", "\\n").replace(";", "\\;").replace(",", "\\,")
+
+    def fold_vcard_line(self, line: str) -> str:
+        encoded = line.encode("utf-8")
+        if len(encoded) <= 75:
+            return line
+        chunks: list[str] = []
+        current = ""
+        for char in line:
+            test = f"{current}{char}"
+            if len(test.encode("utf-8")) > 75:
+                chunks.append(current)
+                current = char
+            else:
+                current = test
+        if current:
+            chunks.append(current)
+        return "\r\n ".join(chunks)
+
+    def vcard_filename(self, name: str) -> str:
+        safe = re.sub(r"[^A-Za-z0-9._-]+", "_", name).strip("._-")
+        return f"{safe or 'chillcrm_contact'}.vcf"
 
     def record_provenance(self, conn: sqlite3.Connection, record_type: str, record_id: int, record: dict[str, Any]) -> dict[str, Any]:
         source_columns = {

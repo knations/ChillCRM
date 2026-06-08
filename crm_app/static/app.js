@@ -4825,10 +4825,10 @@ function qualityGuidanceText(issue) {
 }
 
 function contactActions(detail) {
-  const sources = [{ prefix: "", record: detail.record || {} }];
+  const sources = [{ prefix: "", type: detail.type, id: detail.record?.source_id, record: detail.record || {} }];
   if (detail.type === "deal") {
-    if (detail.contact) sources.push({ prefix: "Contact", record: detail.contact });
-    if (detail.organization) sources.push({ prefix: "Organization", record: detail.organization });
+    if (detail.contact) sources.push({ prefix: "Contact", type: "person", id: detail.contact.source_id, record: detail.contact });
+    if (detail.organization) sources.push({ prefix: "Organization", type: "company", id: detail.organization.source_id, record: detail.organization });
   }
   const rows = [];
   const seen = new Set();
@@ -4851,10 +4851,12 @@ function contactActions(detail) {
     addRow(source, "mobile", "Mobile", source.record.mobile, contactPhoneHref(source.record.mobile), "Call");
     addRow(source, "website", "Website", source.record.website, contactWebsiteHref(source.record.website), "Open");
   });
-  if (!rows.length) return "";
+  const cardSources = sources.filter(contactCardAvailable);
+  if (!rows.length && !cardSources.length) return "";
   return `
     <div class="detail-section contact-actions">
       <h3>Contact Actions</h3>
+      ${contactCardStrip(cardSources)}
       <div class="contact-action-list">
         ${rows
           .map((row) => `
@@ -4873,6 +4875,55 @@ function contactActions(detail) {
       </div>
     </div>
   `;
+}
+
+function contactCardAvailable(source) {
+  if (!source?.id || !["person", "company", "lead"].includes(source.type)) return false;
+  const record = source.record || {};
+  return Boolean(record.name || record.email || record.phone || record.mobile || record.website);
+}
+
+function contactCardStrip(sources) {
+  if (!sources.length) return "";
+  const summary =
+    sources.length === 1
+      ? contactCardSummary(sources[0])
+      : sources.map((source) => source.prefix || labelize(source.type)).join(" + ");
+  return `
+    <div class="contact-card-strip">
+      <div>
+        <strong>Contact Card</strong>
+        <span>${escapeHtml(summary)}</span>
+      </div>
+      <div class="contact-card-buttons">
+        ${sources
+          .map(
+            (source) => `
+              <a class="text-button action-link contact-card-button" href="${escapeHtml(contactCardHref(source))}" target="_blank" rel="noreferrer">
+                ${escapeHtml(contactCardButtonLabel(source))}
+              </a>
+            `
+          )
+          .join("")}
+      </div>
+    </div>
+  `;
+}
+
+function contactCardSummary(source) {
+  const record = source.record || {};
+  return [record.name, record.mobile || record.phone, record.email].filter(Boolean).join(" · ") || labelize(source.type);
+}
+
+function contactCardButtonLabel(source) {
+  if (source.prefix) return `Add ${source.prefix}`;
+  if (source.type === "company") return "Add Company";
+  return "Add Contact";
+}
+
+function contactCardHref(source) {
+  const params = new URLSearchParams({ type: source.type, id: String(source.id) });
+  return `/api/vcard?${params.toString()}`;
 }
 
 function contactEmailHref(value) {

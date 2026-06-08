@@ -169,6 +169,15 @@ def main() -> int:
     assert ".detail-panel .task-edit-row {\n    grid-template-columns: 1fr;" in styles_css
     assert ".detail-panel .task-line {\n    flex-wrap: wrap;\n    justify-content: flex-start;" in styles_css
     assert "grid-template-columns: 1fr 1fr;" in styles_css
+    assert "/api/vcard" in server_py
+    assert "def vcard_contact_card(" in server_py
+    assert "def render_vcard(" in server_py
+    assert "text/vcard" in server_py
+    assert "Contact Card" in app_js
+    assert "contactCardHref(" in app_js
+    assert "contact-card-strip" in app_js
+    assert ".contact-card-strip" in styles_css
+    assert ".contact-card-button" in styles_css
     assert "mobileDetailOpen" in app_js
     assert "openMobileDetailView(" in app_js
     assert "closeMobileDetailView(" in app_js

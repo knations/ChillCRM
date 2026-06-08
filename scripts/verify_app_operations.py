@@ -232,6 +232,14 @@ def main() -> int:
     assert ".data-table thead {\n    display: none;" in styles_css
     assert ".table-tools .filter-row {\n    background: transparent;" in styles_css
     assert "#globalSearch,\n  .table-tools input,\n  .filter-row input," in styles_css
+    assert "search-results-table" in app_js
+    assert "record-list-table" in app_js
+    assert "tag-list-table" in app_js
+    assert ".data-table td::before" in styles_css
+    assert ".archive-table td:nth-child(7)::before" in styles_css
+    assert ".cleanup-group-table td:nth-child(9)::before" in styles_css
+    assert ".app-shell.mobile-detail-open .edit-grid label" in styles_css
+    assert ".app-shell.mobile-detail-open .archive-target-search" in styles_css
     assert 'aria-current="true"' in app_js
     assert "listTypeForDetailType" in app_js
     assert "detailBelongsToCurrentList" in app_js

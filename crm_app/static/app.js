@@ -3200,7 +3200,7 @@ function recordTable(records, context) {
     return `<div class="empty-state"><h3>No records</h3><p>Nothing matched this view.</p></div>`;
   }
   return `
-    <table class="data-table">
+    <table class="data-table search-results-table">
       <thead>
         <tr>
           <th>Name</th>
@@ -3941,7 +3941,7 @@ function createFields(type) {
 function listTable(records) {
   if (state.listType === "deals") {
     return `
-      <table class="data-table">
+      <table class="data-table record-list-table deal-list-table">
         <thead>
           <tr>
             ${sortHeader("name", "Deal")}
@@ -3977,7 +3977,7 @@ function listTable(records) {
   const showProfile = profileFilterSupported(state.listType);
   const showOwner = ownerFilterSupported(state.listType);
   return `
-    <table class="data-table">
+    <table class="data-table record-list-table ${escapeHtml(state.listType)}-list-table">
       <thead>
         <tr>
           ${sortHeader("name", "Name")}
@@ -6310,7 +6310,7 @@ async function renderTags() {
     </div>
     ${
       data.tags.length
-        ? `<table class="data-table">
+        ? `<table class="data-table tag-list-table">
             <thead>
               <tr>
                 <th>Tag</th>

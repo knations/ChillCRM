@@ -4295,12 +4295,18 @@ button {
   }
 
   .topbar {
+    background: rgba(255, 255, 255, 0.9);
+    border: 1px solid rgba(60, 60, 67, 0.14);
+    border-radius: 8px;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
     gap: 10px;
     margin: 0 0 14px;
+    padding: 10px;
   }
 
   .search-form {
     gap: 6px;
+    width: 100%;
   }
 
   #globalSearch,
@@ -4332,7 +4338,12 @@ button {
   .environment-badge,
   .auth-control,
   .status-text {
+    align-self: flex-start;
     max-width: 100%;
+  }
+
+  .status-text {
+    font-size: 12px;
   }
 
   .topbar,
@@ -4479,6 +4490,13 @@ button {
     min-height: 40px;
   }
 
+  .pager {
+    background: #ffffff;
+    border: 1px solid rgba(60, 60, 67, 0.14);
+    border-radius: 8px;
+    padding: 8px;
+  }
+
   .task-edit-row {
     grid-template-columns: 1fr;
   }
@@ -4578,11 +4596,218 @@ button {
     display: block;
     min-width: 0;
     overflow-wrap: anywhere;
-    padding: 3px 0;
+    padding: 4px 0;
   }
 
   .data-table td > * {
     max-width: 100%;
+  }
+
+  .data-table td + td {
+    border-top: 1px solid rgba(60, 60, 67, 0.1);
+    margin-top: 7px;
+    padding-top: 8px;
+  }
+
+  .data-table td::before {
+    color: rgba(60, 60, 67, 0.62);
+    display: block;
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0;
+    line-height: 1.2;
+    margin-bottom: 3px;
+    text-transform: uppercase;
+  }
+
+  .search-results-table td:nth-child(1)::before,
+  .people-list-table td:nth-child(1)::before,
+  .companies-list-table td:nth-child(1)::before,
+  .leads-list-table td:nth-child(1)::before {
+    content: "Name";
+  }
+
+  .search-results-table td:nth-child(2)::before {
+    content: "Type";
+  }
+
+  .search-results-table td:nth-child(3)::before {
+    content: "Detail";
+  }
+
+  .search-results-table td:nth-child(4)::before,
+  .people-list-table td:nth-child(9)::before,
+  .companies-list-table td:nth-child(8)::before,
+  .leads-list-table td:nth-child(9)::before,
+  .deal-list-table td:nth-child(8)::before {
+    content: "Updated";
+  }
+
+  .people-list-table td:nth-child(2)::before,
+  .companies-list-table td:nth-child(2)::before,
+  .leads-list-table td:nth-child(2)::before {
+    content: "Email";
+  }
+
+  .people-list-table td:nth-child(3)::before,
+  .companies-list-table td:nth-child(3)::before,
+  .leads-list-table td:nth-child(3)::before {
+    content: "Phone";
+  }
+
+  .people-list-table td:nth-child(4)::before,
+  .companies-list-table td:nth-child(4)::before,
+  .leads-list-table td:nth-child(4)::before {
+    content: "Status";
+  }
+
+  .people-list-table td:nth-child(5)::before,
+  .companies-list-table td:nth-child(5)::before,
+  .leads-list-table td:nth-child(5)::before {
+    content: "Owner";
+  }
+
+  .people-list-table td:nth-child(6)::before,
+  .companies-list-table td:nth-child(6)::before,
+  .leads-list-table td:nth-child(6)::before,
+  .deal-list-table td:nth-child(5)::before {
+    content: "Source";
+  }
+
+  .people-list-table td:nth-child(7)::before,
+  .companies-list-table td:nth-child(7)::before,
+  .leads-list-table td:nth-child(7)::before,
+  .deal-list-table td:nth-child(6)::before {
+    content: "Quality";
+  }
+
+  .people-list-table td:nth-child(8)::before,
+  .leads-list-table td:nth-child(8)::before {
+    content: "Profile";
+  }
+
+  .deal-list-table td:nth-child(1)::before {
+    content: "Deal";
+  }
+
+  .deal-list-table td:nth-child(2)::before {
+    content: "Stage";
+  }
+
+  .deal-list-table td:nth-child(3)::before {
+    content: "Value";
+  }
+
+  .deal-list-table td:nth-child(4)::before {
+    content: "Contact";
+  }
+
+  .deal-list-table td:nth-child(7)::before {
+    content: "Close Date";
+  }
+
+  .tag-list-table td:nth-child(1)::before {
+    content: "Tag";
+  }
+
+  .tag-list-table td:nth-child(2)::before {
+    content: "Assignments";
+  }
+
+  .tag-list-table td:nth-child(3)::before {
+    content: "Definitions";
+  }
+
+  .tag-list-table td:nth-child(4)::before {
+    content: "Used On";
+  }
+
+  .linked-resource-table td:nth-child(1)::before,
+  .archive-table td:nth-child(1)::before,
+  .custom-field-table td:nth-child(2)::before {
+    content: "Type";
+  }
+
+  .linked-resource-table td:nth-child(2)::before,
+  .archive-table td:nth-child(2)::before {
+    content: "Record";
+  }
+
+  .linked-resource-table td:nth-child(3)::before {
+    content: "Source";
+  }
+
+  .linked-resource-table td:nth-child(4)::before {
+    content: "Link";
+  }
+
+  .archive-table td:nth-child(3)::before {
+    content: "Item";
+  }
+
+  .archive-table td:nth-child(4)::before {
+    content: "When";
+  }
+
+  .archive-table td:nth-child(5)::before {
+    content: "Owner";
+  }
+
+  .archive-table td:nth-child(6)::before {
+    content: "Review";
+  }
+
+  .archive-table td:nth-child(7)::before,
+  .cleanup-group-table td:nth-child(9)::before {
+    content: "Action";
+  }
+
+  .custom-field-table td:nth-child(1)::before {
+    content: "Field";
+  }
+
+  .custom-field-table td:nth-child(3)::before {
+    content: "Records";
+  }
+
+  .custom-field-table td:nth-child(4)::before {
+    content: "Unique";
+  }
+
+  .custom-field-table td:nth-child(5)::before {
+    content: "Samples";
+  }
+
+  .cleanup-group-table td:nth-child(1)::before {
+    content: "Group";
+  }
+
+  .cleanup-group-table td:nth-child(2)::before {
+    content: "Priority";
+  }
+
+  .cleanup-group-table td:nth-child(3)::before {
+    content: "Lane";
+  }
+
+  .cleanup-group-table td:nth-child(4)::before {
+    content: "Decision";
+  }
+
+  .cleanup-group-table td:nth-child(5)::before {
+    content: "Records";
+  }
+
+  .cleanup-group-table td:nth-child(6)::before {
+    content: "Flags";
+  }
+
+  .cleanup-group-table td:nth-child(7)::before {
+    content: "Merge Draft";
+  }
+
+  .cleanup-group-table td:nth-child(8)::before {
+    content: "Names";
   }
 
   .data-table td:first-child {
@@ -4595,6 +4820,11 @@ button {
 
   .record-button {
     font-size: 15px;
+  }
+
+  .data-table td:last-child .text-button,
+  .data-table td:last-child .record-button.text-button {
+    width: 100%;
   }
 
   .record-file-hero,
@@ -4616,6 +4846,86 @@ button {
   .detail-panel .contact-card-strip,
   .detail-panel .contact-action-row {
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  }
+
+  .app-shell.mobile-detail-open .record-snapshot {
+    border-top: 0;
+    gap: 8px;
+    margin-bottom: 14px;
+    padding: 0;
+  }
+
+  .app-shell.mobile-detail-open .detail-section {
+    padding: 16px 0;
+  }
+
+  .app-shell.mobile-detail-open .detail-section h3 {
+    font-size: 11px;
+    letter-spacing: 0;
+  }
+
+  .app-shell.mobile-detail-open .inline-header {
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .app-shell.mobile-detail-open .edit-grid,
+  .app-shell.mobile-detail-open .address-fields,
+  .app-shell.mobile-detail-open .task-form,
+  .app-shell.mobile-detail-open .archive-review-form,
+  .app-shell.mobile-detail-open .cleanup-decision-form {
+    gap: 12px;
+  }
+
+  .app-shell.mobile-detail-open .edit-grid label,
+  .app-shell.mobile-detail-open .address-fields label,
+  .app-shell.mobile-detail-open .archive-review-form label,
+  .app-shell.mobile-detail-open .cleanup-decision-form label {
+    background: #ffffff;
+    border: 1px solid rgba(60, 60, 67, 0.14);
+    border-radius: 8px;
+    padding: 10px;
+  }
+
+  .app-shell.mobile-detail-open .edit-grid input,
+  .app-shell.mobile-detail-open .edit-grid select,
+  .app-shell.mobile-detail-open .address-fields input,
+  .app-shell.mobile-detail-open .archive-review-form select,
+  .app-shell.mobile-detail-open .cleanup-decision-form select {
+    background: transparent;
+    border-color: transparent;
+    min-height: 32px;
+    padding: 4px 0 0;
+  }
+
+  .app-shell.mobile-detail-open .edit-grid input:focus,
+  .app-shell.mobile-detail-open .edit-grid select:focus,
+  .app-shell.mobile-detail-open .address-fields input:focus,
+  .app-shell.mobile-detail-open .archive-review-form select:focus,
+  .app-shell.mobile-detail-open .cleanup-decision-form select:focus {
+    box-shadow: none;
+  }
+
+  .app-shell.mobile-detail-open .note-input,
+  .app-shell.mobile-detail-open .task-form input,
+  .app-shell.mobile-detail-open .archive-target-search input,
+  .app-shell.mobile-detail-open .archive-link-form input,
+  .app-shell.mobile-detail-open .archive-link-form select {
+    min-height: 44px;
+  }
+
+  .app-shell.mobile-detail-open .archive-target-search,
+  .app-shell.mobile-detail-open .contact-card-strip,
+  .app-shell.mobile-detail-open .contact-action-row,
+  .app-shell.mobile-detail-open .review-flag,
+  .app-shell.mobile-detail-open .cleanup-record {
+    grid-template-columns: 1fr;
+  }
+
+  .app-shell.mobile-detail-open .archive-target-search .text-button,
+  .app-shell.mobile-detail-open .archive-review-actions .text-button,
+  .app-shell.mobile-detail-open .cleanup-decision-actions .text-button {
+    width: 100%;
   }
 }
 

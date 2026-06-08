@@ -798,6 +798,12 @@ function recordWorkspaceView(view = state.view) {
 
 function setRecordWorkspace(active) {
   els.shell?.classList.toggle("record-workspace", Boolean(active));
+  if (active) setDetailCollapsed(false);
+}
+
+function setDetailCollapsed(active) {
+  els.shell?.classList.toggle("detail-collapsed", Boolean(active));
+  if (els.detail) els.detail.setAttribute("aria-hidden", active ? "true" : "false");
 }
 
 function viewDisplayLabel(view = state.view) {
@@ -858,9 +864,32 @@ function resetDetailScroll() {
 function updateRecordWorkspaceForView(view = state.view) {
   if (!recordWorkspaceView(view)) {
     setRecordWorkspace(false);
+    setDetailCollapsed(false);
     return;
   }
-  setRecordWorkspace(Boolean(state.currentDetail && listTypeForDetailType(state.currentDetail.type) === view));
+  const matchingDetail = Boolean(state.currentDetail && listTypeForDetailType(state.currentDetail.type) === view);
+  setRecordWorkspace(matchingDetail);
+  setDetailCollapsed(!matchingDetail);
+}
+
+function closeCurrentRecordDetail() {
+  state.currentDetail = null;
+  state.currentArchiveItem = null;
+  state.currentCleanupGroup = null;
+  closeMobileDetailView();
+  setRecordWorkspace(false);
+  setDetailCollapsed(recordWorkspaceView(state.view));
+  syncActiveListRows();
+  if (els.detail) {
+    els.detail.innerHTML = `
+      <div class="empty-detail">
+        <div class="empty-mark">ID</div>
+        <h2>Select a record</h2>
+        <p>Details will appear here.</p>
+      </div>
+    `;
+  }
+  setStatus("Ready");
 }
 
 function roleLabel(roleKey, roles = []) {
@@ -4820,6 +4849,9 @@ function renderDetail(detail) {
 function detailHeader(title, subtitle, detail = null, options = {}) {
   const mobileBackLabel = options.mobileBackLabel || mobileDetailBackLabel(detail);
   const hasProfileImageControl = detail?.type === "person";
+  const closeButton = detail
+    ? `<button class="detail-close-button" type="button" aria-label="Close contact view" title="Close contact view">×</button>`
+    : "";
   return `
     <div class="detail-masthead">
       <button class="mobile-detail-back" type="button">${escapeHtml(mobileBackLabel)}</button>
@@ -4828,7 +4860,14 @@ function detailHeader(title, subtitle, detail = null, options = {}) {
         <div class="detail-heading-copy">
           <div class="detail-title-row">
             <h2 class="detail-title">${escapeHtml(title || "")}</h2>
-            ${detail ? lifecyclePill(detail.lifecycle) : ""}
+            ${
+              detail
+                ? `<div class="detail-header-actions">
+                    ${closeButton}
+                    ${lifecyclePill(detail.lifecycle)}
+                  </div>`
+                : ""
+            }
           </div>
           <div class="detail-subtitle">${escapeHtml(subtitle || "")}</div>
         </div>
@@ -5617,6 +5656,7 @@ function addTaskForm(detail) {
 }
 
 function wireDetailForms(detail) {
+  document.querySelector(".detail-close-button")?.addEventListener("click", closeCurrentRecordDetail);
   wireProfileImageControls(detail);
 
   document.querySelectorAll(".contact-copy-button").forEach((button) => {

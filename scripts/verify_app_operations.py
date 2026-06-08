@@ -263,7 +263,12 @@ def main() -> int:
     assert "height: 100svh" in styles_css
     assert "detailHeader(" in app_js
     assert "detail-masthead" in app_js
+    assert "detail-close-button" in app_js
+    assert "closeCurrentRecordDetail" in app_js
+    assert "detail-collapsed" in app_js
     assert ".detail-masthead" in styles_css
+    assert ".app-shell.detail-collapsed" in styles_css
+    assert ".app-shell.detail-collapsed .detail-panel" in styles_css
     assert "position: sticky" in styles_css
     assert "top: 0" in styles_css
     assert "listRowAttributes(" in app_js

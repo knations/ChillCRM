@@ -50,6 +50,14 @@ button {
   grid-template-columns: 232px minmax(280px, 30vw) minmax(620px, 1fr);
 }
 
+.app-shell.detail-collapsed {
+  grid-template-columns: 232px minmax(0, 1fr);
+}
+
+.app-shell.detail-collapsed .detail-panel {
+  display: none;
+}
+
 .sidebar {
   background: #28251f;
   color: #fffaf0;
@@ -2363,6 +2371,45 @@ button {
   grid-template-columns: minmax(0, 1fr) auto;
 }
 
+.detail-header-actions {
+  align-items: flex-end;
+  display: grid;
+  gap: 8px;
+  justify-items: end;
+}
+
+.detail-close-button {
+  align-items: center;
+  appearance: none;
+  background: rgba(255, 255, 255, 0.82);
+  border: 1px solid rgba(116, 111, 102, 0.22);
+  border-radius: 999px;
+  color: var(--muted);
+  display: inline-flex;
+  font-size: 18px;
+  font-weight: 700;
+  height: 30px;
+  justify-content: center;
+  line-height: 1;
+  padding: 0;
+  transition: background 0.16s ease, border-color 0.16s ease, color 0.16s ease, transform 0.16s ease;
+  width: 30px;
+}
+
+.detail-close-button:hover {
+  background: #fffdf8;
+  border-color: rgba(0, 122, 255, 0.36);
+  color: var(--ink);
+  transform: translateY(-1px);
+}
+
+.detail-close-button:focus-visible {
+  border-color: rgba(0, 122, 255, 0.78);
+  box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.2);
+  color: var(--ink);
+  outline: none;
+}
+
 .lifecycle-pill {
   justify-self: start;
   margin-top: 2px;
@@ -4223,6 +4270,10 @@ button {
   }
 
   .app-shell.record-workspace {
+    grid-template-columns: 208px minmax(0, 1fr);
+  }
+
+  .app-shell.detail-collapsed {
     grid-template-columns: 208px minmax(0, 1fr);
   }
 

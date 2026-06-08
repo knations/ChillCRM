@@ -2264,6 +2264,7 @@ button {
 }
 
 .person-profile-image-frame {
+  appearance: none;
   align-items: center;
   background: linear-gradient(145deg, #f8f6ef, #ece7dc);
   border: 1px solid rgba(116, 111, 102, 0.22);
@@ -2275,7 +2276,44 @@ button {
   height: 78px;
   justify-content: center;
   overflow: hidden;
+  padding: 0;
+  position: relative;
+  transition: border-color 0.16s ease, box-shadow 0.16s ease, transform 0.16s ease;
   width: 78px;
+}
+
+.person-profile-image-frame::after {
+  align-items: center;
+  background: rgba(35, 32, 26, 0.78);
+  border: 1px solid rgba(255, 255, 255, 0.62);
+  border-radius: 999px;
+  bottom: 5px;
+  box-shadow: 0 8px 18px rgba(35, 32, 26, 0.18);
+  color: #fffdf8;
+  content: "+";
+  display: flex;
+  font-size: 15px;
+  font-weight: 700;
+  height: 20px;
+  justify-content: center;
+  line-height: 1;
+  opacity: 0.94;
+  position: absolute;
+  right: 5px;
+  width: 20px;
+  z-index: 1;
+}
+
+.person-profile-image-frame:hover {
+  border-color: rgba(0, 122, 255, 0.42);
+  box-shadow: 0 10px 26px rgba(35, 32, 26, 0.14);
+  transform: translateY(-1px);
+}
+
+.person-profile-image-frame:focus-visible {
+  border-color: rgba(0, 122, 255, 0.78);
+  box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.22), 0 10px 26px rgba(35, 32, 26, 0.14);
+  outline: none;
 }
 
 .person-profile-image-frame.has-image {
@@ -2295,19 +2333,6 @@ button {
 
 .person-profile-initials {
   line-height: 1;
-}
-
-.person-profile-image-actions {
-  align-items: center;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  justify-content: center;
-}
-
-.person-profile-image-actions .text-button {
-  min-height: 28px;
-  padding: 0 8px;
 }
 
 .detail-title {
@@ -4399,16 +4424,6 @@ button {
     width: 64px;
   }
 
-  .app-shell.mobile-detail-open .person-profile-image-actions {
-    justify-content: flex-start;
-  }
-
-  .app-shell.mobile-detail-open .person-profile-image-actions .text-button {
-    font-size: 12px;
-    min-height: 26px;
-    padding: 0 6px;
-  }
-
   .topbar {
     background: rgba(255, 255, 255, 0.9);
     border: 1px solid rgba(60, 60, 67, 0.14);
@@ -5055,10 +5070,6 @@ button {
     display: flex;
     justify-content: flex-start;
     width: 100%;
-  }
-
-  .app-shell.mobile-detail-open .person-profile-image-actions {
-    justify-content: flex-start;
   }
 
   .metric-grid,

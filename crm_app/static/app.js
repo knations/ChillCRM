@@ -4844,20 +4844,16 @@ function personProfileImageControl(detail) {
   const imageUrl = profileImage?.url || "";
   const name = record.name || [record.first_name, record.last_name].filter(Boolean).join(" ") || record.email || "Person";
   const initials = personInitials(name);
-  const imageLabel = `${name} profile photo`;
+  const imageLabel = imageUrl ? `Change ${name} profile photo` : `Add ${name} profile photo`;
   const imageBody = imageUrl
     ? `<img class="person-profile-image" src="${escapeHtml(imageUrl)}" alt="" data-initials="${escapeHtml(initials)}">`
     : `<span class="person-profile-initials">${escapeHtml(initials)}</span>`;
   return `
     <div class="person-profile-image-control">
-      <div class="person-profile-image-frame ${imageUrl ? "has-image" : ""}" role="img" aria-label="${escapeHtml(imageLabel)}">
+      <button type="button" class="person-profile-image-frame person-profile-upload-button ${imageUrl ? "has-image" : ""}" aria-label="${escapeHtml(imageLabel)}" title="${escapeHtml(imageLabel)}">
         ${imageBody}
-      </div>
+      </button>
       <input id="personProfileImageInput" type="file" accept="image/jpeg,image/png,image/webp" hidden>
-      <div class="person-profile-image-actions">
-        <button type="button" class="text-button person-profile-upload-button">${imageUrl ? "Change Photo" : "Add Photo"}</button>
-        ${imageUrl ? `<button type="button" class="text-button danger person-profile-remove-button">Remove</button>` : ""}
-      </div>
     </div>
   `;
 }
@@ -4876,7 +4872,6 @@ function showProfileImageFallback(frame, initials) {
   if (!frame) return;
   frame.classList.remove("has-image");
   frame.classList.add("image-failed");
-  frame.setAttribute("aria-label", `Profile photo unavailable. Showing initials ${initials}.`);
   frame.innerHTML = `<span class="person-profile-initials">${escapeHtml(initials || "P")}</span>`;
 }
 
@@ -5846,7 +5841,6 @@ function wireProfileImageControls(detail) {
   if (!detail || detail.type !== "person") return;
   const input = document.querySelector("#personProfileImageInput");
   const uploadButton = document.querySelector(".person-profile-upload-button");
-  const removeButton = document.querySelector(".person-profile-remove-button");
   const image = document.querySelector(".person-profile-image");
   if (image) {
     const frame = image.closest(".person-profile-image-frame");
@@ -5867,20 +5861,6 @@ function wireProfileImageControls(detail) {
           type: "person",
           id: detail.record.source_id,
           ...prepared,
-        });
-        renderDetail(updated.detail);
-        await refreshCurrentListForDetail(updated.detail);
-      });
-    });
-  }
-  if (removeButton) {
-    removeButton.addEventListener("click", async () => {
-      const ok = window.confirm("Remove this profile photo?");
-      if (!ok) return;
-      await runDetailAction(removeButton, { progress: "Removing photo", success: "Photo removed", failure: "Photo remove failed" }, async () => {
-        const updated = await postJson("/api/remove_profile_image", {
-          type: "person",
-          id: detail.record.source_id,
         });
         renderDetail(updated.detail);
         await refreshCurrentListForDetail(updated.detail);

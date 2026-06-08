@@ -97,14 +97,14 @@ def compact_result(result: subprocess.CompletedProcess[str]) -> str:
         return f"exit_code={result.returncode}; output={output.splitlines()[0][:240]}"
 
 
-def deploy_unlocked(token: str) -> tuple[subprocess.CompletedProcess[str], str]:
+def deploy_with_lock_state(token: str, *, locked: bool) -> tuple[subprocess.CompletedProcess[str], str]:
     result = run_child(
         "deploy_chillcrm_to_vercel.py",
         [],
         {
             "VERCEL_TOKEN": token,
             "CHILLCRM_SKIP_ENV_UPSERT": "1",
-            "REMOTE_WRITE_LOCK": "0",
+            "REMOTE_WRITE_LOCK": "1" if locked else "0",
             "CHILLCRM_VERCEL_INLINE_FILES": "1",
         },
     )
@@ -115,6 +115,14 @@ def deploy_unlocked(token: str) -> tuple[subprocess.CompletedProcess[str], str]:
     except json.JSONDecodeError:
         url = ""
     return result, normalize_url(url)
+
+
+def deploy_unlocked(token: str) -> tuple[subprocess.CompletedProcess[str], str]:
+    return deploy_with_lock_state(token, locked=False)
+
+
+def deploy_locked(token: str) -> tuple[subprocess.CompletedProcess[str], str]:
+    return deploy_with_lock_state(token, locked=True)
 
 
 def add_step(rows: list[dict[str, Any]], key: str, status: str, evidence: str) -> None:
@@ -128,7 +136,11 @@ def add_step(rows: list[dict[str, Any]], key: str, status: str, evidence: str) -
     )
 
 
-def wait_for_unlocked_runtime(rows: list[dict[str, Any]], base_url: str) -> dict[str, Any]:
+def has_failed(rows: list[dict[str, Any]]) -> bool:
+    return any(row.get("row_type") == "step" and row.get("status") == "failed" for row in rows)
+
+
+def wait_for_runtime_lock_state(rows: list[dict[str, Any]], base_url: str, *, expected_locked: bool, key: str) -> dict[str, Any]:
     opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(CookieJar()))
     last_evidence = ""
     for attempt in range(1, 37):
@@ -150,14 +162,39 @@ def wait_for_unlocked_runtime(rows: list[dict[str, Any]], base_url: str) -> dict
             and payload.get("ok") is True
             and database_mode == "hosted_postgres_adapter_enabled"
             and database_ok
-            and remote_lock is False
+            and remote_lock is expected_locked
             and exports_enabled is False
         ):
-            add_step(rows, "verify_unlocked_runtime", "passed", last_evidence)
+            add_step(rows, key, "passed", last_evidence)
             return payload
         time.sleep(5)
-    add_step(rows, "verify_unlocked_runtime", "failed", last_evidence or "No health response.")
+    add_step(rows, key, "failed", last_evidence or "No health response.")
     return {}
+
+
+def wait_for_unlocked_runtime(rows: list[dict[str, Any]], base_url: str) -> dict[str, Any]:
+    return wait_for_runtime_lock_state(rows, base_url, expected_locked=False, key="verify_unlocked_runtime")
+
+
+def wait_for_locked_runtime(rows: list[dict[str, Any]], base_url: str) -> dict[str, Any]:
+    return wait_for_runtime_lock_state(rows, base_url, expected_locked=True, key="verify_relocked_runtime")
+
+
+def verify_owner_credentials_before_unlock(rows: list[dict[str, Any]], base_url: str, owner_email: str, owner_password: str) -> bool:
+    opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(CookieJar()))
+    login = app_request(opener, base_url, "POST", "/api/auth/login", {"email": owner_email, "password": owner_password})
+    login_payload = login.json()
+    login_ok = login.status == 200 and login_payload.get("ok") is True
+    add_step(rows, "preflight_owner_login", "passed" if login_ok else "failed", f"status={login.status}; ok={login_payload.get('ok')}; owner={owner_email}")
+    if not login_ok:
+        return False
+
+    summary = app_request(opener, base_url, "GET", "/api/summary")
+    summary_payload = summary.json()
+    counts = summary_payload.get("counts") or {}
+    counts_ok = summary.status == 200 and all(key in counts for key in ["people", "companies", "leads", "deals"])
+    add_step(rows, "preflight_owner_summary_counts", "passed" if counts_ok else "failed", f"status={summary.status}; counts={counts}")
+    return counts_ok
 
 
 def verify_public_access(rows: list[dict[str, Any]], base_url: str) -> None:
@@ -256,11 +293,13 @@ def owner_write_verification(rows: list[dict[str, Any]], base_url: str, owner_em
     return f"person:{record_id} {probe_name}"
 
 
-def refresh_reports(rows: list[dict[str, Any]], token: str) -> None:
+def refresh_reports(rows: list[dict[str, Any]], token: str, *, expected_unlocked: bool) -> None:
+    lock_expected = "false" if expected_unlocked else "true"
+    custom_domain_lock = "disabled" if expected_unlocked else "enabled"
     refresh_steps = [
         ("inspect_vercel_deployment.py", [], {"VERCEL_TOKEN": token}, "refresh_deployment_diagnostics"),
-        ("verify_vercel_environment_readiness.py", [], {"VERCEL_TOKEN": token, "CHILLCRM_EXPECT_REMOTE_WRITE_LOCK": "false"}, "refresh_environment_readiness"),
-        ("verify_custom_domain_readiness.py", ["--expected-remote-write-lock", "disabled"], {}, "refresh_custom_domain_readiness"),
+        ("verify_vercel_environment_readiness.py", [], {"VERCEL_TOKEN": token, "CHILLCRM_EXPECT_REMOTE_WRITE_LOCK": lock_expected}, "refresh_environment_readiness"),
+        ("verify_custom_domain_readiness.py", ["--expected-remote-write-lock", custom_domain_lock], {}, "refresh_custom_domain_readiness"),
         ("verify_vercel_public_protection.py", [], {}, "refresh_public_protection"),
         ("verify_hosted_deployment_freshness.py", [], {}, "refresh_deployment_freshness"),
         ("verify_remote_production_readiness.py", [], {}, "refresh_remote_production_readiness"),
@@ -403,13 +442,36 @@ def main() -> int:
     add_step(rows, "owner_approval", "passed", "Owner-approved hosted production write enablement flag supplied.")
     add_step(rows, "secrets", "passed", f"Vercel token source={token_source}; owner password source={password_source}; values not stored.")
 
-    deploy_result, deployment_url = deploy_unlocked(token)
-    add_step(rows, "deploy_remote_write_lock_off", "passed" if deploy_result.returncode == 0 else "failed", compact_result(deploy_result))
-    if deploy_result.returncode == 0:
-        wait_for_unlocked_runtime(rows, production_url)
-        verify_public_access(rows, production_url)
-        probe_record = owner_write_verification(rows, production_url, args.owner_email.strip() or DEFAULT_OWNER_EMAIL, owner_password)
-        refresh_reports(rows, token)
+    owner_email = args.owner_email.strip() or DEFAULT_OWNER_EMAIL
+    credentials_ok = verify_owner_credentials_before_unlock(rows, production_url, owner_email, owner_password)
+    if credentials_ok:
+        deploy_result, deployment_url = deploy_unlocked(token)
+        add_step(rows, "deploy_remote_write_lock_off", "passed" if deploy_result.returncode == 0 else "failed", compact_result(deploy_result))
+        if deploy_result.returncode == 0:
+            wait_for_unlocked_runtime(rows, production_url)
+            verify_public_access(rows, production_url)
+            if not has_failed(rows):
+                probe_record = owner_write_verification(rows, production_url, owner_email, owner_password)
+            if not has_failed(rows) and probe_record:
+                persist(
+                    rows,
+                    owner_approved=args.owner_approved,
+                    enable_requested=args.enable_writes,
+                    production_url=production_url,
+                    deployment_url=deployment_url,
+                    probe_record=probe_record,
+                )
+                refresh_reports(rows, token, expected_unlocked=True)
+            else:
+                relock_result, relock_url = deploy_locked(token)
+                if relock_url and not deployment_url:
+                    deployment_url = relock_url
+                add_step(rows, "safety_relock_remote_write_lock_on", "passed" if relock_result.returncode == 0 else "failed", compact_result(relock_result))
+                if relock_result.returncode == 0:
+                    wait_for_locked_runtime(rows, production_url)
+                refresh_reports(rows, token, expected_unlocked=False)
+    else:
+        add_step(rows, "deploy_remote_write_lock_off", "skipped", "Owner credential preflight failed; production writes were not unlocked.")
 
     summary = persist(
         rows,

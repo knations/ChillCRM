@@ -3909,11 +3909,13 @@ def main() -> int:
             assert production_gates["status"] == "ready_for_owner_cutover_review"
         assert production_gates["input_required"] == len(blocking_gate_keys)
         assert production_gates["blocking_gates"] == len(blocking_gate_keys)
-        expected_source_of_truth = (
-            "hosted_ready_for_owner_cutover_review"
-            if production_gates["production_gate"] == "pass"
-            else "local_sqlite"
-        )
+        hosted_write_enablement_status = (production_gates.get("hosted_write_enablement") or {}).get("status")
+        if production_gates["production_gate"] != "pass":
+            expected_source_of_truth = "local_sqlite"
+        elif hosted_write_enablement_status == "hosted_writes_enabled":
+            expected_source_of_truth = "hosted_remote_crm"
+        else:
+            expected_source_of_truth = "hosted_ready_for_owner_cutover_review"
         assert production_gates["source_of_truth"] == expected_source_of_truth
         if "hosted_write_unlock_audit_rehearsal" in blocking_gate_keys:
             assert production_gates["next_owner_action"]["title"] == "Hosted write-audit rehearsal"

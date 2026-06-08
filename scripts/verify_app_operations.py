@@ -169,6 +169,18 @@ def main() -> int:
     assert ".detail-panel .task-edit-row {\n    grid-template-columns: 1fr;" in styles_css
     assert ".detail-panel .task-line {\n    flex-wrap: wrap;\n    justify-content: flex-start;" in styles_css
     assert "grid-template-columns: 1fr 1fr;" in styles_css
+    assert "mobileDetailOpen" in app_js
+    assert "openMobileDetailView(" in app_js
+    assert "closeMobileDetailView(" in app_js
+    assert "mobileDetailBackLabel(" in app_js
+    assert "Back to ${state.mobileDetailReturnLabel" in app_js
+    assert "state.mobileDetailReturnLabel = \"Search\"" in app_js
+    assert "mobile-detail-open" in styles_css
+    assert ".mobile-detail-back" in styles_css
+    assert ".app-shell.mobile-detail-open .sidebar,\n  .app-shell.mobile-detail-open .main {\n    display: none;" in styles_css
+    assert ".app-shell.mobile-detail-open .detail-panel" in styles_css
+    assert "position: fixed" in styles_css
+    assert "height: 100svh" in styles_css
     assert "detailHeader(" in app_js
     assert "detail-masthead" in app_js
     assert ".detail-masthead" in styles_css

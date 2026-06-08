@@ -97,6 +97,8 @@ const state = {
   appUsers: null,
   editingAppUserId: null,
   appUserNotice: null,
+  mobileDetailOpen: false,
+  mobileDetailReturnLabel: "",
 };
 
 const els = {
@@ -579,11 +581,13 @@ async function runDetailAction(button, labels, action) {
 }
 
 function setView(view) {
+  closeMobileDetailView();
   if (view === "users" && !currentUserCanManageUsers()) {
     view = "dashboard";
   }
   state.view = view;
   state.page = 1;
+  state.mobileDetailReturnLabel = viewDisplayLabel(view);
   updateOwnerNavigation();
   els.navButtons.forEach((button) => {
     button.classList.toggle("active", button.dataset.view === view);
@@ -646,6 +650,52 @@ function recordWorkspaceView(view = state.view) {
 
 function setRecordWorkspace(active) {
   els.shell?.classList.toggle("record-workspace", Boolean(active));
+}
+
+function viewDisplayLabel(view = state.view) {
+  return (
+    listTitles[view] ||
+    {
+      dashboard: "Dashboard",
+      migrationStatus: "Status",
+      tags: "Tags",
+      customFields: "Custom Fields",
+      linkedResources: "Linked Resources",
+      archive: "Archive",
+      followup: "Follow Up",
+      activity: "Activity",
+      exports: "Exports",
+      users: "Users",
+      cleanup: "Cleanup",
+    }[view] ||
+    "List"
+  );
+}
+
+function setMobileDetailOpen(active) {
+  state.mobileDetailOpen = Boolean(active);
+  els.shell?.classList.toggle("mobile-detail-open", state.mobileDetailOpen);
+  document.body.classList.toggle("mobile-detail-open", state.mobileDetailOpen);
+}
+
+function openMobileDetailView(returnLabel = "") {
+  if (returnLabel) state.mobileDetailReturnLabel = returnLabel;
+  setMobileDetailOpen(true);
+  if (window.matchMedia?.("(max-width: 820px)").matches) {
+    window.requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "auto" }));
+  }
+}
+
+function closeMobileDetailView() {
+  setMobileDetailOpen(false);
+  if (window.matchMedia?.("(max-width: 820px)").matches) {
+    window.requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "auto" }));
+  }
+}
+
+function mobileDetailBackLabel(detail = null) {
+  const fallback = detail ? listTitles[listTypeForDetailType(detail.type)] : "";
+  return `Back to ${state.mobileDetailReturnLabel || fallback || "List"}`;
 }
 
 function resetDetailScroll() {
@@ -3462,6 +3512,7 @@ function savedViewControls(savedViews) {
 
 async function renderList() {
   setStatus(`Loading ${listTitles[state.listType]}`);
+  state.mobileDetailReturnLabel = listTitles[state.listType] || "List";
   const sort = currentListSort();
   const statusFilter = currentListStatusFilter();
   const dateFilter = currentListDateFilter();
@@ -3753,13 +3804,14 @@ async function renderList() {
 async function renderCreateForm(listType) {
   setStatus("Loading create form");
   setRecordWorkspace(true);
+  openMobileDetailView(listTitles[listType] || "List");
   const type = listType === "people" ? "person" : listType === "companies" ? "company" : listType === "leads" ? "lead" : "deal";
   const fields = createFields(type);
   const options = await fetchJson(`/api/create_options?type=${encodeURIComponent(type)}`);
   const createDetail = { type, record: {}, edit_options: options.edit_options || {} };
   els.detail.innerHTML = `
     <div class="detail-content">
-      ${detailHeader(`New ${labelize(type)}`, "Local CRM record")}
+      ${detailHeader(`New ${labelize(type)}`, "Local CRM record", null, { mobileBackLabel: mobileDetailBackLabel() })}
       <div class="detail-section">
         <div class="inline-header">
           <h3>Create</h3>
@@ -4140,7 +4192,12 @@ async function showDetail(type, id) {
   setStatus("Loading details");
   const detail = await fetchJson(`/api/detail?type=${encodeURIComponent(type)}&id=${encodeURIComponent(id)}`);
   if (detail.error) {
-    els.detail.innerHTML = `<div class="empty-detail"><h2>${escapeHtml(detail.error)}</h2></div>`;
+    openMobileDetailView();
+    els.detail.innerHTML = `
+      <div class="detail-content">
+        ${detailHeader("Could not open record", detail.error, null, { mobileBackLabel: mobileDetailBackLabel() })}
+      </div>
+    `;
     return;
   }
   renderDetail(detail);
@@ -4151,7 +4208,12 @@ async function showArchiveItem(id) {
   setStatus("Loading archive item");
   const detail = await fetchJson(`/api/archive_item?id=${encodeURIComponent(id)}`);
   if (detail.error) {
-    els.detail.innerHTML = `<div class="empty-detail"><h2>${escapeHtml(detail.error)}</h2></div>`;
+    openMobileDetailView("Archive");
+    els.detail.innerHTML = `
+      <div class="detail-content">
+        ${detailHeader("Could not open archive item", detail.error, null, { mobileBackLabel: mobileDetailBackLabel() })}
+      </div>
+    `;
     return;
   }
   renderArchiveItemDetail(detail);
@@ -4161,12 +4223,13 @@ async function showArchiveItem(id) {
 function renderArchiveItemDetail(detail) {
   const item = detail.item || {};
   setRecordWorkspace(false);
+  openMobileDetailView("Archive");
   state.currentDetail = null;
   state.currentArchiveItem = item;
   const title = item.title || item.label || "Archive Item";
   els.detail.innerHTML = `
     <div class="detail-content">
-      ${detailHeader(title, `${item.label || archiveItemLabel(item.item_type)} · Archive #${item.id || ""}`)}
+      ${detailHeader(title, `${item.label || archiveItemLabel(item.item_type)} · Archive #${item.id || ""}`, null, { mobileBackLabel: mobileDetailBackLabel() })}
       <div id="detailActionError" class="form-error" hidden></div>
       ${archiveItemSnapshot(item)}
       ${archiveReviewPanel(item)}
@@ -4458,7 +4521,12 @@ async function showTagDetail(id) {
   });
   const detail = await fetchJson(`/api/tags?${params.toString()}`);
   if (detail.error) {
-    els.detail.innerHTML = `<div class="empty-detail"><h2>${escapeHtml(detail.error)}</h2></div>`;
+    openMobileDetailView("Tags");
+    els.detail.innerHTML = `
+      <div class="detail-content">
+        ${detailHeader("Could not open tag", detail.error, null, { mobileBackLabel: mobileDetailBackLabel() })}
+      </div>
+    `;
     return;
   }
   renderTagDetail(detail);
@@ -4474,7 +4542,12 @@ async function showCustomFieldDetail(recordType, fieldName) {
   });
   const detail = await fetchJson(`/api/custom_fields?${params.toString()}`);
   if (detail.error) {
-    els.detail.innerHTML = `<div class="empty-detail"><h2>${escapeHtml(detail.error)}</h2></div>`;
+    openMobileDetailView("Custom Fields");
+    els.detail.innerHTML = `
+      <div class="detail-content">
+        ${detailHeader("Could not open custom field", detail.error, null, { mobileBackLabel: mobileDetailBackLabel() })}
+      </div>
+    `;
     return;
   }
   renderCustomFieldDetail(detail);
@@ -4486,7 +4559,12 @@ async function showCleanupGroup(type, key) {
   const params = new URLSearchParams({ type, key, status: state.cleanupStatus });
   const detail = await fetchJson(`/api/cleanup_groups?${params.toString()}`);
   if (detail.error) {
-    els.detail.innerHTML = `<div class="empty-detail"><h2>${escapeHtml(detail.error)}</h2></div>`;
+    openMobileDetailView("Cleanup");
+    els.detail.innerHTML = `
+      <div class="detail-content">
+        ${detailHeader("Could not open cleanup item", detail.error, null, { mobileBackLabel: mobileDetailBackLabel() })}
+      </div>
+    `;
     return;
   }
   renderCleanupGroupDetail(detail);
@@ -4510,6 +4588,7 @@ async function nextCleanupReviewGroup(detail) {
 
 function renderDetail(detail) {
   setRecordWorkspace(true);
+  openMobileDetailView();
   state.currentDetail = detail;
   state.currentArchiveItem = null;
   state.currentCleanupGroup = null;
@@ -4553,9 +4632,11 @@ function renderDetail(detail) {
   syncActiveListRows();
 }
 
-function detailHeader(title, subtitle, detail = null) {
+function detailHeader(title, subtitle, detail = null, options = {}) {
+  const mobileBackLabel = options.mobileBackLabel || mobileDetailBackLabel(detail);
   return `
     <div class="detail-masthead">
+      <button class="mobile-detail-back" type="button">${escapeHtml(mobileBackLabel)}</button>
       <div class="detail-title-row">
         <h2 class="detail-title">${escapeHtml(title || "")}</h2>
         ${detail ? lifecyclePill(detail.lifecycle) : ""}
@@ -4814,13 +4895,14 @@ function contactWebsiteHref(value) {
 
 function renderTagDetail(detail) {
   setRecordWorkspace(false);
+  openMobileDetailView("Tags");
   state.currentDetail = null;
   state.currentCleanupGroup = null;
   const tag = detail.tag;
   const detailRecordType = detail.record_type ? labelize(detail.record_type) : "";
   els.detail.innerHTML = `
     <div class="detail-content">
-      ${detailHeader(tag.display_name || "(blank tag)", `${formatNumber(detail.total)} assigned ${detailRecordType ? detailRecordType.toLowerCase() : "records"}`)}
+      ${detailHeader(tag.display_name || "(blank tag)", `${formatNumber(detail.total)} assigned ${detailRecordType ? detailRecordType.toLowerCase() : "records"}`, null, { mobileBackLabel: mobileDetailBackLabel() })}
       <div class="detail-section">
         <h3>Tag</h3>
         <dl class="kv">
@@ -4856,12 +4938,13 @@ function renderTagDetail(detail) {
 
 function renderCustomFieldDetail(detail) {
   setRecordWorkspace(false);
+  openMobileDetailView("Custom Fields");
   state.currentDetail = null;
   state.currentCleanupGroup = null;
   const field = detail.field;
   els.detail.innerHTML = `
     <div class="detail-content">
-      ${detailHeader(field.field_name || "(blank field)", `${labelize(field.record_type || "record")} custom field`)}
+      ${detailHeader(field.field_name || "(blank field)", `${labelize(field.record_type || "record")} custom field`, null, { mobileBackLabel: mobileDetailBackLabel() })}
       <div class="cleanup-detail-signals">
         <div class="signal"><strong>${formatNumber(field.record_count)}</strong><span>Records</span></div>
         <div class="signal"><strong>${formatNumber(field.value_count)}</strong><span>Values</span></div>
@@ -4896,6 +4979,7 @@ function renderCustomFieldDetail(detail) {
 
 function renderCleanupGroupDetail(detail) {
   setRecordWorkspace(false);
+  openMobileDetailView("Cleanup");
   state.currentDetail = null;
   state.currentCleanupGroup = { type: detail.type, key: detail.group_key };
   const isTagGroup = detail.type === "duplicate_tags";
@@ -4905,7 +4989,7 @@ function renderCleanupGroupDetail(detail) {
     : `${detail.label} · ${formatNumber(detail.flags.length)} ${cleanupStatusLabel(detail.status).toLowerCase()} flags`;
   els.detail.innerHTML = `
     <div class="detail-content">
-      ${detailHeader(detailTitle || "(blank group)", detailSubtitle)}
+      ${detailHeader(detailTitle || "(blank group)", detailSubtitle, null, { mobileBackLabel: mobileDetailBackLabel() })}
       <div class="cleanup-detail-signals">
         ${
           isTagGroup
@@ -8572,6 +8656,8 @@ async function runSearch(query) {
     return;
   }
   setStatus("Searching");
+  closeMobileDetailView();
+  state.mobileDetailReturnLabel = "Search";
   const data = await fetchJson(`/api/search?q=${encodeURIComponent(query)}`);
   els.dashboard.classList.remove("active-view");
   els.tags.classList.remove("active-view");
@@ -8602,6 +8688,13 @@ els.navButtons.forEach((button) => {
     els.search.value = "";
     setView(button.dataset.view);
   });
+});
+
+els.detail?.addEventListener("click", (event) => {
+  const button = event.target.closest(".mobile-detail-back");
+  if (!button) return;
+  event.preventDefault();
+  closeMobileDetailView();
 });
 
 els.search.addEventListener("input", () => {

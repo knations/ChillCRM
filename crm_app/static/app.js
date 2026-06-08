@@ -308,16 +308,23 @@ function formatDate(value) {
 }
 
 async function fetchJson(url, options = {}) {
-  const response = await fetch(url, options);
-  if (!response.ok) {
-    const text = await response.text();
-    let message = text;
-    let payload = null;
+  const response = await fetch(url, {
+    credentials: "same-origin",
+    ...options,
+  });
+  const text = await response.text();
+  let payload = null;
+  if (text) {
     try {
       payload = JSON.parse(text);
-      message = payload.error || payload.message || text;
     } catch {
-      message = text;
+      payload = null;
+    }
+  }
+  if (!response.ok) {
+    let message = text;
+    if (payload) {
+      message = payload.error || payload.message || text;
     }
     if (response.status === 401 && payload?.auth) {
       state.auth = payload.auth;
@@ -326,7 +333,10 @@ async function fetchJson(url, options = {}) {
     }
     throw new Error(message || `Request failed with status ${response.status}`);
   }
-  return response.json();
+  if (!text) return {};
+  if (payload) return payload;
+  const snippet = text.replace(/\s+/g, " ").trim().slice(0, 160);
+  throw new Error(snippet ? `Server returned an unexpected response: ${snippet}` : "Server returned an empty response.");
 }
 
 async function postJson(url, payload) {
@@ -5201,7 +5211,7 @@ function editForm(detail) {
     <div class="detail-section">
       <div class="inline-header">
         <h3>Edit</h3>
-        <button class="text-button" id="saveRecordButton">Save</button>
+        <button class="text-button" id="saveRecordButton" type="button">Save</button>
       </div>
       <form id="editRecordForm" class="edit-grid">
         ${fields.map((field) => editFieldControl(detail, field)).join("")}
@@ -5392,7 +5402,7 @@ function wireDetailForms(detail) {
 
   const saveButton = document.querySelector("#saveRecordButton");
   if (saveButton) {
-    saveButton.addEventListener("click", async () => {
+    const saveRecord = async () => {
       const form = document.querySelector("#editRecordForm");
       const fields = {};
       new FormData(form).forEach((value, key) => {
@@ -5417,6 +5427,11 @@ function wireDetailForms(detail) {
       } finally {
         saveButton.disabled = false;
       }
+    };
+    saveButton.addEventListener("click", saveRecord);
+    document.querySelector("#editRecordForm")?.addEventListener("submit", (event) => {
+      event.preventDefault();
+      saveRecord();
     });
   }
 

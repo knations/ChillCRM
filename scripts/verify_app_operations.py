@@ -178,6 +178,10 @@ def main() -> int:
     assert "contact-card-strip" in app_js
     assert ".contact-card-strip" in styles_css
     assert ".contact-card-button" in styles_css
+    assert 'credentials: "same-origin"' in app_js
+    assert "Server returned an unexpected response" in app_js
+    assert 'id="saveRecordButton" type="button"' in app_js
+    assert 'addEventListener("submit"' in app_js
     assert "mobileDetailOpen" in app_js
     assert "openMobileDetailView(" in app_js
     assert "closeMobileDetailView(" in app_js

@@ -1575,6 +1575,9 @@ def main() -> int:
     assert "dailyOperatingGuidePanel" in app_js
     assert "dashboard_start_today" in server_py
     assert "start_today" in server_py
+    assert "Production CRM" in server_py
+    assert "Hosted Staging" not in server_py
+    assert "Remote staging is read-only" not in server_py
     assert "Start Today" in app_js
     assert "startTodayPanel" in app_js
     assert "decision-prep-band" in styles_css
@@ -2371,6 +2374,20 @@ def main() -> int:
         assert start_today["next_action"]["title"]
         assert start_today["step_count"] == 8
         assert [step["key"] for step in start_today["steps"]] == ["followup", "pipeline", "quality", "archive_review"]
+        hosted_summary = handler.hosted_summary()
+        hosted_start_today = hosted_summary["start_today"]
+        assert hosted_start_today["title"] == "Production CRM"
+        assert "staging" not in hosted_start_today["message"].lower()
+        assert hosted_start_today["action"] == "Open People"
+        assert hosted_start_today["view"] == "people"
+        assert hosted_start_today["next_action"]["title"] == "Work From The Live CRM"
+        assert hosted_start_today["step_count"] == 4
+        assert [step["key"] for step in hosted_start_today["steps"]] == [
+            "hosted_writes",
+            "private_documents",
+            "status_evidence",
+            "export_packages",
+        ]
         cleanup_data = handler.cleanup()
         cleanup_policy = cleanup_data["merge_policy"]
         assert cleanup_data["next_action"]["title"]

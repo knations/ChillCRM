@@ -3372,6 +3372,26 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                 ).fetchall()
             )
             upcoming_tasks = self.task_rows(conn, "open", 8, 0)
+        runtime = self.runtime_context()
+        write_lock = self.remote_write_lock_status()
+        local_freeze = self.local_write_freeze_status()
+        file_access = runtime.get("document_file_access") or {}
+        export_access = runtime.get("bulk_package_exports") or {}
+        write_status = "ready" if not write_lock.get("enabled") else "attention"
+        file_status = "ready" if file_access.get("enabled") else "attention"
+        export_status = "ready" if export_access.get("enabled") else "waiting"
+        production_status = "ready" if write_status == "ready" and file_status == "ready" else "attention"
+        write_label = "Hosted writes are enabled." if write_status == "ready" else "Hosted writes are locked."
+        file_label = (
+            "Private document access is enabled."
+            if file_status == "ready"
+            else "Private document access is locked."
+        )
+        export_label = (
+            "Bulk export packages are enabled."
+            if export_status == "ready"
+            else "Bulk export packages remain locked."
+        )
         return {
             "counts": counts,
             "pipeline": pipeline,
@@ -3380,41 +3400,58 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             "saved_views": [],
             "cleanup_summary": {},
             "start_today": {
-                "title": "Hosted Staging",
-                "status": "attention",
-                "message": "Remote staging is read-only while backup/restore, audit, role lifecycle, monitoring, and pilot gates are verified.",
-                "view": "migrationStatus",
-                "action": "Open Status",
+                "title": "Production CRM",
+                "status": production_status,
+                "message": "CHILLCRM is live on hosted Postgres with private file access. Use this dashboard for daily CRM work; status evidence is available when needed.",
+                "view": "people",
+                "action": "Open People",
                 "next_action": {
-                    "title": "Finish Remote Readiness Gates",
-                    "description": "Private storage and signed document access are verified; finish backup/restore, audit, role lifecycle, and pilot-readiness checks before inviting admins.",
-                    "primary_action": "Open Status",
-                    "view": "migrationStatus",
-                    "report": "/reports/chillcrm_supabase_setup_status.md",
+                    "eyebrow": "Today",
+                    "title": "Work From The Live CRM",
+                    "description": f"{write_label} {file_label} {export_label} Use People, Companies, Leads, Deals, and Follow Up as the primary workspace.",
+                    "primary_action": "Open People",
+                    "view": "people",
+                    "report": "/reports/remote_production_readiness.md",
                 },
                 "steps": [
                     {
                         "order": 1,
-                        "key": "hosted_smoke",
-                        "title": "Validate Hosted Read Paths",
-                        "status": "attention",
+                        "key": "hosted_writes",
+                        "title": "Hosted Writes",
+                        "status": write_status,
+                        "action": "Open People",
+                        "view": "people",
+                    },
+                    {
+                        "order": 2,
+                        "key": "private_documents",
+                        "title": "Private Documents",
+                        "status": file_status,
+                        "action": "Open Archive",
+                        "view": "archive",
+                    },
+                    {
+                        "order": 3,
+                        "key": "status_evidence",
+                        "title": "Status Evidence",
+                        "status": "ready",
                         "action": "Open Status",
                         "view": "migrationStatus",
                     },
                     {
-                        "order": 2,
-                        "key": "storage",
-                        "title": "Upload Private Documents",
-                        "status": "waiting",
-                        "action": "Open Storage Report",
-                        "view": "migrationStatus",
+                        "order": 4,
+                        "key": "export_packages",
+                        "title": "Bulk Export Packages",
+                        "status": export_status,
+                        "action": "Open Exports",
+                        "view": "exports",
                     },
                 ],
-                "step_count": 2,
+                "step_count": 4,
             },
-            "remote_write_lock": self.remote_write_lock_status(),
-            "local_write_freeze": self.local_write_freeze_status(),
-            "runtime": self.runtime_context(),
+            "remote_write_lock": write_lock,
+            "local_write_freeze": local_freeze,
+            "runtime": runtime,
             "recently_updated": recently_updated,
             "upcoming_tasks": upcoming_tasks,
         }

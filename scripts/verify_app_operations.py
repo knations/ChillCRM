@@ -207,8 +207,11 @@ def main() -> int:
     assert "/api/upload_profile_image" in server_py
     assert "record_profile_images" in server_py
     assert "personProfileImageControl" in app_js
+    assert "showProfileImageFallback" in app_js
+    assert 'alt=""' in app_js
     assert "prepareProfileImageUpload" in app_js
     assert ".person-profile-image-control" in styles_css
+    assert ".person-profile-image-frame.image-failed" in styles_css
     assert "profile_images/" in (PROJECT_ROOT / ".gitignore").read_text(encoding="utf-8")
     assert 'credentials: "same-origin"' in app_js
     assert "Server returned an unexpected response" in app_js

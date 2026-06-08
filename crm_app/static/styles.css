@@ -2282,6 +2282,10 @@ button {
   background: var(--surface-soft);
 }
 
+.person-profile-image-frame.image-failed {
+  background: linear-gradient(145deg, #f8f6ef, #ece7dc);
+}
+
 .person-profile-image {
   display: block;
   height: 100%;

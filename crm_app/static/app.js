@@ -4844,12 +4844,13 @@ function personProfileImageControl(detail) {
   const imageUrl = profileImage?.url || "";
   const name = record.name || [record.first_name, record.last_name].filter(Boolean).join(" ") || record.email || "Person";
   const initials = personInitials(name);
+  const imageLabel = `${name} profile photo`;
   const imageBody = imageUrl
-    ? `<img class="person-profile-image" src="${escapeHtml(imageUrl)}" alt="${escapeHtml(`${name} profile image`)}">`
+    ? `<img class="person-profile-image" src="${escapeHtml(imageUrl)}" alt="" data-initials="${escapeHtml(initials)}">`
     : `<span class="person-profile-initials">${escapeHtml(initials)}</span>`;
   return `
     <div class="person-profile-image-control">
-      <div class="person-profile-image-frame ${imageUrl ? "has-image" : ""}" aria-hidden="${imageUrl ? "false" : "true"}">
+      <div class="person-profile-image-frame ${imageUrl ? "has-image" : ""}" role="img" aria-label="${escapeHtml(imageLabel)}">
         ${imageBody}
       </div>
       <input id="personProfileImageInput" type="file" accept="image/jpeg,image/png,image/webp" hidden>
@@ -4869,6 +4870,14 @@ function personInitials(name) {
   if (!parts.length) return "P";
   if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
   return `${parts[0][0] || ""}${parts[parts.length - 1][0] || ""}`.toUpperCase();
+}
+
+function showProfileImageFallback(frame, initials) {
+  if (!frame) return;
+  frame.classList.remove("has-image");
+  frame.classList.add("image-failed");
+  frame.setAttribute("aria-label", `Profile photo unavailable. Showing initials ${initials}.`);
+  frame.innerHTML = `<span class="person-profile-initials">${escapeHtml(initials || "P")}</span>`;
 }
 
 function recordFileHero(detail) {
@@ -5838,6 +5847,14 @@ function wireProfileImageControls(detail) {
   const input = document.querySelector("#personProfileImageInput");
   const uploadButton = document.querySelector(".person-profile-upload-button");
   const removeButton = document.querySelector(".person-profile-remove-button");
+  const image = document.querySelector(".person-profile-image");
+  if (image) {
+    const frame = image.closest(".person-profile-image-frame");
+    const initials = image.dataset.initials || personInitials(detail.record?.name || "Person");
+    const fallback = () => showProfileImageFallback(frame, initials);
+    image.addEventListener("error", fallback, { once: true });
+    if (image.complete && !image.naturalWidth) fallback();
+  }
   if (uploadButton && input) {
     uploadButton.addEventListener("click", () => input.click());
     input.addEventListener("change", async () => {

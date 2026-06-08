@@ -239,6 +239,12 @@ def main() -> int:
     assert "restoreInputFocus(focusState)" in app_js
     assert "activateSearchWorkspace(" in app_js
     assert "showOnlyMainView(els.list)" in app_js
+    assert "listTagSearch" in app_js
+    assert "listTagSuggestions" in app_js
+    assert "tagSuggestionOptions(" in app_js
+    assert "fetchListTagSuggestions(" in app_js
+    assert 'id="listTagFilter"' not in app_js
+    assert ".tag-search-filter" in styles_css
     assert "state.searchRequestId" in app_js
     assert "searchReturnView" in app_js
     assert "timeoutMs: 12000" in app_js

@@ -1678,6 +1678,23 @@ button {
   color: var(--text);
 }
 
+.tag-search-filter {
+  align-items: center;
+  display: inline-grid;
+  grid-template-columns: minmax(190px, 250px) auto;
+  gap: 6px;
+}
+
+.tag-search-filter input {
+  min-width: 0;
+  width: 100%;
+}
+
+.tag-search-clear {
+  height: 38px;
+  width: 38px;
+}
+
 .sort-control-group {
   display: inline-flex;
   align-items: center;
@@ -4615,6 +4632,7 @@ button {
   }
 
   .filter-row,
+  .tag-search-filter,
   .filter-row input,
   .filter-row select,
   .sort-control-group {
@@ -4667,6 +4685,11 @@ button {
   .sort-control-group select {
     background: #ffffff;
     min-height: 42px;
+  }
+
+  .tag-search-clear {
+    height: 42px;
+    width: 42px;
   }
 
   .icon-button,

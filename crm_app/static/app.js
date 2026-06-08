@@ -3,6 +3,7 @@ const state = {
   listType: "people",
   page: 1,
   listTagId: "",
+  listTagSearch: "",
   listOwnerUserId: "",
   listProfileField: "",
   listProfileValue: "",
@@ -91,6 +92,8 @@ const state = {
   currentCleanupGroup: null,
   q: "",
   debounce: null,
+  tagDebounce: null,
+  tagSuggestionRequestId: 0,
   searchRequestId: 0,
   searchReturnView: "dashboard",
   currentDetail: null,
@@ -3582,6 +3585,7 @@ function currentListSettings() {
   return {
     q: state.q,
     tag_id: state.listTagId,
+    tag_search: state.listTagSearch,
     status_field: statusFilter.field,
     status_value: statusFilter.value,
     owner_user_id: ownerFilterSupported(state.listType) ? state.listOwnerUserId : "",
@@ -3600,6 +3604,7 @@ function currentListSettings() {
 function applyListSettings(settings = {}) {
   state.q = settings.q || "";
   state.listTagId = settings.tag_id || "";
+  state.listTagSearch = settings.tag_id ? "" : settings.tag_search || "";
   state.listStatusFilters[state.listType] = {
     field: settings.status_field || "",
     value: settings.status_value || "",
@@ -3634,6 +3639,7 @@ function resetCurrentListView() {
   state.q = "";
   els.search.value = "";
   state.listTagId = "";
+  state.listTagSearch = "";
   state.listOwnerUserId = "";
   state.listProfileField = "";
   state.listProfileValue = "";
@@ -3722,9 +3728,57 @@ function savedViewControls(savedViews) {
   `;
 }
 
+function tagSearchControl(tags, selectedTag) {
+  const value = selectedTag ? tagDisplayName(selectedTag) : state.listTagSearch || "";
+  return `
+    <div class="tag-search-filter">
+      <input id="listTagSearch" type="text" list="listTagSuggestions" value="${escapeHtml(value)}" placeholder="Search tags" aria-label="Search by tag" autocomplete="off">
+      <datalist id="listTagSuggestions">
+        ${tagSuggestionOptions(tags)}
+      </datalist>
+      <button class="icon-button tag-search-clear" id="listTagClear" type="button" title="All tags" aria-label="Clear tag filter" ${value ? "" : "disabled"}>×</button>
+    </div>
+  `;
+}
+
+function tagDisplayName(tag) {
+  return tag?.display_name || "(blank tag)";
+}
+
+function uniqueTags(tags) {
+  const seen = new Set();
+  return (tags || []).filter((tag) => {
+    const id = String(tag?.source_id || "");
+    if (!id || seen.has(id)) return false;
+    seen.add(id);
+    return true;
+  });
+}
+
+function tagSuggestionOptions(tags) {
+  return uniqueTags(tags)
+    .map((tag) => {
+      const count = typeof tag.assignment_count === "number" ? ` (${formatNumber(tag.assignment_count)})` : "";
+      return `<option value="${escapeHtml(tagDisplayName(tag))}" label="${escapeHtml(`${tagDisplayName(tag)}${count}`)}" data-tag-id="${escapeHtml(tag.source_id)}"></option>`;
+    })
+    .join("");
+}
+
+function findTagSuggestion(tags, value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (!normalized) return null;
+  return (tags || []).find((tag) => tagDisplayName(tag).toLowerCase() === normalized) || null;
+}
+
+async function fetchListTagSuggestions(query) {
+  const params = new URLSearchParams({ page_size: "100" });
+  if (query) params.set("q", query);
+  return fetchJson(`/api/tags?${params.toString()}`);
+}
+
 async function renderList() {
   setStatus(`Loading ${listTitles[state.listType]}`);
-  const focusState = captureInputFocus("listSearch");
+  const focusState = captureInputFocus("listSearch") || captureInputFocus("listTagSearch");
   state.mobileDetailReturnLabel = listTitles[state.listType] || "List";
   const sort = currentListSort();
   const statusFilter = currentListStatusFilter();
@@ -3763,9 +3817,11 @@ async function renderList() {
     if (dateFilter.to) params.set("date_to", dateFilter.to);
   }
   const exportUrl = `/api/export_list?${params.toString()}`;
-  const [data, tagData, profileData, savedViewData] = await Promise.all([
+  const tagQuery = state.listTagId ? "" : state.listTagSearch || "";
+  const [data, tagData, selectedTagData, profileData, savedViewData] = await Promise.all([
     fetchJson(`/api/list?${params.toString()}`),
-    fetchJson("/api/tags?page_size=100"),
+    fetchListTagSuggestions(tagQuery),
+    state.listTagId ? fetchJson(`/api/tags?id=${encodeURIComponent(state.listTagId)}&page_size=10`).catch(() => null) : Promise.resolve(null),
     profileFilterSupported(state.listType)
       ? fetchJson(`/api/profile_filters?type=${encodeURIComponent(state.listType)}`)
       : Promise.resolve({ fields: [] }),
@@ -3776,7 +3832,8 @@ async function renderList() {
     state.listSavedViewId[state.listType] = "";
   }
   const totalPages = Math.max(1, Math.ceil(data.total / data.page_size));
-  const selectedTag = tagData.tags.find((tag) => String(tag.source_id) === String(state.listTagId));
+  const selectedTag = (tagData.tags || []).find((tag) => String(tag.source_id) === String(state.listTagId)) || selectedTagData?.tag || null;
+  const tagSuggestions = uniqueTags([selectedTag, ...(tagData.tags || [])].filter(Boolean));
   const selectedStatusField = (data.status_options || []).find((item) => item.field === data.status_field);
   const selectedStatusValue = selectedStatusField?.values.find((item) => item.value === data.status_value);
   const selectedOwner = (data.owner_options || []).find((item) => String(item.value) === String(data.owner_user_id));
@@ -3805,12 +3862,7 @@ async function renderList() {
       <div class="filter-row">
         ${savedViewControls(savedViews)}
         <input id="listSearch" type="search" value="${escapeHtml(state.q)}" placeholder="Filter ${escapeHtml(listTitles[state.listType].toLowerCase())}">
-        <select id="listTagFilter" aria-label="Filter by tag">
-          <option value="">All tags</option>
-          ${tagData.tags
-            .map((tag) => `<option value="${tag.source_id}" ${String(tag.source_id) === String(state.listTagId) ? "selected" : ""}>${escapeHtml(tag.display_name || "(blank tag)")}</option>`)
-            .join("")}
-        </select>
+        ${tagSearchControl(tagSuggestions, selectedTag)}
         ${ownerFilterControls(data.owner_options || [])}
         ${listProvenanceFilterControls(data.provenance_options || [])}
         ${listQualityFilterControls(data.quality_options || [])}
@@ -3835,7 +3887,9 @@ async function renderList() {
   const saveListViewButton = document.querySelector("#saveListViewButton");
   const deleteListViewButton = document.querySelector("#deleteListViewButton");
   const resetListViewButton = document.querySelector("#resetListViewButton");
-  const listTagFilter = document.querySelector("#listTagFilter");
+  const listTagSearch = document.querySelector("#listTagSearch");
+  const listTagSuggestions = document.querySelector("#listTagSuggestions");
+  const listTagClear = document.querySelector("#listTagClear");
   const listOwnerFilter = document.querySelector("#listOwnerFilter");
   const listProvenanceFilter = document.querySelector("#listProvenanceFilter");
   const listQualityIssue = document.querySelector("#listQualityIssue");
@@ -3906,9 +3960,69 @@ async function renderList() {
     }, 220);
   });
   restoreInputFocus(focusState);
-  listTagFilter.addEventListener("change", () => {
+  let currentTagSuggestions = tagSuggestions;
+  const applyTagSuggestion = (tag) => {
+    if (!tag) return false;
     clearSelectedSavedView();
-    state.listTagId = listTagFilter.value;
+    state.listTagId = String(tag.source_id || "");
+    state.listTagSearch = "";
+    state.page = 1;
+    renderList();
+    return true;
+  };
+  listTagSearch.addEventListener("input", () => {
+    const value = listTagSearch.value.trim();
+    const match = findTagSuggestion(currentTagSuggestions, value);
+    if (match) {
+      applyTagSuggestion(match);
+      return;
+    }
+    state.listTagSearch = value;
+    if (!value) {
+      clearSelectedSavedView();
+      state.listTagId = "";
+      state.page = 1;
+      renderList();
+      return;
+    }
+    if (state.listTagId) {
+      clearSelectedSavedView();
+      state.listTagId = "";
+      state.page = 1;
+      renderList();
+      return;
+    }
+    window.clearTimeout(state.tagDebounce);
+    const requestId = ++state.tagSuggestionRequestId;
+    state.tagDebounce = window.setTimeout(async () => {
+      try {
+        const suggestions = await fetchListTagSuggestions(value);
+        if (requestId !== state.tagSuggestionRequestId) return;
+        currentTagSuggestions = uniqueTags(suggestions.tags || []);
+        if (listTagSuggestions) listTagSuggestions.innerHTML = tagSuggestionOptions(currentTagSuggestions);
+      } catch (error) {
+        setStatus("Tag search failed");
+      }
+    }, 180);
+  });
+  listTagSearch.addEventListener("change", () => {
+    const value = listTagSearch.value.trim();
+    if (!value) return;
+    const match = findTagSuggestion(currentTagSuggestions, value);
+    if (match) applyTagSuggestion(match);
+  });
+  listTagSearch.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter") return;
+    const value = listTagSearch.value.trim();
+    if (!value) return;
+    const exact = findTagSuggestion(currentTagSuggestions, value);
+    const firstPartial = currentTagSuggestions.find((tag) => tagDisplayName(tag).toLowerCase().includes(value.toLowerCase()));
+    if (applyTagSuggestion(exact || firstPartial)) event.preventDefault();
+  });
+  listTagClear.addEventListener("click", () => {
+    clearSelectedSavedView();
+    state.listTagId = "";
+    state.listTagSearch = "";
     state.page = 1;
     renderList();
   });

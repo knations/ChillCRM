@@ -124,10 +124,18 @@ button {
   margin-bottom: 22px;
 }
 
+.search-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
 .search-wrap {
   position: relative;
-  flex: 1;
-  min-width: 180px;
+  min-width: 0;
 }
 
 .search-icon {
@@ -153,6 +161,15 @@ button {
 #globalSearch:focus {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.top-search-button {
+  min-width: 76px;
+}
+
+.top-search-clear {
+  font-size: 19px;
+  line-height: 1;
 }
 
 .status-text {

@@ -37,10 +37,14 @@
 
       <main class="main">
         <header class="topbar">
-          <div class="search-wrap">
-            <span class="search-icon" aria-hidden="true">⌕</span>
-            <input id="globalSearch" type="search" placeholder="Search names, emails, phones, related records, notes, tasks, tags, links" autocomplete="off">
-          </div>
+          <form id="globalSearchForm" class="search-form" role="search">
+            <div class="search-wrap">
+              <span class="search-icon" aria-hidden="true">⌕</span>
+              <input id="globalSearch" type="search" placeholder="Search names, emails, phones, related records, notes, tasks, tags, links" autocomplete="off">
+            </div>
+            <button class="text-button top-search-button" type="submit">Search</button>
+            <button class="icon-button top-search-clear" id="globalSearchClear" type="button" title="Clear search" aria-label="Clear search">×</button>
+          </form>
           <div id="environmentBadge" class="environment-badge">Local</div>
           <div id="authControl" class="auth-control" hidden></div>
           <div id="statusText" class="status-text">Loading</div>

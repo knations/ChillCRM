@@ -92,6 +92,7 @@ const state = {
   q: "",
   debounce: null,
   searchRequestId: 0,
+  searchReturnView: "dashboard",
   currentDetail: null,
   currentArchiveItem: null,
   auth: null,
@@ -132,6 +133,8 @@ const els = {
   passwordOverlay: document.querySelector("#passwordOverlay"),
   passwordChangeForm: document.querySelector("#passwordChangeForm"),
   passwordMessage: document.querySelector("#passwordMessage"),
+  searchForm: document.querySelector("#globalSearchForm"),
+  searchClear: document.querySelector("#globalSearchClear"),
 };
 
 function captureInputFocus(inputId) {
@@ -164,6 +167,18 @@ function showOnlyMainView(activeView) {
   document.querySelectorAll(".main .view").forEach((view) => {
     view.classList.toggle("active-view", view === activeView);
   });
+}
+
+function activateSearchWorkspace() {
+  if (state.view !== "search") {
+    state.searchReturnView = state.view || "dashboard";
+  }
+  state.view = "search";
+  state.mobileDetailReturnLabel = "Search";
+  els.navButtons.forEach((button) => button.classList.remove("active"));
+  setRecordWorkspace(false);
+  closeMobileDetailView();
+  showOnlyMainView(els.list);
 }
 
 const listTitles = {
@@ -8770,23 +8785,32 @@ async function renderCleanup() {
 }
 
 async function runSearch(query) {
-  if (!query) {
-    setView(state.view);
+  const trimmedQuery = query.trim();
+  if (!trimmedQuery) {
+    state.searchRequestId += 1;
+    setView(state.searchReturnView || "dashboard");
     return;
   }
   const requestId = ++state.searchRequestId;
   setStatus("Searching");
-  closeMobileDetailView();
-  state.mobileDetailReturnLabel = "Search";
+  activateSearchWorkspace();
+  els.list.innerHTML = `
+    <div class="section-header">
+      <div>
+        <h2>Search</h2>
+        <p>Searching for ${escapeHtml(trimmedQuery)}</p>
+      </div>
+    </div>
+  `;
   try {
-    const data = await fetchJson(`/api/search?q=${encodeURIComponent(query)}`);
+    const data = await fetchJson(`/api/search?q=${encodeURIComponent(trimmedQuery)}`);
     if (requestId !== state.searchRequestId) return;
-    showOnlyMainView(els.list);
+    activateSearchWorkspace();
     els.list.innerHTML = `
       <div class="section-header">
         <div>
           <h2>Search</h2>
-          <p>${formatNumber(data.results.length)} quick results</p>
+          <p>${formatNumber(data.results.length)} quick results for ${escapeHtml(data.q || trimmedQuery)}</p>
         </div>
       </div>
       ${recordTable(data.results, "search")}
@@ -8795,7 +8819,7 @@ async function runSearch(query) {
     setStatus("Ready");
   } catch (error) {
     if (requestId !== state.searchRequestId) return;
-    showOnlyMainView(els.list);
+    activateSearchWorkspace();
     els.list.innerHTML = `
       <div class="empty-state">
         <h3>Search did not complete</h3>
@@ -8810,6 +8834,7 @@ els.navButtons.forEach((button) => {
   button.addEventListener("click", () => {
     state.q = "";
     els.search.value = "";
+    state.searchRequestId += 1;
     setView(button.dataset.view);
   });
 });
@@ -8825,7 +8850,12 @@ els.search.addEventListener("input", () => {
   window.clearTimeout(state.debounce);
   state.debounce = window.setTimeout(() => {
     runSearch(els.search.value.trim());
-  }, 220);
+  }, 280);
+});
+
+els.search.addEventListener("search", () => {
+  window.clearTimeout(state.debounce);
+  runSearch(els.search.value.trim());
 });
 
 els.search.addEventListener("keydown", (event) => {
@@ -8833,6 +8863,19 @@ els.search.addEventListener("keydown", (event) => {
   event.preventDefault();
   window.clearTimeout(state.debounce);
   runSearch(els.search.value.trim());
+});
+
+els.searchForm?.addEventListener("submit", (event) => {
+  event.preventDefault();
+  window.clearTimeout(state.debounce);
+  runSearch(els.search.value.trim());
+});
+
+els.searchClear?.addEventListener("click", () => {
+  els.search.value = "";
+  window.clearTimeout(state.debounce);
+  runSearch("");
+  els.search.focus({ preventScroll: true });
 });
 
 els.authLoginForm?.addEventListener("submit", async (event) => {

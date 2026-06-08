@@ -756,17 +756,22 @@ function setMobileDetailOpen(active) {
   document.body.classList.toggle("mobile-detail-open", state.mobileDetailOpen);
 }
 
+function isMobileDetailViewport() {
+  return window.matchMedia?.("(max-width: 820px)").matches || false;
+}
+
 function openMobileDetailView(returnLabel = "") {
   if (returnLabel) state.mobileDetailReturnLabel = returnLabel;
-  setMobileDetailOpen(true);
-  if (window.matchMedia?.("(max-width: 820px)").matches) {
+  const mobileViewport = isMobileDetailViewport();
+  setMobileDetailOpen(mobileViewport);
+  if (mobileViewport) {
     window.requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "auto" }));
   }
 }
 
 function closeMobileDetailView() {
   setMobileDetailOpen(false);
-  if (window.matchMedia?.("(max-width: 820px)").matches) {
+  if (isMobileDetailViewport()) {
     window.requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "auto" }));
   }
 }

@@ -113,6 +113,8 @@ def main() -> int:
     original_legacy_adapter = os.environ.pop("CRM_DATABASE_ADAPTER", None)
     original_local_write_freeze = os.environ.pop("CHILLCRM_LOCAL_WRITE_FREEZE", None)
     original_legacy_write_freeze = os.environ.pop("LOCAL_WRITE_FREEZE", None)
+    original_crm_env = os.environ.pop("CRM_ENV", None)
+    original_app_base_url = os.environ.pop("APP_BASE_URL", None)
     try:
         runtime_handler = server.CRMRequestHandler.__new__(server.CRMRequestHandler)
         runtime_handler.db_path = SOURCE_DB
@@ -136,6 +138,12 @@ def main() -> int:
         assert hosted_runtime["database_adapter_enabled"] is True
         assert hosted_runtime["local_write_freeze"]["enabled"] is False
         assert hosted_runtime["local_write_freeze"]["mode"] == "ignored_hosted_adapter"
+        os.environ["CRM_ENV"] = "staging"
+        assert runtime_handler.runtime_context()["environment"] == "staging"
+        os.environ["APP_BASE_URL"] = "https://chillcrm.app"
+        production_runtime = runtime_handler.runtime_context()
+        assert production_runtime["environment"] == "production"
+        assert production_runtime["environment_label"] == "Production"
     finally:
         if original_database_url is not None:
             os.environ["DATABASE_URL"] = original_database_url
@@ -157,6 +165,14 @@ def main() -> int:
             os.environ["LOCAL_WRITE_FREEZE"] = original_legacy_write_freeze
         else:
             os.environ.pop("LOCAL_WRITE_FREEZE", None)
+        if original_crm_env is not None:
+            os.environ["CRM_ENV"] = original_crm_env
+        else:
+            os.environ.pop("CRM_ENV", None)
+        if original_app_base_url is not None:
+            os.environ["APP_BASE_URL"] = original_app_base_url
+        else:
+            os.environ.pop("APP_BASE_URL", None)
     assert "grid-template-columns: 208px minmax(0, 1fr) 360px" in styles_css
     assert "@media (max-width: 1040px)" in styles_css
     assert "grid-column: 1 / -1" in styles_css
@@ -1439,8 +1455,10 @@ def main() -> int:
     assert "inline_files" in deploy_script
     assert '"encoding": "base64"' in deploy_script
     assert "upload_endpoint_used=false" in deploy_script
+    assert '"CRM_ENV": os.environ.get("CRM_ENV", "").strip() or "production"' in deploy_script
     assert "Vercel Environment Readiness" in vercel_environment_script
     assert "REQUIRED_STAGING_KEYS" in vercel_environment_script
+    assert '"CRM_ENV": "production"' in vercel_environment_script
     assert "values_stored" in vercel_environment_script
     assert "secrets_read_or_stored" in vercel_environment_script
     assert (PROJECT_ROOT / "reports" / "vercel_environment_readiness.md").exists()
@@ -2186,16 +2204,25 @@ def main() -> int:
             else:
                 os.environ["CHILLCRM_REPORTS_REQUIRED"] = original_health_reports_required
         original_crm_env = os.environ.get("CRM_ENV")
+        original_app_base_url = os.environ.get("APP_BASE_URL")
         try:
             os.environ["CRM_ENV"] = "staging"
             staging_context = handler.runtime_context()
             assert staging_context["environment"] == "staging"
             assert staging_context["environment_label"] == "Staging"
+            os.environ["APP_BASE_URL"] = "https://chillcrm.app"
+            production_context = handler.runtime_context()
+            assert production_context["environment"] == "production"
+            assert production_context["environment_label"] == "Production"
         finally:
             if original_crm_env is None:
                 os.environ.pop("CRM_ENV", None)
             else:
                 os.environ["CRM_ENV"] = original_crm_env
+            if original_app_base_url is None:
+                os.environ.pop("APP_BASE_URL", None)
+            else:
+                os.environ["APP_BASE_URL"] = original_app_base_url
         original_database_url = os.environ.get("DATABASE_URL")
         original_adapter = os.environ.pop("CHILLCRM_DATABASE_ADAPTER", None)
         original_legacy_adapter = os.environ.pop("CRM_DATABASE_ADAPTER", None)

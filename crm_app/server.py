@@ -35,6 +35,7 @@ PROJECT_ROOT = APP_DIR.parent
 DEFAULT_DB = PROJECT_ROOT / "crm_database" / "local_crm.sqlite"
 REPORTS_DIR = PROJECT_ROOT / "reports"
 BACKUP_DIR = PROJECT_ROOT / "backups"
+PRODUCTION_HOSTS = {"chillcrm.app", "www.chillcrm.app"}
 APPLICATION_PROFILE_FIELDS = [
     "APP Number",
     "Date Created",
@@ -632,6 +633,23 @@ def env_flag(name: str, default: bool = False) -> bool:
     if value is None:
         return default
     return value.strip().lower() in {"1", "true", "yes", "on", "enabled", "required"}
+
+
+def normalized_environment(value: str, default: str = "local") -> str:
+    environment = (value or default).strip().lower() or default
+    return re.sub(r"[^a-z0-9_-]+", "_", environment).strip("_") or default
+
+
+def hostname_from_url_or_host(value: str) -> str:
+    text = str(value or "").strip().lower()
+    if not text:
+        return ""
+    parsed = urllib.parse.urlparse(text if "://" in text else f"https://{text}")
+    return (parsed.hostname or "").strip(".")
+
+
+def production_hostname(value: str) -> bool:
+    return hostname_from_url_or_host(value) in PRODUCTION_HOSTS
 
 
 def b64url_encode(payload: bytes) -> str:
@@ -1309,8 +1327,19 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         return self.runtime_environment() != "local"
 
     def runtime_environment(self) -> str:
-        environment = os.environ.get("CRM_ENV", "local").strip().lower() or "local"
-        return re.sub(r"[^a-z0-9_-]+", "_", environment).strip("_") or "local"
+        environment = normalized_environment(os.environ.get("CRM_ENV", "local"))
+        request_host = ""
+        headers = getattr(self, "headers", None)
+        if headers is not None:
+            request_host = str(headers.get("Host") or "")
+        production_base_url = production_hostname(os.environ.get("APP_BASE_URL", ""))
+        production_request_host = production_hostname(request_host)
+        production_vercel_url = production_hostname(os.environ.get("VERCEL_PROJECT_PRODUCTION_URL", ""))
+        if environment in {"prod", "live"}:
+            return "production"
+        if production_base_url or production_request_host or production_vercel_url:
+            return "production"
+        return environment
 
     def auth_setup_status(self) -> dict[str, Any]:
         bootstrap_password_configured = bool(
@@ -13533,8 +13562,8 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
 
         env_vars = [
             ("DATABASE_URL", "runtime", "yes", "yes", "Hosted Postgres connection string or provider variable reference.", "Required for shared remote database."),
-            ("CRM_ENV", "runtime", "no", "yes", "Literal staging.", "Prevents staging/production confusion."),
-            ("APP_BASE_URL", "runtime", "no", "yes", "Provider app URL or custom staging domain.", "Used for links, redirects, and signed-file routes."),
+            ("CRM_ENV", "runtime", "no", "yes", "Literal production.", "Prevents staging/production confusion."),
+            ("APP_BASE_URL", "runtime", "no", "yes", "Provider app URL or custom production domain.", "Used for links, redirects, and signed-file routes."),
             ("SESSION_SECRET", "runtime", "yes", "yes", "Generated high-entropy secret.", "Required before remote login is enabled."),
             ("SESSION_COOKIE_SECURE", "runtime", "no", "yes", "true.", "Remote HTTPS-only session posture."),
             ("AUTH_BOOTSTRAP_ADMIN_EMAIL", "runtime", "partially", "yes", "Owner-approved first admin email.", "Used only for staging seed or first login setup."),
@@ -13712,7 +13741,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
 
         config_vars = [
             ("PORT", "runtime", "no", "provider supplied or 8080 fallback", "Current app CLI port binding.", "supported_now"),
-            ("CRM_ENV", "runtime", "no", "staging", "Clear environment label for UI, health checks, and hosted process context.", "supported_now"),
+            ("CRM_ENV", "runtime", "no", "production", "Clear environment label for UI, health checks, and hosted process context.", "supported_now"),
             ("CRM_DATABASE_PATH", "runtime", "no", "temporary SQLite staging path if used for prototype-only smoke test", "Current app uses --db-path for local SQLite and prototype smoke tests.", "supported_now"),
             ("DATABASE_URL", "runtime", "yes", "Supabase session-pooler connection string", "Hosted Postgres connection. Health/schema probing is supported; the guarded app adapter can be enabled for hosted tests.", "health_probe_supported_adapter_beta"),
             ("CHILLCRM_DATABASE_ADAPTER", "runtime", "no", "postgres", "Explicitly enables the guarded hosted Postgres adapter; leave unset for normal local SQLite operation.", "adapter_beta_supported"),

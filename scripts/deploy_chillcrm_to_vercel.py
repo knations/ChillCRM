@@ -266,7 +266,7 @@ def make_env_values(token: str) -> tuple[dict[str, str], str, str]:
         or os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "").strip()
     )
     values = {
-        "CRM_ENV": "staging",
+        "CRM_ENV": os.environ.get("CRM_ENV", "").strip() or "production",
         "CHILLCRM_DATABASE_ADAPTER": "postgres",
         "DATABASE_URL": prompt_secret("Supabase DATABASE_URL", "CHILLCRM_VERCEL_DATABASE_URL"),
         "CHILLCRM_SSLROOTCERT": "config/supabase-prod-ca-2021.crt",

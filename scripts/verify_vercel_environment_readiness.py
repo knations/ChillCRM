@@ -51,7 +51,7 @@ SECRET_KEYS = {
     "CHILLCRM_SUPABASE_SERVICE_ROLE_KEY",
 }
 EXPECTED_PRODUCTION_VALUES = {
-    "CRM_ENV": "staging",
+    "CRM_ENV": "production",
     "CHILLCRM_DATABASE_ADAPTER": "postgres",
     "CHILLCRM_AUTH_REQUIRED": "true",
     "SESSION_COOKIE_SECURE": "true",

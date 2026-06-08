@@ -463,6 +463,9 @@ def write_csv(path: Path, rows: list[dict[str, Any]]) -> None:
 
 def write_report(path: Path, rows: list[dict[str, Any]], deployment: dict[str, Any]) -> None:
     document_file_access = os.environ.get("DOCUMENT_FILE_ACCESS_ENABLED", "").strip().lower()
+    remote_write_lock_env = os.environ.get("REMOTE_WRITE_LOCK", "").strip().lower()
+    remote_writes_locked = remote_write_lock_env in {"1", "true", "yes", "on", "locked"}
+    remote_write_clause = "remote writes locked" if remote_writes_locked else "remote writes enabled"
     environment_preserved = any(row.get("step") == "environment" and row.get("status") == "preserved" for row in rows)
     document_file_clause = (
         "existing recovered-document file access setting preserved"
@@ -498,7 +501,7 @@ def write_report(path: Path, rows: list[dict[str, Any]], deployment: dict[str, A
             "",
             "## Safety Boundary",
             "",
-            f"The hosted app is configured as CHILLCRM staging with auth required, remote writes locked, complete-package exports locked, and {document_file_clause}. The local SQLite CRM remains the source of truth until hosted auth, file storage, backup/restore, audit, and owner-shakedown gates pass.",
+            f"The hosted app is configured as CHILLCRM staging with auth required, {remote_write_clause}, complete-package exports locked, and {document_file_clause}. The local SQLite CRM remains rollback evidence after owner-approved hosted write enablement.",
             "",
         ]
     )

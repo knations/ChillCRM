@@ -269,18 +269,16 @@ def build_rows() -> list[dict[str, Any]]:
         "monitoring_input_required": plain_value(monitoring, "Input required"),
     }
     rows: list[dict[str, Any]] = [summary]
-    input_specs = []
-    if not newest_hosted_smoke_current:
-        input_specs.append(
-            (
-                "newest_hosted_smoke",
-                "Owner email and owner password",
-                "input_required",
-                "Password is secret. Use hidden prompt or one-shot env var; do not write to reports. Vercel bypass is not required for https://chillcrm.app.",
-                "scripts/verify_vercel_hosted_app.py",
-                "reports/vercel_hosted_app_smoke.md",
-            )
+    input_specs = [
+        (
+            "newest_hosted_smoke",
+            "Owner email and owner password",
+            "input_required",
+            "Password is secret. Use hidden prompt or one-shot env var; do not write to reports. Vercel bypass is not required for https://chillcrm.app.",
+            "scripts/verify_vercel_hosted_app.py",
+            "reports/vercel_hosted_app_smoke.md",
         )
+    ]
     input_specs.extend(
         [
         (

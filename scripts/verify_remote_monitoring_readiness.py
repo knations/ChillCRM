@@ -186,6 +186,11 @@ def write_report(path: Path, rows: list[dict[str, Any]]) -> None:
             + " |"
         )
     blocking = [row for row in checks if row.get("blocks_production") == "yes" and row.get("status") != "pass"]
+    boundary = (
+        "A blocked status means one or more monitoring proofs still need attention before cutover review."
+        if blocking
+        else "Monitoring readiness is green. Continue the approved health, provider-log, backup, audit, file/export, and owner-feedback cadence during shakedown, first day, and week one."
+    )
     lines.extend(["", "## Blocking Monitoring Inputs", ""])
     if blocking:
         for row in blocking:
@@ -207,7 +212,7 @@ def write_report(path: Path, rows: list[dict[str, Any]]) -> None:
             "",
             "## Boundary",
             "",
-            "A blocked status is expected until external provider proof, newest hosted smoke, write-audit rehearsal, owner/cadence signoff, and owner shakedown are complete. Local SQLite remains the source of truth until all production gates pass.",
+            boundary,
             "",
             "## Related Files",
             "",

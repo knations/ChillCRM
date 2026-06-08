@@ -812,6 +812,7 @@ def main() -> int:
     assert "hosted_deployment_freshness" in owner_shakedown_signoff_script
     assert "provider_backup_and_restore_evidence_passed" in owner_shakedown_signoff_script
     assert "hosted_write_unlock_audit_rehearsal_passed" in owner_shakedown_signoff_script
+    assert "hosted_write_audit_execution_reconciled_after_current_smoke" in owner_shakedown_signoff_script
     assert "remote_monitoring_ready" in owner_shakedown_signoff_script
     assert "Source Of Truth Cutover Approval" in source_cutover_approval_script
     assert "pending_owner_cutover_approval" in source_cutover_approval_script
@@ -1226,18 +1227,42 @@ def main() -> int:
     source_cutover_approval_report = (PROJECT_ROOT / "reports" / "source_of_truth_cutover_approval.md").read_text(encoding="utf-8")
     write_audit_rehearsal_report = (PROJECT_ROOT / "reports" / "hosted_write_unlock_audit_rehearsal.md").read_text(encoding="utf-8")
     write_audit_execution_report = (PROJECT_ROOT / "reports" / "hosted_write_audit_execution.md").read_text(encoding="utf-8")
-    assert "Status: pending_owner_monitoring_signoff" in remote_monitoring_signoff_report
-    assert "Monitoring owner: pending" in remote_monitoring_signoff_report
-    assert "Status: pending_owner_shakedown" in owner_shakedown_signoff_report
-    assert "Prerequisites passed: no" in owner_shakedown_signoff_report
+    assert any(
+        f"Status: {status}" in remote_monitoring_signoff_report
+        for status in ["pending_owner_monitoring_signoff", "remote_monitoring_signoff_approved"]
+    )
+    assert any(
+        f"Monitoring owner: {status}" in remote_monitoring_signoff_report
+        for status in ["pending", "approved"]
+    )
+    assert any(
+        f"Status: {status}" in owner_shakedown_signoff_report
+        for status in ["pending_owner_shakedown", "owner_shakedown_signed_off"]
+    )
+    assert any(
+        f"Prerequisites passed: {status}" in owner_shakedown_signoff_report
+        for status in ["no", "yes"]
+    )
     assert "supabase_backup_pitr_proof" in owner_shakedown_signoff_report
     assert "hosted_write_audit_rehearsal" in owner_shakedown_signoff_report
     assert "remote_monitoring_readiness" in owner_shakedown_signoff_report
-    assert "Owner shakedown signoff: pending" in owner_shakedown_signoff_report
+    assert any(
+        f"Owner shakedown signoff: {status}" in owner_shakedown_signoff_report
+        for status in ["pending", "approved"]
+    )
     assert "Source Of Truth Cutover Approval" in source_cutover_approval_report
-    assert "Status: pending_owner_cutover_approval" in source_cutover_approval_report
-    assert "Other production gates passed: no" in source_cutover_approval_report
-    assert "Owner cutover approval: pending" in source_cutover_approval_report
+    assert any(
+        f"Status: {status}" in source_cutover_approval_report
+        for status in ["pending_owner_cutover_approval", "source_of_truth_cutover_approved"]
+    )
+    assert any(
+        f"Other production gates passed: {status}" in source_cutover_approval_report
+        for status in ["no", "yes"]
+    )
+    assert any(
+        f"Owner cutover approval: {status}" in source_cutover_approval_report
+        for status in ["pending", "approved"]
+    )
     assert "Source of truth changed by this script: no" in source_cutover_approval_report
     assert "Hosted Write-Unlock Audit Rehearsal" in write_audit_rehearsal_report
     assert any(
@@ -3877,10 +3902,19 @@ def main() -> int:
             "hosted_deployment_freshness",
         }
         assert blocking_gate_keys <= allowed_blocking_gate_keys
-        assert {"owner_shakedown_signoff", "source_of_truth_cutover_approval"} <= blocking_gate_keys
+        if blocking_gate_keys:
+            assert {"owner_shakedown_signoff", "source_of_truth_cutover_approval"} & blocking_gate_keys
+        else:
+            assert production_gates["production_gate"] == "pass"
+            assert production_gates["status"] == "ready_for_owner_cutover_review"
         assert production_gates["input_required"] == len(blocking_gate_keys)
         assert production_gates["blocking_gates"] == len(blocking_gate_keys)
-        assert production_gates["source_of_truth"] == "local_sqlite"
+        expected_source_of_truth = (
+            "hosted_ready_for_owner_cutover_review"
+            if production_gates["production_gate"] == "pass"
+            else "local_sqlite"
+        )
+        assert production_gates["source_of_truth"] == expected_source_of_truth
         if "hosted_write_unlock_audit_rehearsal" in blocking_gate_keys:
             assert production_gates["next_owner_action"]["title"] == "Hosted write-audit rehearsal"
             assert "controlled staging-only write rehearsal" in production_gates["next_owner_action"]["detail"]

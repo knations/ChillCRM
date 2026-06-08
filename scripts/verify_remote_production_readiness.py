@@ -624,11 +624,31 @@ def write_csv(path: Path, summary: dict[str, Any], gates: list[Gate]) -> None:
 def write_report(path: Path, summary: dict[str, Any], gates: list[Gate]) -> None:
     blocking = [gate for gate in gates if gate.blocks_production == "yes" and gate.status != "pass"]
     newest_smoke_gate = next((gate for gate in gates if gate.key == "newest_hosted_smoke"), None)
+    source_cutover_gate = next((gate for gate in gates if gate.key == "source_of_truth_cutover_approval"), None)
+    source_cutover_approved = bool(source_cutover_gate and source_cutover_gate.status == "pass")
+    hosted_write_enablement = read_text("reports/hosted_write_enablement.md")
+    hosted_writes_enabled = (
+        plain_value(hosted_write_enablement, "Status") == "hosted_writes_enabled"
+        and plain_value(hosted_write_enablement, "Remote write lock") == "disabled"
+    )
     newest_smoke_command = (
         "- Newest hosted smoke: current for this deployment; rerun with the Vercel bypass and owner credentials only after deployment, schema, auth, storage, or provider-environment changes."
         if newest_smoke_gate and newest_smoke_gate.status == "pass"
         else "- Newest hosted smoke: run `scripts/verify_vercel_hosted_app.py` against `https://chillcrm.app` with owner email/password and `EXPECT_DOCUMENT_FILE_ACCESS=true` supplied through environment variables or hidden prompts. Vercel bypass is not required for the public custom domain."
     )
+    hosted_write_enablement_command = (
+        "- Hosted write enablement: hosted production writes are verified enabled; keep monitoring audit evidence, backups, and owner feedback."
+        if hosted_writes_enabled
+        else "- Hosted write enablement: run `scripts/enable_hosted_writes_production.py --owner-approved --enable-writes --prompt-secrets` only after explicit owner approval to make the hosted CRM live-editable."
+    )
+    if blocking:
+        boundary = "This is a gate report only. A blocked status means one or more production-readiness proofs still need attention. Do not make the hosted CRM the source of truth until all blocking gates pass and owner approval is explicit."
+    elif hosted_writes_enabled:
+        boundary = "This is a gate report only. All production gates pass and hosted write enablement evidence is present; continue monitoring app health, audit evidence, backups, and owner feedback during first live use."
+    elif source_cutover_approved:
+        boundary = "This is a gate report only. All production gates pass and owner cutover approval is recorded, but hosted writes remain locked until `reports/hosted_write_enablement.md` records `hosted_writes_enabled`. Local SQLite/export packages remain rollback evidence."
+    else:
+        boundary = "This is a gate report only. All production gates pass; source-of-truth cutover still requires separate owner approval before hosted editing becomes the company CRM posture."
     lines = [
         "# Remote Production Readiness",
         "",
@@ -674,6 +694,10 @@ def write_report(path: Path, summary: dict[str, Any], gates: list[Gate]) -> None
     if blocking:
         for gate in blocking:
             lines.append(f"- {gate.gate}: {gate.status}. {gate.next_action}")
+    elif hosted_writes_enabled:
+        lines.append("- None. Hosted write enablement evidence is present and monitoring should continue through first live use.")
+    elif source_cutover_approved:
+        lines.append("- None. Owner cutover approval is recorded; hosted writes remain locked until the separate hosted write-enable command is explicitly run and verified.")
     else:
         lines.append("- None. Owner cutover review can begin, but source-of-truth switch still requires explicit owner approval.")
     lines.extend(
@@ -682,6 +706,7 @@ def write_report(path: Path, summary: dict[str, Any], gates: list[Gate]) -> None
             "## Safe Next Commands",
             "",
             newest_smoke_command,
+            hosted_write_enablement_command,
             "- Supabase backup visibility: run `scripts/verify_supabase_backup_readiness.py` with `SUPABASE_ACCESS_TOKEN` supplied through the environment or hidden prompt, or record owner-confirmed Dashboard backup evidence using the dashboard flags shown in `reports/remaining_production_gates_packet.md`.",
             "- Owner recovery closure: after owner access is confirmed, redeploy with `CHILLCRM_OWNER_PASSWORD_RECOVERY_ENABLED=false` and rerun `scripts/verify_owner_recovery_closure.py`.",
             "- Hosted deployment freshness: after local hosted runtime changes, redeploy with `CHILLCRM_VERCEL_INLINE_FILES=1`, rerun hosted smoke, and refresh safe gate reports.",
@@ -695,7 +720,7 @@ def write_report(path: Path, summary: dict[str, Any], gates: list[Gate]) -> None
             "",
             "## Boundary",
             "",
-            "This is a gate report only. A blocked status is expected until the remaining external proofs and owner shakedown are complete. Do not make the hosted CRM the source of truth until all blocking gates pass and the owner approves cutover.",
+            boundary,
             "",
             "## Related Files",
             "",
@@ -710,6 +735,7 @@ def write_report(path: Path, summary: dict[str, Any], gates: list[Gate]) -> None
             "- `reports/vercel_hosted_app_smoke.md`",
             "- `reports/owner_recovery_closure.md`",
             "- `reports/source_of_truth_cutover_approval.md`",
+            "- `reports/hosted_write_enablement.md`",
             "- `reports/hosted_write_audit_execution.md`",
             "- `reports/supabase_backup_readiness.md`",
             "- `reports/remote_monitoring_readiness.md`",

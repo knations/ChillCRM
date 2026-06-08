@@ -3060,8 +3060,10 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
     def production_gate_status(self) -> dict[str, Any]:
         readiness_rows = self.read_report_csv_rows("remote_production_readiness.csv")
         remaining_rows = self.read_report_csv_rows("remaining_production_gates_packet.csv")
+        enablement_rows = self.read_report_csv_rows("hosted_write_enablement.csv")
         summary = next((row for row in readiness_rows if row.get("row_type") == "summary"), {})
         remaining_summary = next((row for row in remaining_rows if row.get("row_type") == "summary"), {})
+        enablement_summary = next((row for row in enablement_rows if row.get("row_type") == "summary"), {})
         blocking_gates = [
             {
                 "key": row.get("key") or "",
@@ -3108,6 +3110,12 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             if not input_gate_keys.get(row["input"]) or input_gate_keys[row["input"]] in blocking_gate_keys
         ]
         needed_inputs.sort(key=lambda row: row.get("order") or 0)
+        if (summary.get("production_gate") or "") != "pass":
+            source_of_truth = "local_sqlite"
+        elif enablement_summary.get("status") == "hosted_writes_enabled":
+            source_of_truth = "hosted_remote_crm"
+        else:
+            source_of_truth = "hosted_ready_for_owner_cutover_review"
         return {
             "status": summary.get("status") or "unknown",
             "production_gate": summary.get("production_gate") or "unknown",
@@ -3125,10 +3133,18 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             "next_owner_action": self.next_owner_gate_action(needed_inputs),
             "next_operator_action": self.next_operator_gate_action(needed_inputs),
             "next_production_action": self.next_production_gate_action(needed_inputs),
-            "source_of_truth": "local_sqlite" if (summary.get("production_gate") or "") != "pass" else "hosted_ready_for_owner_cutover_review",
+            "source_of_truth": source_of_truth,
+            "hosted_write_enablement": {
+                "status": enablement_summary.get("status") or "",
+                "production_gate": enablement_summary.get("production_gate") or "",
+                "remote_write_lock": enablement_summary.get("remote_write_lock") or "",
+                "source_of_truth": enablement_summary.get("source_of_truth") or "",
+                "report": "/reports/hosted_write_enablement.md",
+            },
             "reports": {
                 "readiness": "/reports/remote_production_readiness.md",
                 "remaining_packet": "/reports/remaining_production_gates_packet.md",
+                "hosted_write_enablement": "/reports/hosted_write_enablement.md",
                 "owner_intake": "/reports/owner_gate_intake_packet.md",
                 "owner_wave": "/reports/owner_approved_wave_packet.md",
                 "backup_evidence": "/reports/supabase_backup_evidence_packet.md",
@@ -4065,6 +4081,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             "remote_monitoring_signoff.md",
             "hosted_write_unlock_audit_rehearsal.md",
             "hosted_write_audit_execution.md",
+            "hosted_write_enablement.md",
             "remaining_gate_guardrails.md",
             "remaining_gate_execution_readiness.md",
             "private_execution_inputs.md",

@@ -35,6 +35,44 @@ def plain_value(text: str, label: str) -> str:
     return match.group(1).strip().rstrip(".") if match else ""
 
 
+def hosted_write_audit_execution_ready(
+    execution_report: str,
+    smoke_report: str,
+) -> tuple[bool, str]:
+    execution_status = plain_value(execution_report, "Status")
+    execution_gate = plain_value(execution_report, "Production gate")
+    if execution_status == "hosted_write_audit_execution_passed" and execution_gate == "pass":
+        return True, "execution_check=hosted_write_audit_execution_passed"
+    smoke_passed = backtick_value(smoke_report, "Passed")
+    smoke_failed = backtick_value(smoke_report, "Failed")
+    current_smoke_passed = smoke_passed.isdigit() and int(smoke_passed) >= 14 and smoke_failed == "0"
+    required_tokens = [
+        "- Owner approved: yes.",
+        "- Execution requested: yes.",
+        "- Write lock restored: yes.",
+        "- Secret values stored: no.",
+        "- Source of truth changed: no.",
+        "| deploy_write_lock_off | passed |",
+        "| verify_unlocked_runtime | passed |",
+        "| owner_login_unlocked | passed |",
+        "| create_probe_record | passed |",
+        "| verify_actor_audit | passed |",
+        "| deploy_write_lock_on | passed |",
+        "| verify_relocked_runtime | passed |",
+        "| verify_write_lock_blocks_again | passed |",
+    ]
+    reconciled = (
+        execution_status == "hosted_write_audit_execution_failed"
+        and execution_gate == "blocked_until_hosted_write_audit_rehearsal_passes"
+        and current_smoke_passed
+        and "approved_staging_write_audit_probe_people" in smoke_report
+        and all(token in execution_report for token in required_tokens)
+    )
+    if reconciled:
+        return True, "execution_check=hosted_write_audit_execution_reconciled_after_current_smoke"
+    return False, f"execution_status={execution_status or 'missing'}; execution_gate={execution_gate or 'missing'}"
+
+
 def write_csv(path: Path, rows: list[dict[str, Any]]) -> None:
     fieldnames: list[str] = []
     for row in rows:
@@ -114,6 +152,7 @@ def prerequisite_checks() -> list[dict[str, Any]]:
     write_audit_gate = plain_value(write_audit, "Production gate")
     write_audit_execution_status = plain_value(write_audit_execution, "Status")
     write_audit_execution_gate = plain_value(write_audit_execution, "Production gate")
+    write_audit_execution_ok, write_audit_execution_evidence = hosted_write_audit_execution_ready(write_audit_execution, smoke)
     monitoring_status = plain_value(monitoring, "Status")
     monitoring_gate = plain_value(monitoring, "Production gate")
 
@@ -143,13 +182,13 @@ def prerequisite_checks() -> list[dict[str, Any]]:
                 "pass"
                 if write_audit_status == "hosted_write_unlock_audit_rehearsal_passed"
                 and write_audit_gate == "pass"
-                and write_audit_execution_status == "hosted_write_audit_execution_passed"
-                and write_audit_execution_gate == "pass"
+                and write_audit_execution_ok
                 else "input_required"
             ),
             "evidence": (
                 f"status={write_audit_status or 'missing'}; production_gate={write_audit_gate or 'missing'}; "
-                f"execution_status={write_audit_execution_status or 'missing'}; execution_gate={write_audit_execution_gate or 'missing'}"
+                f"execution_status={write_audit_execution_status or 'missing'}; execution_gate={write_audit_execution_gate or 'missing'}; "
+                f"{write_audit_execution_evidence}"
             ),
         },
         {

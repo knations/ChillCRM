@@ -135,6 +135,7 @@ def build_rows() -> list[dict[str, Any]]:
     secret_report = read_text("reports/secret_handling_boundaries.md")
 
     needed_inputs = [row for row in remaining_rows if row.get("row_type") == "input"]
+    completed_inputs = [row for row in remaining_rows if row.get("row_type") == "completed_input"]
     phases = [row for row in remaining_rows if row.get("row_type") == "phase"]
     owner_wave_summary = next((row for row in owner_wave_rows if row.get("row_type") == "summary"), {})
     blocking_gates = [
@@ -145,15 +146,19 @@ def build_rows() -> list[dict[str, Any]]:
     ]
 
     input_names = [row.get("input") or "" for row in sorted(needed_inputs, key=lambda row: int(row.get("order") or 0))]
-    unexpected_inputs = [name for name in input_names if name not in EXPECTED_INPUTS]
-    completed_inputs = [name for name in EXPECTED_INPUTS if name not in input_names]
+    completed_input_names = [row.get("input") or "" for row in completed_inputs]
+    covered_input_names = set(input_names) | set(completed_input_names)
+    unexpected_inputs = [name for name in [*input_names, *completed_input_names] if name and name not in EXPECTED_INPUTS]
+    missing_expected_inputs = [name for name in EXPECTED_INPUTS if name not in covered_input_names]
     add_check(
         rows,
         "expected_remaining_inputs_present",
-        "pass" if input_names and not unexpected_inputs else "fail",
+        "pass" if not missing_expected_inputs and not unexpected_inputs else "fail",
         (
             f"known_inputs={len(EXPECTED_INPUTS)}, active_inputs={len(input_names)}, "
-            f"completed_or_not_current={len(completed_inputs)}, unexpected={', '.join(unexpected_inputs) or 'none'}"
+            f"completed_inputs={len(completed_input_names)}, "
+            f"missing_expected={', '.join(missing_expected_inputs) or 'none'}, "
+            f"unexpected={', '.join(unexpected_inputs) or 'none'}"
         ),
     )
 
@@ -170,7 +175,8 @@ def build_rows() -> list[dict[str, Any]]:
     )
 
     missing_reports = []
-    for row in needed_inputs:
+    proof_input_rows = [*needed_inputs, *completed_inputs]
+    for row in proof_input_rows:
         for report in report_links(row.get("proof_report") or ""):
             if not (PROJECT_ROOT / report).exists():
                 missing_reports.append(report)
@@ -178,7 +184,7 @@ def build_rows() -> list[dict[str, Any]]:
         rows,
         "proof_reports_exist",
         "pass" if not missing_reports else "fail",
-        f"proof_report_links_checked={sum(len(report_links(row.get('proof_report') or '')) for row in needed_inputs)}, missing={', '.join(missing_reports) or 'none'}",
+        f"proof_report_links_checked={sum(len(report_links(row.get('proof_report') or '')) for row in proof_input_rows)}, missing={', '.join(missing_reports) or 'none'}",
     )
 
     command_failures = []

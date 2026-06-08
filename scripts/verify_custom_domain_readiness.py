@@ -121,6 +121,7 @@ def write_report(path: Path, rows: list[dict[str, Any]]) -> None:
         f"- App auth required: {summary.get('app_auth_required')}.",
         f"- CRM data public access denied: {summary.get('crm_data_public_denied')}.",
         f"- Remote write lock: {summary.get('remote_write_lock')}.",
+        f"- Expected remote write lock: {summary.get('expected_remote_write_lock')}.",
         f"- Owner recovery: {summary.get('owner_recovery')}.",
         "",
         "## Checks",
@@ -139,6 +140,7 @@ def write_report(path: Path, rows: list[dict[str, Any]]) -> None:
             "",
             "- `ChillCRM.app` is the public-facing custom domain alias.",
             "- The custom domain serves the app shell publicly, then relies on CHILLCRM app authentication to protect CRM data.",
+            "- The remote write-lock expectation changes after explicit owner approval enables hosted production writes.",
             "- The raw Vercel deployment URL may still be protected by Vercel Authentication; that is tracked separately in `reports/vercel_public_protection.md`.",
             "- Before final cutover, run the owner smoke against whichever URL will be treated as the company CRM URL.",
         ]
@@ -146,9 +148,27 @@ def write_report(path: Path, rows: list[dict[str, Any]]) -> None:
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+def report_plain_value(text: str, label: str) -> str:
+    for line in text.splitlines():
+        prefix = f"- {label}: "
+        if line.startswith(prefix):
+            return line[len(prefix) :].strip().rstrip(".")
+    return ""
+
+
+def default_expected_remote_write_lock() -> str:
+    enablement = REPORTS_DIR / "hosted_write_enablement.md"
+    if enablement.exists():
+        text = enablement.read_text(encoding="utf-8")
+        if report_plain_value(text, "Status") == "hosted_writes_enabled":
+            return "disabled"
+    return "enabled"
+
+
 def build_rows(args: argparse.Namespace) -> list[dict[str, Any]]:
     canonical_url = args.url.rstrip("/")
     http_url = args.http_url.rstrip("/")
+    expected_remote_write_lock = args.expected_remote_write_lock
     rows: list[dict[str, Any]] = []
 
     http_root = fetch("GET", http_url)
@@ -222,14 +242,26 @@ def build_rows(args: argparse.Namespace) -> list[dict[str, Any]]:
     remote_write_lock_enabled = ((runtime.get("remote_write_lock") or {}).get("enabled") is True)
     exports_locked = ((runtime.get("bulk_package_exports") or {}).get("enabled") is False)
     database_ok = ((checks.get("database") or {}).get("status") == "ok")
-    health_ok = health.status == 200 and health_payload.get("ok") is True and remote_write_lock_enabled and exports_locked and database_ok
+    expected_lock_enabled = expected_remote_write_lock == "enabled"
+    remote_write_lock_matches = (
+        expected_remote_write_lock == "any"
+        or remote_write_lock_enabled == expected_lock_enabled
+    )
+    health_ok = (
+        health.status == 200
+        and health_payload.get("ok") is True
+        and remote_write_lock_matches
+        and exports_locked
+        and database_ok
+    )
     add_check(
         rows,
         "public_health_runtime_guardrails",
         "pass" if health_ok else "fail",
         (
             f"status={health.status}; ok={health_payload.get('ok')}; database_ok={database_ok}; "
-            f"remote_write_lock={remote_write_lock_enabled}; export_package_enabled={(runtime.get('bulk_package_exports') or {}).get('enabled')}"
+            f"remote_write_lock={remote_write_lock_enabled}; expected_remote_write_lock={expected_remote_write_lock}; "
+            f"export_package_enabled={(runtime.get('bulk_package_exports') or {}).get('enabled')}"
         ),
         blocks_cutover=True,
     )
@@ -273,7 +305,8 @@ def build_rows(args: argparse.Namespace) -> list[dict[str, Any]]:
             "public_app_shell": "yes" if app_shell_ok else "no",
             "app_auth_required": "yes" if auth_required else "no",
             "crm_data_public_denied": "yes" if summary_denied and create_denied else "no",
-            "remote_write_lock": "enabled" if remote_write_lock_enabled else "not_verified",
+            "remote_write_lock": "enabled" if remote_write_lock_enabled else "disabled",
+            "expected_remote_write_lock": expected_remote_write_lock,
             "owner_recovery": "disabled" if owner_recovery_off else "not_disabled",
         },
     )
@@ -284,6 +317,12 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Verify CHILLCRM custom domain readiness without secrets or writes.")
     parser.add_argument("--url", default=DEFAULT_DOMAIN_URL)
     parser.add_argument("--http-url", default=DEFAULT_HTTP_URL)
+    parser.add_argument(
+        "--expected-remote-write-lock",
+        choices=["enabled", "disabled", "any"],
+        default=default_expected_remote_write_lock(),
+        help="Expected runtime write-lock state. Defaults to disabled once hosted_write_enablement.md records final enablement.",
+    )
     args = parser.parse_args()
     rows = build_rows(args)
     REPORTS_DIR.mkdir(exist_ok=True)

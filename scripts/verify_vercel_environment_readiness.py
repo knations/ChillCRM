@@ -109,8 +109,40 @@ def env_payload_items(payload: dict[str, Any]) -> list[dict[str, Any]]:
     return [item for item in items if isinstance(item, dict)]
 
 
+def env_bool_text(value: str) -> str:
+    normalized = value.strip().lower()
+    if normalized in {"1", "true", "yes", "on", "enabled"}:
+        return "true"
+    if normalized in {"0", "false", "no", "off", "disabled"}:
+        return "false"
+    return ""
+
+
+def report_plain_value(text: str, label: str) -> str:
+    for line in text.splitlines():
+        prefix = f"- {label}: "
+        if line.startswith(prefix):
+            return line[len(prefix) :].strip().rstrip(".")
+    return ""
+
+
+def expected_production_values() -> dict[str, str]:
+    values = dict(EXPECTED_PRODUCTION_VALUES)
+    explicit = env_bool_text(os.environ.get("CHILLCRM_EXPECT_REMOTE_WRITE_LOCK", ""))
+    if explicit:
+        values["REMOTE_WRITE_LOCK"] = explicit
+        return values
+    enablement = REPORTS_DIR / "hosted_write_enablement.md"
+    if enablement.exists():
+        text = enablement.read_text(encoding="utf-8")
+        if report_plain_value(text, "Status") == "hosted_writes_enabled":
+            values["REMOTE_WRITE_LOCK"] = "false"
+    return values
+
+
 def build_rows(project_id: str, team_slug: str, env_items: list[dict[str, Any]]) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
+    expected_values = expected_production_values()
     by_key: dict[str, list[dict[str, Any]]] = {}
     for item in env_items:
         key = str(item.get("key") or "").strip()
@@ -134,7 +166,7 @@ def build_rows(project_id: str, team_slug: str, env_items: list[dict[str, Any]])
             {
                 "row_type": "check",
                 "key": key,
-                "category": "required_locked_staging",
+                "category": "required_hosted_runtime",
                 "status": status,
                 "blocks_remote_shakedown": "yes",
                 "expected_secret": "yes" if expected_secret else "no",
@@ -162,14 +194,14 @@ def build_rows(project_id: str, team_slug: str, env_items: list[dict[str, Any]])
             }
         )
 
-    visible_expected_keys = [key for key in EXPECTED_PRODUCTION_VALUES if key not in SECRET_KEYS]
+    visible_expected_keys = [key for key in expected_values if key not in SECRET_KEYS]
     for key in visible_expected_keys:
         entries = by_key.get(key, [])
         production_entries = [entry for entry in entries if "production" in target_names(entry.get("target"))]
         sample = production_entries[0] if production_entries else {}
         value = str(sample.get("value") or "") if sample else ""
         # Vercel may omit values in some contexts. Treat absence as unverified, not failed.
-        expected = EXPECTED_PRODUCTION_VALUES[key]
+        expected = expected_values[key]
         if not value:
             status = "unverified"
             evidence = "Vercel did not return a plain value through this API response."
@@ -191,7 +223,7 @@ def build_rows(project_id: str, team_slug: str, env_items: list[dict[str, Any]])
         )
 
     checks = [row for row in rows if row["row_type"] == "check"]
-    required = [row for row in checks if row["category"] == "required_locked_staging"]
+    required = [row for row in checks if row["category"] == "required_hosted_runtime"]
     required_missing = [row for row in required if row["status"] != "pass"]
     warnings = [row for row in rows if row["status"] == "warning"]
     summary = {
@@ -269,7 +301,7 @@ def write_report(path: Path, rows: list[dict[str, Any]]) -> None:
             "",
             "## Boundary",
             "",
-            "This is a metadata-only provider audit. It proves required environment keys are present for the locked staging deployment, but it does not reveal or validate secret contents. Hosted smoke and health checks remain the runtime proof that those settings behave correctly.",
+            "This is a metadata-only provider audit. It proves required environment keys are present for the hosted runtime, but it does not reveal or validate secret contents. Hosted smoke, health checks, and final write-enable evidence remain the runtime proof that those settings behave correctly.",
         ]
     )
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")

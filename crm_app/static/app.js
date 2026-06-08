@@ -91,6 +91,7 @@ const state = {
   currentCleanupGroup: null,
   q: "",
   debounce: null,
+  searchRequestId: 0,
   currentDetail: null,
   currentArchiveItem: null,
   auth: null,
@@ -132,6 +133,38 @@ const els = {
   passwordChangeForm: document.querySelector("#passwordChangeForm"),
   passwordMessage: document.querySelector("#passwordMessage"),
 };
+
+function captureInputFocus(inputId) {
+  const active = document.activeElement;
+  if (!active || active.id !== inputId) return null;
+  const valueLength = active.value?.length || 0;
+  return {
+    id: inputId,
+    selectionStart: typeof active.selectionStart === "number" ? active.selectionStart : valueLength,
+    selectionEnd: typeof active.selectionEnd === "number" ? active.selectionEnd : valueLength,
+  };
+}
+
+function restoreInputFocus(focusState) {
+  if (!focusState) return;
+  window.requestAnimationFrame(() => {
+    const input = document.querySelector(`#${focusState.id}`);
+    if (!input) return;
+    input.focus({ preventScroll: true });
+    if (typeof input.setSelectionRange === "function") {
+      const max = input.value?.length || 0;
+      const start = Math.min(focusState.selectionStart, max);
+      const end = Math.min(focusState.selectionEnd, max);
+      input.setSelectionRange(start, end);
+    }
+  });
+}
+
+function showOnlyMainView(activeView) {
+  document.querySelectorAll(".main .view").forEach((view) => {
+    view.classList.toggle("active-view", view === activeView);
+  });
+}
 
 const listTitles = {
   people: "People",
@@ -602,18 +635,22 @@ function setView(view) {
   els.navButtons.forEach((button) => {
     button.classList.toggle("active", button.dataset.view === view);
   });
-  els.dashboard.classList.toggle("active-view", view === "dashboard");
-  els.migrationStatus.classList.toggle("active-view", view === "migrationStatus");
-  els.list.classList.toggle("active-view", ["people", "companies", "leads", "deals"].includes(view));
-  els.tags.classList.toggle("active-view", view === "tags");
-  els.customFields.classList.toggle("active-view", view === "customFields");
-  els.linkedResources.classList.toggle("active-view", view === "linkedResources");
-  els.archive.classList.toggle("active-view", view === "archive");
-  els.followup.classList.toggle("active-view", view === "followup");
-  els.activity.classList.toggle("active-view", view === "activity");
-  els.exports.classList.toggle("active-view", view === "exports");
-  els.users.classList.toggle("active-view", view === "users");
-  els.cleanup.classList.toggle("active-view", view === "cleanup");
+  const activeView = ["people", "companies", "leads", "deals"].includes(view)
+    ? els.list
+    : {
+        dashboard: els.dashboard,
+        migrationStatus: els.migrationStatus,
+        tags: els.tags,
+        customFields: els.customFields,
+        linkedResources: els.linkedResources,
+        archive: els.archive,
+        followup: els.followup,
+        activity: els.activity,
+        exports: els.exports,
+        users: els.users,
+        cleanup: els.cleanup,
+      }[view];
+  showOnlyMainView(activeView || els.dashboard);
   updateRecordWorkspaceForView(view);
   if (view === "migrationStatus") {
     renderMigrationStatus();
@@ -3522,6 +3559,7 @@ function savedViewControls(savedViews) {
 
 async function renderList() {
   setStatus(`Loading ${listTitles[state.listType]}`);
+  const focusState = captureInputFocus("listSearch");
   state.mobileDetailReturnLabel = listTitles[state.listType] || "List";
   const sort = currentListSort();
   const statusFilter = currentListStatusFilter();
@@ -3694,14 +3732,15 @@ async function renderList() {
     renderList();
   });
   listSearch.addEventListener("input", () => {
+    state.q = listSearch.value.trim();
     window.clearTimeout(state.debounce);
     state.debounce = window.setTimeout(() => {
       clearSelectedSavedView();
-      state.q = listSearch.value.trim();
       state.page = 1;
       renderList();
     }, 220);
   });
+  restoreInputFocus(focusState);
   listTagFilter.addEventListener("change", () => {
     clearSelectedSavedView();
     state.listTagId = listTagFilter.value;
@@ -5618,6 +5657,7 @@ function wireDetailForms(detail) {
 
 async function renderFollowup() {
   setStatus("Loading follow up");
+  const focusState = captureInputFocus("taskSearch");
   const params = new URLSearchParams({
     status: state.taskStatus,
     q: state.taskQ,
@@ -5748,14 +5788,15 @@ async function renderFollowup() {
     renderFollowup();
   });
   document.querySelector("#taskSearch").addEventListener("input", (event) => {
+    state.taskQ = event.target.value.trim();
     window.clearTimeout(state.debounce);
     state.debounce = window.setTimeout(() => {
       clearSelectedTaskSavedView();
-      state.taskQ = event.target.value.trim();
       state.taskPage = 1;
       renderFollowup();
     }, 250);
   });
+  restoreInputFocus(focusState);
   document.querySelector("#taskRecordType").addEventListener("change", (event) => {
     clearSelectedTaskSavedView();
     state.taskRecordType = event.target.value;
@@ -5932,6 +5973,7 @@ function activitySavedViewControls(savedViews) {
 
 async function renderActivity() {
   setStatus("Loading activity");
+  const focusState = captureInputFocus("activitySearch");
   const params = new URLSearchParams({
     limit: "100",
     q: state.activityQ,
@@ -6047,6 +6089,7 @@ async function renderActivity() {
       renderActivity();
     }, 250);
   });
+  restoreInputFocus(focusState);
   document.querySelector("#activityTypeFilter").addEventListener("change", (event) => {
     clearSelectedActivitySavedView();
     state.activityType = event.target.value;
@@ -6187,6 +6230,7 @@ async function renderExports() {
 
 async function renderTags() {
   setStatus("Loading tags");
+  const focusState = captureInputFocus("tagSearch");
   const params = new URLSearchParams({
     page: String(state.tagPage),
     page_size: "50",
@@ -6317,14 +6361,15 @@ async function renderTags() {
   });
   const tagSearch = document.querySelector("#tagSearch");
   tagSearch.addEventListener("input", () => {
+    state.tagQ = tagSearch.value.trim();
     window.clearTimeout(state.debounce);
     state.debounce = window.setTimeout(() => {
       clearSelectedTagSavedView();
-      state.tagQ = tagSearch.value.trim();
       state.tagPage = 1;
       renderTags();
     }, 220);
   });
+  restoreInputFocus(focusState);
   document.querySelector("#tagRecordTypeFilter").addEventListener("change", (event) => {
     clearSelectedTagSavedView();
     state.tagRecordType = event.target.value;
@@ -6345,6 +6390,7 @@ async function renderTags() {
 
 async function renderLinkedResources() {
   setStatus("Loading linked resources");
+  const focusState = captureInputFocus("linkedResourceSearch");
   const params = new URLSearchParams({
     page: String(state.linkedResourcePage),
     page_size: "50",
@@ -6462,14 +6508,15 @@ async function renderLinkedResources() {
   });
   const linkedResourceSearch = document.querySelector("#linkedResourceSearch");
   linkedResourceSearch.addEventListener("input", () => {
+    state.linkedResourceQ = linkedResourceSearch.value.trim();
     window.clearTimeout(state.debounce);
     state.debounce = window.setTimeout(() => {
       clearSelectedLinkedResourceSavedView();
-      state.linkedResourceQ = linkedResourceSearch.value.trim();
       state.linkedResourcePage = 1;
       renderLinkedResources();
     }, 220);
   });
+  restoreInputFocus(focusState);
   document.querySelector("#linkedResourceKindFilter").addEventListener("change", (event) => {
     clearSelectedLinkedResourceSavedView();
     state.linkedResourceKind = event.target.value;
@@ -6529,6 +6576,7 @@ function linkedResourceRow(resource) {
 
 async function renderArchive() {
   setStatus("Loading archive");
+  const focusState = captureInputFocus("archiveSearch");
   const params = new URLSearchParams({
     page: String(state.archivePage),
     page_size: "50",
@@ -6688,14 +6736,15 @@ async function renderArchive() {
   });
   const archiveSearch = document.querySelector("#archiveSearch");
   archiveSearch.addEventListener("input", () => {
+    state.archiveQ = archiveSearch.value.trim();
     window.clearTimeout(state.debounce);
     state.debounce = window.setTimeout(() => {
       clearSelectedArchiveSavedView();
-      state.archiveQ = archiveSearch.value.trim();
       state.archivePage = 1;
       renderArchive();
     }, 220);
   });
+  restoreInputFocus(focusState);
   document.querySelector("#archiveItemTypeFilter").addEventListener("change", (event) => {
     clearSelectedArchiveSavedView();
     state.archiveItemType = event.target.value;
@@ -7045,6 +7094,7 @@ function archiveItemLabel(itemType) {
 
 async function renderCustomFields() {
   setStatus("Loading custom fields");
+  const focusState = captureInputFocus("customFieldSearch");
   const params = new URLSearchParams({
     page: String(state.customFieldPage),
     page_size: "50",
@@ -7176,14 +7226,15 @@ async function renderCustomFields() {
   });
   const customFieldSearch = document.querySelector("#customFieldSearch");
   customFieldSearch.addEventListener("input", () => {
+    state.customFieldQ = customFieldSearch.value.trim();
     window.clearTimeout(state.debounce);
     state.debounce = window.setTimeout(() => {
       clearSelectedCustomFieldSavedView();
-      state.customFieldQ = customFieldSearch.value.trim();
       state.customFieldPage = 1;
       renderCustomFields();
     }, 220);
   });
+  restoreInputFocus(focusState);
   document.querySelector("#customFieldRecordTypeFilter").addEventListener("change", (event) => {
     clearSelectedCustomFieldSavedView();
     state.customFieldRecordType = event.target.value;
@@ -8343,6 +8394,7 @@ function cleanupRecordStats(record) {
 
 async function renderCleanup() {
   setStatus("Loading cleanup");
+  const focusState = captureInputFocus("cleanupGroupSearch");
   const groupParams = new URLSearchParams({
     type: state.cleanupGroupType,
     status: state.cleanupStatus,
@@ -8673,13 +8725,14 @@ async function renderCleanup() {
   });
   const cleanupGroupSearch = document.querySelector("#cleanupGroupSearch");
   cleanupGroupSearch.addEventListener("input", () => {
+    state.cleanupGroupQ = cleanupGroupSearch.value.trim();
     window.clearTimeout(state.debounce);
     state.debounce = window.setTimeout(() => {
-      state.cleanupGroupQ = cleanupGroupSearch.value.trim();
       state.cleanupGroupPage = 1;
       renderCleanup();
     }, 220);
   });
+  restoreInputFocus(focusState);
   document.querySelector("#prevCleanupGroupPage").addEventListener("click", () => {
     state.cleanupGroupPage = Math.max(1, state.cleanupGroupPage - 1);
     renderCleanup();
@@ -8721,31 +8774,36 @@ async function runSearch(query) {
     setView(state.view);
     return;
   }
+  const requestId = ++state.searchRequestId;
   setStatus("Searching");
   closeMobileDetailView();
   state.mobileDetailReturnLabel = "Search";
-  const data = await fetchJson(`/api/search?q=${encodeURIComponent(query)}`);
-  els.dashboard.classList.remove("active-view");
-  els.tags.classList.remove("active-view");
-  els.customFields.classList.remove("active-view");
-  els.archive.classList.remove("active-view");
-  els.followup.classList.remove("active-view");
-  els.activity.classList.remove("active-view");
-  els.exports.classList.remove("active-view");
-  els.users.classList.remove("active-view");
-  els.cleanup.classList.remove("active-view");
-  els.list.classList.add("active-view");
-  els.list.innerHTML = `
-    <div class="section-header">
-      <div>
-        <h2>Search</h2>
-        <p>${formatNumber(data.results.length)} quick results</p>
+  try {
+    const data = await fetchJson(`/api/search?q=${encodeURIComponent(query)}`);
+    if (requestId !== state.searchRequestId) return;
+    showOnlyMainView(els.list);
+    els.list.innerHTML = `
+      <div class="section-header">
+        <div>
+          <h2>Search</h2>
+          <p>${formatNumber(data.results.length)} quick results</p>
+        </div>
       </div>
-    </div>
-    ${recordTable(data.results, "search")}
-  `;
-  wireRecordButtons(els.list);
-  setStatus("Ready");
+      ${recordTable(data.results, "search")}
+    `;
+    wireRecordButtons(els.list);
+    setStatus("Ready");
+  } catch (error) {
+    if (requestId !== state.searchRequestId) return;
+    showOnlyMainView(els.list);
+    els.list.innerHTML = `
+      <div class="empty-state">
+        <h3>Search did not complete</h3>
+        <p>${escapeHtml(error.message || "Try again, or use a list filter while I check the search service.")}</p>
+      </div>
+    `;
+    setStatus("Search error");
+  }
 }
 
 els.navButtons.forEach((button) => {
@@ -8768,6 +8826,13 @@ els.search.addEventListener("input", () => {
   state.debounce = window.setTimeout(() => {
     runSearch(els.search.value.trim());
   }, 220);
+});
+
+els.search.addEventListener("keydown", (event) => {
+  if (event.key !== "Enter") return;
+  event.preventDefault();
+  window.clearTimeout(state.debounce);
+  runSearch(els.search.value.trim());
 });
 
 els.authLoginForm?.addEventListener("submit", async (event) => {

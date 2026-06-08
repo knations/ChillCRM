@@ -185,6 +185,12 @@ def main() -> int:
     assert "mobileDetailOpen" in app_js
     assert "openMobileDetailView(" in app_js
     assert "closeMobileDetailView(" in app_js
+    assert "captureInputFocus(" in app_js
+    assert "restoreInputFocus(focusState)" in app_js
+    assert "showOnlyMainView(els.list)" in app_js
+    assert "state.searchRequestId" in app_js
+    assert "Search did not complete" in app_js
+    assert 'event.key !== "Enter"' in app_js
     assert "mobileDetailBackLabel(" in app_js
     assert "Back to ${state.mobileDetailReturnLabel" in app_js
     assert "state.mobileDetailReturnLabel = \"Search\"" in app_js

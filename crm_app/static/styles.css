@@ -2260,7 +2260,7 @@ button {
   display: grid;
   gap: 8px;
   justify-items: center;
-  width: 92px;
+  width: 164px;
 }
 
 .person-profile-image-frame {
@@ -2271,36 +2271,34 @@ button {
   border-radius: 8px;
   color: var(--ink);
   display: flex;
-  font-size: 25px;
+  font-size: 44px;
   font-weight: 800;
-  height: 78px;
+  height: 148px;
   justify-content: center;
   overflow: hidden;
   padding: 0;
   position: relative;
   transition: border-color 0.16s ease, box-shadow 0.16s ease, transform 0.16s ease;
-  width: 78px;
+  width: 148px;
 }
 
 .person-profile-image-frame::after {
   align-items: center;
-  background: rgba(35, 32, 26, 0.78);
-  border: 1px solid rgba(255, 255, 255, 0.62);
-  border-radius: 999px;
-  bottom: 5px;
-  box-shadow: 0 8px 18px rgba(35, 32, 26, 0.18);
+  background: rgba(35, 32, 26, 0.68);
+  border-radius: 8px;
+  bottom: 0;
   color: #fffdf8;
-  content: "+";
+  content: attr(data-action-label);
   display: flex;
-  font-size: 15px;
-  font-weight: 700;
-  height: 20px;
+  font-size: 13px;
+  font-weight: 650;
+  inset: 0;
   justify-content: center;
   line-height: 1;
-  opacity: 0.94;
+  opacity: 0;
   position: absolute;
-  right: 5px;
-  width: 20px;
+  text-align: center;
+  transition: opacity 0.16s ease;
   z-index: 1;
 }
 
@@ -2308,6 +2306,11 @@ button {
   border-color: rgba(0, 122, 255, 0.42);
   box-shadow: 0 10px 26px rgba(35, 32, 26, 0.14);
   transform: translateY(-1px);
+}
+
+.person-profile-image-frame:hover::after,
+.person-profile-image-frame:focus-visible::after {
+  opacity: 1;
 }
 
 .person-profile-image-frame:focus-visible {
@@ -4416,12 +4419,13 @@ button {
 
   .app-shell.mobile-detail-open .person-profile-image-control {
     gap: 6px;
-    width: 76px;
+    width: 132px;
   }
 
   .app-shell.mobile-detail-open .person-profile-image-frame {
-    height: 64px;
-    width: 64px;
+    font-size: 36px;
+    height: 118px;
+    width: 118px;
   }
 
   .topbar {

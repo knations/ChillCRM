@@ -209,6 +209,8 @@ def main() -> int:
     assert "personProfileImageControl" in app_js
     assert "showProfileImageFallback" in app_js
     assert "person-profile-image-frame person-profile-upload-button" in app_js
+    assert 'data-action-label="${escapeHtml(actionLabel)}"' in app_js
+    assert "Change photo" in app_js
     assert "Change Photo" not in app_js
     assert "Add Photo" not in app_js
     assert "person-profile-remove-button" not in app_js
@@ -216,6 +218,8 @@ def main() -> int:
     assert "prepareProfileImageUpload" in app_js
     assert ".person-profile-image-control" in styles_css
     assert ".person-profile-image-frame.image-failed" in styles_css
+    assert "content: attr(data-action-label)" in styles_css
+    assert 'content: "+"' not in styles_css
     assert ".person-profile-image-actions" not in styles_css
     assert "profile_images/" in (PROJECT_ROOT / ".gitignore").read_text(encoding="utf-8")
     assert 'credentials: "same-origin"' in app_js

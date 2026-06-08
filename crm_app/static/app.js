@@ -4845,12 +4845,13 @@ function personProfileImageControl(detail) {
   const name = record.name || [record.first_name, record.last_name].filter(Boolean).join(" ") || record.email || "Person";
   const initials = personInitials(name);
   const imageLabel = imageUrl ? `Change ${name} profile photo` : `Add ${name} profile photo`;
+  const actionLabel = imageUrl ? "Change photo" : "Add photo";
   const imageBody = imageUrl
     ? `<img class="person-profile-image" src="${escapeHtml(imageUrl)}" alt="" data-initials="${escapeHtml(initials)}">`
     : `<span class="person-profile-initials">${escapeHtml(initials)}</span>`;
   return `
     <div class="person-profile-image-control">
-      <button type="button" class="person-profile-image-frame person-profile-upload-button ${imageUrl ? "has-image" : ""}" aria-label="${escapeHtml(imageLabel)}" title="${escapeHtml(imageLabel)}">
+      <button type="button" class="person-profile-image-frame person-profile-upload-button ${imageUrl ? "has-image" : ""}" aria-label="${escapeHtml(imageLabel)}" title="${escapeHtml(imageLabel)}" data-action-label="${escapeHtml(actionLabel)}">
         ${imageBody}
       </button>
       <input id="personProfileImageInput" type="file" accept="image/jpeg,image/png,image/webp" hidden>

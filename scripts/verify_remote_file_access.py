@@ -38,7 +38,7 @@ class FakeStorageHandler(BaseHTTPRequestHandler):
             "apikey": self.headers.get("apikey"),
             "body": json.loads(body or "{}"),
         }
-        payload = json.dumps({"signedURL": "/storage/v1/object/sign/chillcrm-documents/fake.pdf?token=test"}).encode("utf-8")
+        payload = json.dumps({"signedURL": "/object/sign/chillcrm-documents/fake.pdf?token=test"}).encode("utf-8")
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(payload)))

@@ -2514,9 +2514,16 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         signed = payload.get("signedURL") or payload.get("signedUrl") or payload.get("signed_url")
         if not signed:
             raise RuntimeError("Supabase Storage signing response did not include a signed URL.")
-        if str(signed).startswith("http://") or str(signed).startswith("https://"):
-            return str(signed)
-        return f"{supabase_url}{signed}"
+        signed_url = str(signed)
+        if signed_url.startswith("http://") or signed_url.startswith("https://"):
+            return signed_url
+        if signed_url.startswith("/storage/v1/"):
+            return f"{supabase_url}{signed_url}"
+        if signed_url.startswith("/object/"):
+            return f"{supabase_url}/storage/v1{signed_url}"
+        if signed_url.startswith("object/"):
+            return f"{supabase_url}/storage/v1/{signed_url}"
+        return f"{supabase_url}{signed_url if signed_url.startswith('/') else '/' + signed_url}"
 
     def upload_supabase_storage_object(self, bucket: str, storage_key: str, payload: bytes, content_type: str) -> None:
         supabase_url = self.supabase_url()

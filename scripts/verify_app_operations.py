@@ -203,6 +203,12 @@ def main() -> int:
     assert "contact-card-strip" in app_js
     assert ".contact-card-strip" in styles_css
     assert ".contact-card-button" in styles_css
+    assert "<h3>Actions</h3>" in app_js
+    assert "<h3>Contact Actions</h3>" not in app_js
+    assert "<h3>Edit</h3>" not in app_js
+    assert app_js.index('${contactActions(detail)}') < app_js.index('${editForm(detail)}') < app_js.index('${recordFileHero(detail)}')
+    assert app_js.index('addRow(source, "phone"') < app_js.index('addRow(source, "email"')
+    assert app_js.index("${renderContactRows(primaryRows)}") < app_js.index("${contactCardStrip(cardSources)}") < app_js.index("${renderContactRows(secondaryRows)}")
     assert "/api/profile_image" in server_py
     assert "/api/upload_profile_image" in server_py
     assert "record_profile_images" in server_py

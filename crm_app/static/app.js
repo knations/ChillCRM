@@ -4783,12 +4783,12 @@ function renderDetail(detail) {
     <div class="detail-content">
       ${detailHeader(record.name || "(blank)", subtitle || detail.type, detail)}
       <div id="detailActionError" class="form-error" hidden></div>
+      ${contactActions(detail)}
+      ${editForm(detail)}
       ${recordFileHero(detail)}
       ${recordSnapshot(detail)}
       ${recordLifecycleSection(detail)}
       ${detailQualityPanel(detail)}
-      ${contactActions(detail)}
-      ${editForm(detail)}
       ${reviewFlagsSection(detail.review_flags || [])}
       ${ownerSection(detail.owner)}
       ${addressSection(detail)}
@@ -5069,6 +5069,7 @@ function contactActions(detail) {
     if (seen.has(identity)) return;
     seen.add(identity);
     rows.push({
+      key,
       label: source.prefix ? `${source.prefix} ${label}` : label,
       value: text,
       href,
@@ -5076,32 +5077,37 @@ function contactActions(detail) {
     });
   };
   sources.forEach((source) => {
-    addRow(source, "email", "Email", source.record.email, contactEmailHref(source.record.email), "Mail");
     addRow(source, "phone", "Phone", source.record.phone, contactPhoneHref(source.record.phone), "Call");
+    addRow(source, "email", "Email", source.record.email, contactEmailHref(source.record.email), "Mail");
     addRow(source, "mobile", "Mobile", source.record.mobile, contactPhoneHref(source.record.mobile), "Call");
     addRow(source, "website", "Website", source.record.website, contactWebsiteHref(source.record.website), "Open");
   });
   const cardSources = sources.filter(contactCardAvailable);
   if (!rows.length && !cardSources.length) return "";
+  const primaryRows = rows.filter((row) => ["phone", "email"].includes(row.key));
+  const secondaryRows = rows.filter((row) => !["phone", "email"].includes(row.key));
+  const renderContactRows = (items) =>
+    items
+      .map((row) => `
+        <div class="contact-action-row">
+          <div>
+            <strong>${escapeHtml(row.label)}</strong>
+            <span>${escapeHtml(row.value)}</span>
+          </div>
+          <div class="contact-action-buttons">
+            ${row.href ? `<a class="text-button action-link" href="${escapeHtml(row.href)}">${escapeHtml(row.actionLabel)}</a>` : ""}
+            <button class="text-button contact-copy-button" type="button" data-copy-label="${escapeHtml(row.label)}" data-copy-value="${escapeHtml(row.value)}">Copy</button>
+          </div>
+        </div>
+      `)
+      .join("");
   return `
     <div class="detail-section contact-actions">
-      <h3>Contact Actions</h3>
-      ${contactCardStrip(cardSources)}
+      <h3>Actions</h3>
       <div class="contact-action-list">
-        ${rows
-          .map((row) => `
-            <div class="contact-action-row">
-              <div>
-                <strong>${escapeHtml(row.label)}</strong>
-                <span>${escapeHtml(row.value)}</span>
-              </div>
-              <div class="contact-action-buttons">
-                ${row.href ? `<a class="text-button action-link" href="${escapeHtml(row.href)}">${escapeHtml(row.actionLabel)}</a>` : ""}
-                <button class="text-button contact-copy-button" type="button" data-copy-label="${escapeHtml(row.label)}" data-copy-value="${escapeHtml(row.value)}">Copy</button>
-              </div>
-            </div>
-          `)
-          .join("")}
+        ${renderContactRows(primaryRows)}
+        ${contactCardStrip(cardSources)}
+        ${renderContactRows(secondaryRows)}
       </div>
     </div>
   `;
@@ -5430,7 +5436,7 @@ function editForm(detail) {
   return `
     <div class="detail-section">
       <div class="inline-header">
-        <h3>Edit</h3>
+        <h3>Address</h3>
         <button class="text-button" id="saveRecordButton" type="button">Save</button>
       </div>
       <form id="editRecordForm" class="edit-grid">

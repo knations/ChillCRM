@@ -69,6 +69,7 @@ REMOTE_ONLY_TABLES = [
     "app_permissions",
     "remote_audit_events",
     "remote_file_objects",
+    "record_profile_images",
     "migration_runs",
     "migration_row_maps",
     "app_saved_views",

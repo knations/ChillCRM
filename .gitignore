@@ -6,6 +6,7 @@ raw_api_exports/
 exports/
 logs/
 reports/
+profile_images/
 
 # Local provider links and secrets
 .vercel/

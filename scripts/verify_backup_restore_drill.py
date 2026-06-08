@@ -30,6 +30,7 @@ KEY_TABLES = [
     "archive_items",
     "document_files",
     "remote_file_objects",
+    "record_profile_images",
     "audit_log",
 ]
 

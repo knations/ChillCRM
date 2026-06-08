@@ -35,6 +35,7 @@ PROJECT_ROOT = APP_DIR.parent
 DEFAULT_DB = PROJECT_ROOT / "crm_database" / "local_crm.sqlite"
 REPORTS_DIR = PROJECT_ROOT / "reports"
 BACKUP_DIR = PROJECT_ROOT / "backups"
+PROFILE_IMAGE_DIR = PROJECT_ROOT / "profile_images"
 PRODUCTION_HOSTS = {"chillcrm.app", "www.chillcrm.app"}
 APPLICATION_PROFILE_FIELDS = [
     "APP Number",
@@ -511,6 +512,12 @@ AUTH_ROLE_SEEDS = [
     ("read_only", "Read-only", "Inspect CRM data without writes or sensitive exports."),
     ("migration_operator", "Migration Operator", "Temporary migration and validation access."),
 ]
+PROFILE_IMAGE_ALLOWED_CONTENT_TYPES = {
+    "image/jpeg": "jpg",
+    "image/png": "png",
+    "image/webp": "webp",
+}
+PROFILE_IMAGE_MAX_BYTES = 2_500_000
 
 
 def postgres_statement_timeout_ms() -> int:
@@ -893,6 +900,35 @@ def ensure_runtime_schema(db_path: Path) -> None:
             CREATE INDEX IF NOT EXISTS idx_local_record_lifecycle_status
             ON local_record_lifecycle(lifecycle_status, updated_at DESC);
 
+            CREATE TABLE IF NOT EXISTS record_profile_images (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                record_type TEXT NOT NULL,
+                record_id INTEGER NOT NULL,
+                storage_backend TEXT NOT NULL DEFAULT 'local',
+                storage_bucket TEXT,
+                storage_key TEXT,
+                local_file TEXT,
+                original_filename TEXT,
+                content_type TEXT NOT NULL,
+                bytes INTEGER NOT NULL,
+                sha256 TEXT NOT NULL,
+                width INTEGER,
+                height INTEGER,
+                status TEXT NOT NULL DEFAULT 'active',
+                app_user_id INTEGER,
+                actor_email TEXT,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                removed_at TEXT
+            );
+
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_record_profile_images_active
+            ON record_profile_images(record_type, record_id)
+            WHERE status = 'active';
+
+            CREATE INDEX IF NOT EXISTS idx_record_profile_images_record
+            ON record_profile_images(record_type, record_id, updated_at DESC);
+
             CREATE TABLE IF NOT EXISTS local_list_views (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 list_type TEXT NOT NULL,
@@ -1078,6 +1114,8 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             "/api/set_record_lifecycle",
             "/api/update_tags",
             "/api/update_addresses",
+            "/api/upload_profile_image",
+            "/api/remove_profile_image",
             "/api/add_note",
             "/api/update_note",
             "/api/add_task",
@@ -1141,6 +1179,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         "/api/export_package": "export_complete_package",
         "/api/export_document_files_package": "download_document_files",
         "/api/archive_file": "download_document_files",
+        "/api/profile_image": "view_dashboard_reports",
         "/api/search": "view_dashboard_reports",
         "/api/cleanup": "view_dashboard_reports",
         "/api/cleanup_execution_preview": "view_dashboard_reports",
@@ -1155,6 +1194,8 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         "/api/set_record_lifecycle": "create_edit_records",
         "/api/update_tags": "edit_addresses_tags",
         "/api/update_addresses": "edit_addresses_tags",
+        "/api/upload_profile_image": "create_edit_records",
+        "/api/remove_profile_image": "create_edit_records",
         "/api/add_note": "notes_tasks_followups",
         "/api/update_note": "notes_tasks_followups",
         "/api/add_task": "notes_tasks_followups",
@@ -1290,6 +1331,14 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         return (
             os.environ.get("CHILLCRM_SUPABASE_SERVICE_ROLE_KEY", "").strip()
             or os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "").strip()
+        )
+
+    def profile_image_storage_bucket(self) -> str:
+        return (
+            os.environ.get("CHILLCRM_PROFILE_IMAGE_STORAGE_BUCKET", "").strip()
+            or os.environ.get("CHILLCRM_SUPABASE_PROFILE_IMAGE_BUCKET", "").strip()
+            or os.environ.get("CHILLCRM_SUPABASE_STORAGE_BUCKET", "").strip()
+            or "chillcrm-documents"
         )
 
     def storage_signed_url_ttl_seconds(self) -> int:
@@ -2469,6 +2518,103 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             return str(signed)
         return f"{supabase_url}{signed}"
 
+    def upload_supabase_storage_object(self, bucket: str, storage_key: str, payload: bytes, content_type: str) -> None:
+        supabase_url = self.supabase_url()
+        service_key = self.supabase_service_role_key()
+        if not supabase_url:
+            raise RuntimeError("CHILLCRM_SUPABASE_URL is required for hosted profile image uploads.")
+        if not service_key:
+            raise RuntimeError("CHILLCRM_SUPABASE_SERVICE_ROLE_KEY or SUPABASE_SERVICE_ROLE_KEY is required for hosted profile image uploads.")
+        object_path = f"/storage/v1/object/{urllib.parse.quote(bucket, safe='')}/{urllib.parse.quote(storage_key, safe='/')}"
+        headers = {
+            "Authorization": f"Bearer {service_key}",
+            "apikey": service_key,
+            "Content-Type": content_type,
+            "cache-control": "3600",
+            "x-upsert": "true",
+        }
+        request = urllib.request.Request(f"{supabase_url}{object_path}", data=payload, method="POST", headers=headers)
+        open_kwargs: dict[str, Any] = {"timeout": 30}
+        if supabase_url.startswith("https://"):
+            open_kwargs["context"] = ssl.create_default_context()
+        try:
+            with urllib.request.urlopen(request, **open_kwargs):
+                return
+        except urllib.error.HTTPError as exc:
+            detail = exc.read().decode("utf-8", errors="replace")[:240]
+            raise RuntimeError(f"Supabase profile image upload failed: HTTP {exc.code} {detail}") from exc
+
+    def active_profile_image_row(self, conn: Any, record_type: str, record_id: int) -> dict[str, Any] | None:
+        if record_type != "person" or not self.profile_image_table_exists(conn):
+            return None
+        return row_to_dict(
+            conn.execute(
+                """
+                SELECT id, record_type, record_id, storage_backend, storage_bucket, storage_key, local_file,
+                       original_filename, content_type, bytes, sha256, width, height, status, created_at, updated_at
+                FROM record_profile_images
+                WHERE record_type = ? AND record_id = ? AND status = 'active'
+                ORDER BY updated_at DESC, id DESC
+                LIMIT 1
+                """,
+                (record_type, record_id),
+            ).fetchone()
+        )
+
+    def public_profile_image(self, row: dict[str, Any] | None) -> dict[str, Any] | None:
+        if not row:
+            return None
+        token = f"{row.get('id')}-{str(row.get('sha256') or '')[:12]}"
+        return {
+            "id": row.get("id"),
+            "record_type": row.get("record_type"),
+            "record_id": row.get("record_id"),
+            "url": f"/api/profile_image?type={urllib.parse.quote(str(row.get('record_type') or 'person'))}&id={urllib.parse.quote(str(row.get('record_id') or ''))}&v={urllib.parse.quote(token)}",
+            "content_type": row.get("content_type"),
+            "bytes": row.get("bytes"),
+            "width": row.get("width"),
+            "height": row.get("height"),
+            "original_filename": row.get("original_filename"),
+            "updated_at": row.get("updated_at") or row.get("created_at"),
+        }
+
+    def send_profile_image(self, params: dict[str, list[str]]) -> None:
+        record_type = (params.get("type", ["person"])[0] or "person").lower()
+        record_id = self.optional_int(params.get("id", [""])[0] if params.get("id") else "")
+        if record_type != "person" or not record_id:
+            self.send_text("Not found", 404)
+            return
+        with self.db() as conn:
+            row = self.active_profile_image_row(conn, record_type, record_id)
+        if not row:
+            self.send_text("Not found", 404)
+            return
+        if self.hosted_postgres_adapter_enabled():
+            storage_bucket = str(row.get("storage_bucket") or "")
+            storage_key = str(row.get("storage_key") or "")
+            if not storage_bucket or not storage_key:
+                self.send_text("Not found", 404)
+                return
+            try:
+                self.send_redirect(self.signed_storage_url(storage_bucket, storage_key))
+            except RuntimeError as exc:
+                self.send_json(
+                    {"ok": False, "error": str(exc), "code": "profile_image_signing_unavailable", "path": "/api/profile_image"},
+                    503,
+                )
+            return
+        local_file = str(row.get("local_file") or "")
+        if not local_file:
+            self.send_text("Not found", 404)
+            return
+        local_path = Path(local_file)
+        path = (local_path if local_path.is_absolute() else PROJECT_ROOT / local_path).resolve()
+        allowed_root = PROFILE_IMAGE_DIR.resolve()
+        if allowed_root != path and allowed_root not in path.parents:
+            self.send_text("Not found", 404)
+            return
+        self.send_file(path)
+
     def send_remote_archive_file(self, item_id: int) -> None:
         with self.db() as conn:
             row = row_to_dict(
@@ -2569,6 +2715,8 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                     self.send_text(card["error"], card.get("status", 404))
                 else:
                     self.send_vcard(card["filename"], card["content"])
+            elif path == "/api/profile_image":
+                self.send_profile_image(params)
             elif path == "/api/tasks":
                 self.send_json(self.tasks(params))
             elif path == "/api/activity":
@@ -2673,6 +2821,10 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                 self.send_json(self.update_tags(payload, auth_user, action_key))
             elif path == "/api/update_addresses":
                 self.send_json(self.update_addresses(payload, auth_user, action_key))
+            elif path == "/api/upload_profile_image":
+                self.send_json(self.upload_profile_image(payload, auth_user, action_key))
+            elif path == "/api/remove_profile_image":
+                self.send_json(self.remove_profile_image(payload, auth_user, action_key))
             elif path == "/api/add_note":
                 self.send_json(self.add_note(payload, auth_user, action_key))
             elif path == "/api/update_note":
@@ -10716,6 +10868,32 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                 ],
             ),
             (
+                "record_profile_images",
+                "Files",
+                "Private People profile-image metadata for CRM record headers.",
+                [
+                    '"id" bigint GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY',
+                    '"record_type" text NOT NULL',
+                    '"record_id" bigint NOT NULL',
+                    '"storage_backend" text NOT NULL DEFAULT \'supabase\'',
+                    '"storage_bucket" text',
+                    '"storage_key" text',
+                    '"local_file" text',
+                    '"original_filename" text',
+                    '"content_type" text NOT NULL',
+                    '"bytes" bigint NOT NULL',
+                    '"sha256" text NOT NULL',
+                    '"width" bigint',
+                    '"height" bigint',
+                    '"status" text NOT NULL DEFAULT \'active\'',
+                    '"app_user_id" bigint REFERENCES crm."app_users"("id")',
+                    '"actor_email" text',
+                    '"created_at" timestamptz NOT NULL DEFAULT now()',
+                    '"updated_at" timestamptz NOT NULL DEFAULT now()',
+                    '"removed_at" timestamptz',
+                ],
+            ),
+            (
                 "migration_runs",
                 "Migration",
                 "Ledger for staging and production migration runs.",
@@ -16123,6 +16301,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             "record": self.clean_record_with_quality("people", {**record, "kind": "person", "source_id": record_id}),
             "lifecycle": self.record_lifecycle_for(conn, "person", record_id),
             "provenance": self.record_provenance(conn, "person", record_id, record),
+            "profile_image": self.public_profile_image(self.active_profile_image_row(conn, "person", record_id)),
             "edit_options": self.edit_options(conn, "person"),
             "owner": self.owner_for(conn, record.get("owner_user_id")),
             "company": company,
@@ -18979,6 +19158,284 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         if not table:
             raise ValueError(f"Unsupported record type: {record_type}")
         return table
+
+    def ensure_profile_image_schema(self, conn: Any) -> None:
+        if self.hosted_postgres_adapter_enabled():
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS record_profile_images (
+                    id bigint GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+                    record_type text NOT NULL,
+                    record_id bigint NOT NULL,
+                    storage_backend text NOT NULL DEFAULT 'supabase',
+                    storage_bucket text,
+                    storage_key text,
+                    local_file text,
+                    original_filename text,
+                    content_type text NOT NULL,
+                    bytes bigint NOT NULL,
+                    sha256 text NOT NULL,
+                    width bigint,
+                    height bigint,
+                    status text NOT NULL DEFAULT 'active',
+                    app_user_id bigint REFERENCES app_users(id),
+                    actor_email text,
+                    created_at timestamptz NOT NULL DEFAULT now(),
+                    updated_at timestamptz NOT NULL DEFAULT now(),
+                    removed_at timestamptz
+                )
+                """
+            )
+        else:
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS record_profile_images (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    record_type TEXT NOT NULL,
+                    record_id INTEGER NOT NULL,
+                    storage_backend TEXT NOT NULL DEFAULT 'local',
+                    storage_bucket TEXT,
+                    storage_key TEXT,
+                    local_file TEXT,
+                    original_filename TEXT,
+                    content_type TEXT NOT NULL,
+                    bytes INTEGER NOT NULL,
+                    sha256 TEXT NOT NULL,
+                    width INTEGER,
+                    height INTEGER,
+                    status TEXT NOT NULL DEFAULT 'active',
+                    app_user_id INTEGER,
+                    actor_email TEXT,
+                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    removed_at TEXT
+                )
+                """
+            )
+        conn.execute(
+            """
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_record_profile_images_active
+            ON record_profile_images(record_type, record_id)
+            WHERE status = 'active'
+            """
+        )
+        conn.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_record_profile_images_record
+            ON record_profile_images(record_type, record_id, updated_at DESC)
+            """
+        )
+
+    def profile_image_table_exists(self, conn: Any) -> bool:
+        if self.hosted_postgres_adapter_enabled():
+            row = conn.execute("SELECT to_regclass('crm.record_profile_images') IS NOT NULL AS table_exists").fetchone()
+            return bool(row and row["table_exists"])
+        row = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
+            ("record_profile_images",),
+        ).fetchone()
+        return row is not None
+
+    def normalize_profile_image_type(self, content_type: Any) -> str:
+        normalized = str(content_type or "").split(";", 1)[0].strip().lower()
+        if normalized == "image/jpg":
+            normalized = "image/jpeg"
+        if normalized not in PROFILE_IMAGE_ALLOWED_CONTENT_TYPES:
+            raise ValueError("Use a JPEG, PNG, or WebP image.")
+        return normalized
+
+    def profile_image_magic_matches(self, content_type: str, payload: bytes) -> bool:
+        if content_type == "image/jpeg":
+            return payload.startswith(b"\xff\xd8\xff")
+        if content_type == "image/png":
+            return payload.startswith(b"\x89PNG\r\n\x1a\n")
+        if content_type == "image/webp":
+            return payload.startswith(b"RIFF") and payload[8:12] == b"WEBP"
+        return False
+
+    def decode_profile_image_upload(self, payload: dict[str, Any]) -> tuple[bytes, str]:
+        data_url = str(payload.get("image_data_url") or "").strip()
+        encoded = str(payload.get("image_base64") or "").strip()
+        if data_url:
+            match = re.match(r"^data:([^;,]+);base64,(.+)$", data_url, flags=re.IGNORECASE | re.DOTALL)
+            if not match:
+                raise ValueError("Profile image upload was not a valid image payload.")
+            content_type = self.normalize_profile_image_type(match.group(1))
+            encoded = match.group(2).strip()
+        else:
+            content_type = self.normalize_profile_image_type(payload.get("content_type"))
+        if not encoded:
+            raise ValueError("Choose an image before uploading.")
+        try:
+            image_bytes = base64.b64decode(encoded, validate=True)
+        except Exception as exc:
+            raise ValueError("Profile image upload was not valid base64.") from exc
+        if not image_bytes:
+            raise ValueError("Choose an image before uploading.")
+        if len(image_bytes) > PROFILE_IMAGE_MAX_BYTES:
+            raise ValueError("Profile image is too large after resizing. Choose a smaller image.")
+        if not self.profile_image_magic_matches(content_type, image_bytes):
+            raise ValueError("Profile image content did not match its image type.")
+        return image_bytes, content_type
+
+    def profile_image_dimension(self, payload: dict[str, Any], key: str) -> int | None:
+        value = self.optional_int(payload.get(key))
+        if value is None:
+            return None
+        return max(1, min(value, 10_000))
+
+    def profile_image_original_filename(self, value: Any) -> str | None:
+        filename = Path(str(value or "").replace("\\", "/")).name.strip()
+        if not filename:
+            return None
+        safe = re.sub(r"[^A-Za-z0-9._ -]+", "_", filename).strip(" ._-")
+        return safe[:180] or None
+
+    def profile_image_storage_key(self, record_id: int, digest: str, content_type: str) -> str:
+        extension = PROFILE_IMAGE_ALLOWED_CONTENT_TYPES[content_type]
+        return f"profile-images/people/{record_id}/{digest[:24]}.{extension}"
+
+    def profile_image_summary(self, row: dict[str, Any] | None) -> dict[str, Any] | None:
+        if not row:
+            return None
+        return {
+            "id": row.get("id"),
+            "content_type": row.get("content_type"),
+            "bytes": row.get("bytes"),
+            "sha256": row.get("sha256"),
+            "width": row.get("width"),
+            "height": row.get("height"),
+            "original_filename": row.get("original_filename"),
+            "storage_backend": row.get("storage_backend"),
+            "updated_at": row.get("updated_at") or row.get("created_at"),
+        }
+
+    def upload_profile_image(
+        self,
+        payload: dict[str, Any],
+        actor_user: dict[str, Any] | None = None,
+        permission_action: str | None = "create_edit_records",
+    ) -> dict[str, Any]:
+        record_type = str(payload.get("type") or "person").strip().lower()
+        record_id = self.optional_int(payload.get("id"))
+        if record_type != "person" or not record_id:
+            raise ValueError("Profile images are currently supported for People only.")
+        image_bytes, content_type = self.decode_profile_image_upload(payload)
+        digest = hashlib.sha256(image_bytes).hexdigest()
+        storage_bucket = None
+        storage_key = None
+        local_file = None
+        storage_backend = "supabase" if self.hosted_postgres_adapter_enabled() else "local"
+        if self.hosted_postgres_adapter_enabled():
+            storage_bucket = self.profile_image_storage_bucket()
+            storage_key = self.profile_image_storage_key(record_id, digest, content_type)
+            self.upload_supabase_storage_object(storage_bucket, storage_key, image_bytes, content_type)
+        else:
+            storage_key = self.profile_image_storage_key(record_id, digest, content_type)
+            path = (PROFILE_IMAGE_DIR / "people" / str(record_id) / Path(storage_key).name).resolve()
+            allowed_root = PROFILE_IMAGE_DIR.resolve()
+            if allowed_root != path and allowed_root not in path.parents:
+                raise ValueError("Invalid profile image path.")
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(image_bytes)
+            try:
+                local_file = str(path.relative_to(PROJECT_ROOT))
+            except ValueError:
+                local_file = str(path)
+        original_filename = self.profile_image_original_filename(payload.get("filename"))
+        width = self.profile_image_dimension(payload, "width")
+        height = self.profile_image_dimension(payload, "height")
+        with self.db() as conn:
+            self.ensure_profile_image_schema(conn)
+            if conn.execute("SELECT 1 FROM people WHERE id = ?", (record_id,)).fetchone() is None:
+                raise ValueError("Person not found.")
+            previous = self.active_profile_image_row(conn, record_type, record_id)
+            conn.execute(
+                """
+                UPDATE record_profile_images
+                SET status = 'replaced', removed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+                WHERE record_type = ? AND record_id = ? AND status = 'active'
+                """,
+                (record_type, record_id),
+            )
+            conn.execute(
+                """
+                INSERT INTO record_profile_images (
+                    record_type, record_id, storage_backend, storage_bucket, storage_key, local_file,
+                    original_filename, content_type, bytes, sha256, width, height, status,
+                    app_user_id, actor_email
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)
+                """,
+                (
+                    record_type,
+                    record_id,
+                    storage_backend,
+                    storage_bucket,
+                    storage_key,
+                    local_file,
+                    original_filename,
+                    content_type,
+                    len(image_bytes),
+                    digest,
+                    width,
+                    height,
+                    actor_user.get("id") if actor_user else None,
+                    actor_user.get("email") if actor_user else None,
+                ),
+            )
+            current = self.active_profile_image_row(conn, record_type, record_id)
+            self.insert_audit_log(
+                conn,
+                action="update_profile_image",
+                record_type=record_type,
+                record_id=record_id,
+                field_name="profile_image",
+                old_value=self.profile_image_summary(previous),
+                new_value=self.profile_image_summary(current),
+                note="People profile image uploaded.",
+                actor_user=actor_user,
+                permission_action=permission_action,
+            )
+            conn.commit()
+        return {"ok": True, "profile_image": self.public_profile_image(current), "detail": self.record_detail({"type": [record_type], "id": [str(record_id)]})}
+
+    def remove_profile_image(
+        self,
+        payload: dict[str, Any],
+        actor_user: dict[str, Any] | None = None,
+        permission_action: str | None = "create_edit_records",
+    ) -> dict[str, Any]:
+        record_type = str(payload.get("type") or "person").strip().lower()
+        record_id = self.optional_int(payload.get("id"))
+        if record_type != "person" or not record_id:
+            raise ValueError("Profile images are currently supported for People only.")
+        with self.db() as conn:
+            self.ensure_profile_image_schema(conn)
+            previous = self.active_profile_image_row(conn, record_type, record_id)
+            if previous:
+                conn.execute(
+                    """
+                    UPDATE record_profile_images
+                    SET status = 'removed', removed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+                    WHERE id = ?
+                    """,
+                    (previous["id"],),
+                )
+                self.insert_audit_log(
+                    conn,
+                    action="remove_profile_image",
+                    record_type=record_type,
+                    record_id=record_id,
+                    field_name="profile_image",
+                    old_value=self.profile_image_summary(previous),
+                    new_value=None,
+                    note="People profile image removed from the active record view.",
+                    actor_user=actor_user,
+                    permission_action=permission_action,
+                )
+                conn.commit()
+        return {"ok": True, "profile_image": None, "detail": self.record_detail({"type": [record_type], "id": [str(record_id)]})}
 
     def ensure_record_lifecycle_schema(self, conn: Any) -> None:
         conn.execute(

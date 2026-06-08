@@ -203,6 +203,13 @@ def main() -> int:
     assert "contact-card-strip" in app_js
     assert ".contact-card-strip" in styles_css
     assert ".contact-card-button" in styles_css
+    assert "/api/profile_image" in server_py
+    assert "/api/upload_profile_image" in server_py
+    assert "record_profile_images" in server_py
+    assert "personProfileImageControl" in app_js
+    assert "prepareProfileImageUpload" in app_js
+    assert ".person-profile-image-control" in styles_css
+    assert "profile_images/" in (PROJECT_ROOT / ".gitignore").read_text(encoding="utf-8")
     assert 'credentials: "same-origin"' in app_js
     assert "Server returned an unexpected response" in app_js
     assert 'id="saveRecordButton" type="button"' in app_js
@@ -1609,7 +1616,9 @@ def main() -> int:
         actor_db = actor_temp_path / "local_crm_actor_audit_test.sqlite"
         shutil.copy2(SOURCE_DB, actor_db)
         original_actor_backup_dir = server.BACKUP_DIR
+        original_profile_image_dir = server.PROFILE_IMAGE_DIR
         server.BACKUP_DIR = actor_temp_path / "backups"
+        server.PROFILE_IMAGE_DIR = actor_temp_path / "profile_images"
         try:
             server.ensure_runtime_schema(actor_db)
             actor_handler = server.CRMRequestHandler.__new__(server.CRMRequestHandler)
@@ -1685,8 +1694,62 @@ def main() -> int:
                 and row.get("actor_roles")
                 for row in actor_record_activity
             )
+            tiny_png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII="
+            profile_upload = actor_handler.upload_profile_image(
+                {
+                    "type": "person",
+                    "id": person_id,
+                    "filename": "actor-profile.png",
+                    "content_type": "image/png",
+                    "image_data_url": f"data:image/png;base64,{tiny_png}",
+                    "width": 1,
+                    "height": 1,
+                },
+                actor_user,
+                "create_edit_records",
+            )
+            assert profile_upload["detail"]["profile_image"]["url"].startswith("/api/profile_image?type=person")
+            assert profile_upload["detail"]["profile_image"]["content_type"] == "image/png"
+            with actor_handler.db() as conn:
+                image_row = server.row_to_dict(
+                    conn.execute(
+                        """
+                        SELECT storage_backend, local_file, actor_email
+                        FROM record_profile_images
+                        WHERE record_type = 'person' AND record_id = ? AND status = 'active'
+                        """,
+                        (person_id,),
+                    ).fetchone()
+                )
+            assert image_row["storage_backend"] == "local"
+            assert image_row["local_file"]
+            assert image_row["actor_email"] == "staff-actor@example.test"
+            profile_remove = actor_handler.remove_profile_image(
+                {"type": "person", "id": person_id},
+                actor_user,
+                "create_edit_records",
+            )
+            assert profile_remove["detail"]["profile_image"] is None
+            with actor_handler.db() as conn:
+                profile_audit_rows = server.rows_to_dicts(
+                    conn.execute(
+                        """
+                        SELECT action, actor_email, permission_action
+                        FROM audit_log
+                        WHERE action IN ('update_profile_image', 'remove_profile_image')
+                          AND record_type = 'person'
+                          AND record_id = ?
+                        ORDER BY id
+                        """,
+                        (person_id,),
+                    ).fetchall()
+                )
+            assert [row["action"] for row in profile_audit_rows][-2:] == ["update_profile_image", "remove_profile_image"]
+            assert all(row["actor_email"] == "staff-actor@example.test" for row in profile_audit_rows[-2:])
+            assert all(row["permission_action"] == "create_edit_records" for row in profile_audit_rows[-2:])
         finally:
             server.BACKUP_DIR = original_actor_backup_dir
+            server.PROFILE_IMAGE_DIR = original_profile_image_dir
     with tempfile.TemporaryDirectory() as temp_dir:
         temp_path = Path(temp_dir)
         test_db = temp_path / "local_crm_operations_test.sqlite"

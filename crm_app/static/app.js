@@ -339,6 +339,71 @@ function formatBytes(value) {
   return `${new Intl.NumberFormat(undefined, { maximumFractionDigits }).format(size)} ${units[unitIndex]}`;
 }
 
+function loadImageFromFile(file) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const image = new Image();
+    image.onload = () => {
+      URL.revokeObjectURL(url);
+      resolve(image);
+    };
+    image.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error("Could not read that image."));
+    };
+    image.src = url;
+  });
+}
+
+function canvasToDataUrl(canvas, type, quality) {
+  if (!canvas.toBlob) return Promise.resolve(canvas.toDataURL(type, quality));
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(
+      (blob) => {
+        if (!blob) {
+          reject(new Error("Could not prepare that image."));
+          return;
+        }
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ""));
+        reader.onerror = () => reject(new Error("Could not prepare that image."));
+        reader.readAsDataURL(blob);
+      },
+      type,
+      quality
+    );
+  });
+}
+
+async function prepareProfileImageUpload(file) {
+  if (!file || !String(file.type || "").startsWith("image/")) {
+    throw new Error("Choose a JPEG, PNG, or WebP image.");
+  }
+  if (file.size > 14 * 1024 * 1024) {
+    throw new Error("Choose an image under 14 MB.");
+  }
+  const image = await loadImageFromFile(file);
+  const maxDimension = 720;
+  const scale = Math.min(1, maxDimension / Math.max(image.naturalWidth || image.width, image.naturalHeight || image.height));
+  const width = Math.max(1, Math.round((image.naturalWidth || image.width) * scale));
+  const height = Math.max(1, Math.round((image.naturalHeight || image.height) * scale));
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext("2d");
+  context.fillStyle = "#ffffff";
+  context.fillRect(0, 0, width, height);
+  context.drawImage(image, 0, 0, width, height);
+  const imageDataUrl = await canvasToDataUrl(canvas, "image/jpeg", 0.86);
+  return {
+    filename: file.name || "profile-image.jpg",
+    content_type: "image/jpeg",
+    image_data_url: imageDataUrl,
+    width,
+    height,
+  };
+}
+
 function formatMoney(value, currency = "USD") {
   if (!value) return "$0";
   return new Intl.NumberFormat(undefined, {
@@ -4754,16 +4819,56 @@ function renderDetail(detail) {
 
 function detailHeader(title, subtitle, detail = null, options = {}) {
   const mobileBackLabel = options.mobileBackLabel || mobileDetailBackLabel(detail);
+  const hasProfileImageControl = detail?.type === "person";
   return `
     <div class="detail-masthead">
       <button class="mobile-detail-back" type="button">${escapeHtml(mobileBackLabel)}</button>
-      <div class="detail-title-row">
-        <h2 class="detail-title">${escapeHtml(title || "")}</h2>
-        ${detail ? lifecyclePill(detail.lifecycle) : ""}
+      <div class="detail-heading-layout ${hasProfileImageControl ? "has-profile-image" : ""}">
+        ${personProfileImageControl(detail)}
+        <div class="detail-heading-copy">
+          <div class="detail-title-row">
+            <h2 class="detail-title">${escapeHtml(title || "")}</h2>
+            ${detail ? lifecyclePill(detail.lifecycle) : ""}
+          </div>
+          <div class="detail-subtitle">${escapeHtml(subtitle || "")}</div>
+        </div>
       </div>
-      <div class="detail-subtitle">${escapeHtml(subtitle || "")}</div>
     </div>
   `;
+}
+
+function personProfileImageControl(detail) {
+  if (!detail || detail.type !== "person") return "";
+  const record = detail.record || {};
+  const profileImage = detail.profile_image || null;
+  const imageUrl = profileImage?.url || "";
+  const name = record.name || [record.first_name, record.last_name].filter(Boolean).join(" ") || record.email || "Person";
+  const initials = personInitials(name);
+  const imageBody = imageUrl
+    ? `<img class="person-profile-image" src="${escapeHtml(imageUrl)}" alt="${escapeHtml(`${name} profile image`)}">`
+    : `<span class="person-profile-initials">${escapeHtml(initials)}</span>`;
+  return `
+    <div class="person-profile-image-control">
+      <div class="person-profile-image-frame ${imageUrl ? "has-image" : ""}" aria-hidden="${imageUrl ? "false" : "true"}">
+        ${imageBody}
+      </div>
+      <input id="personProfileImageInput" type="file" accept="image/jpeg,image/png,image/webp" hidden>
+      <div class="person-profile-image-actions">
+        <button type="button" class="text-button person-profile-upload-button">${imageUrl ? "Change Photo" : "Add Photo"}</button>
+        ${imageUrl ? `<button type="button" class="text-button danger person-profile-remove-button">Remove</button>` : ""}
+      </div>
+    </div>
+  `;
+}
+
+function personInitials(name) {
+  const parts = String(name || "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  if (!parts.length) return "P";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return `${parts[0][0] || ""}${parts[parts.length - 1][0] || ""}`.toUpperCase();
 }
 
 function recordFileHero(detail) {
@@ -5501,6 +5606,8 @@ function addTaskForm(detail) {
 }
 
 function wireDetailForms(detail) {
+  wireProfileImageControls(detail);
+
   document.querySelectorAll(".contact-copy-button").forEach((button) => {
     button.addEventListener("click", async () => {
       const label = button.dataset.copyLabel || "Value";
@@ -5724,6 +5831,45 @@ function wireDetailForms(detail) {
       });
     });
   });
+}
+
+function wireProfileImageControls(detail) {
+  if (!detail || detail.type !== "person") return;
+  const input = document.querySelector("#personProfileImageInput");
+  const uploadButton = document.querySelector(".person-profile-upload-button");
+  const removeButton = document.querySelector(".person-profile-remove-button");
+  if (uploadButton && input) {
+    uploadButton.addEventListener("click", () => input.click());
+    input.addEventListener("change", async () => {
+      const file = input.files?.[0];
+      input.value = "";
+      if (!file) return;
+      await runDetailAction(uploadButton, { progress: "Preparing photo", success: "Photo saved", failure: "Photo save failed" }, async () => {
+        const prepared = await prepareProfileImageUpload(file);
+        const updated = await postJson("/api/upload_profile_image", {
+          type: "person",
+          id: detail.record.source_id,
+          ...prepared,
+        });
+        renderDetail(updated.detail);
+        await refreshCurrentListForDetail(updated.detail);
+      });
+    });
+  }
+  if (removeButton) {
+    removeButton.addEventListener("click", async () => {
+      const ok = window.confirm("Remove this profile photo?");
+      if (!ok) return;
+      await runDetailAction(removeButton, { progress: "Removing photo", success: "Photo removed", failure: "Photo remove failed" }, async () => {
+        const updated = await postJson("/api/remove_profile_image", {
+          type: "person",
+          id: detail.record.source_id,
+        });
+        renderDetail(updated.detail);
+        await refreshCurrentListForDetail(updated.detail);
+      });
+    });
+  }
 }
 
 async function renderFollowup() {

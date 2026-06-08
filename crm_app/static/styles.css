@@ -2239,6 +2239,73 @@ button {
   padding-right: 32px;
 }
 
+.detail-heading-layout {
+  align-items: center;
+  display: flex;
+  gap: 16px;
+  min-width: 0;
+}
+
+.detail-heading-layout.has-profile-image {
+  align-items: flex-start;
+}
+
+.detail-heading-copy {
+  flex: 1;
+  min-width: 0;
+}
+
+.person-profile-image-control {
+  align-items: center;
+  display: grid;
+  gap: 8px;
+  justify-items: center;
+  width: 92px;
+}
+
+.person-profile-image-frame {
+  align-items: center;
+  background: linear-gradient(145deg, #f8f6ef, #ece7dc);
+  border: 1px solid rgba(116, 111, 102, 0.22);
+  border-radius: 8px;
+  color: var(--ink);
+  display: flex;
+  font-size: 25px;
+  font-weight: 800;
+  height: 78px;
+  justify-content: center;
+  overflow: hidden;
+  width: 78px;
+}
+
+.person-profile-image-frame.has-image {
+  background: var(--surface-soft);
+}
+
+.person-profile-image {
+  display: block;
+  height: 100%;
+  object-fit: cover;
+  width: 100%;
+}
+
+.person-profile-initials {
+  line-height: 1;
+}
+
+.person-profile-image-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: center;
+}
+
+.person-profile-image-actions .text-button {
+  min-height: 28px;
+  padding: 0 8px;
+}
+
 .detail-title {
   margin: 0;
   font-size: 22px;
@@ -2265,7 +2332,10 @@ button {
 }
 
 .lifecycle-pill {
+  justify-self: start;
   margin-top: 2px;
+  max-width: 100%;
+  width: max-content;
 }
 
 .record-file-hero {
@@ -4310,6 +4380,31 @@ button {
     font-size: 21px;
   }
 
+  .app-shell.mobile-detail-open .detail-heading-layout.has-profile-image {
+    align-items: center;
+    gap: 12px;
+  }
+
+  .app-shell.mobile-detail-open .person-profile-image-control {
+    gap: 6px;
+    width: 76px;
+  }
+
+  .app-shell.mobile-detail-open .person-profile-image-frame {
+    height: 64px;
+    width: 64px;
+  }
+
+  .app-shell.mobile-detail-open .person-profile-image-actions {
+    justify-content: flex-start;
+  }
+
+  .app-shell.mobile-detail-open .person-profile-image-actions .text-button {
+    font-size: 12px;
+    min-height: 26px;
+    padding: 0 6px;
+  }
+
   .topbar {
     background: rgba(255, 255, 255, 0.9);
     border: 1px solid rgba(60, 60, 67, 0.14);
@@ -4946,6 +5041,22 @@ button {
 }
 
 @media (max-width: 520px) {
+  .app-shell.mobile-detail-open .detail-heading-layout.has-profile-image {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .app-shell.mobile-detail-open .person-profile-image-control {
+    align-items: center;
+    display: flex;
+    justify-content: flex-start;
+    width: 100%;
+  }
+
+  .app-shell.mobile-detail-open .person-profile-image-actions {
+    justify-content: flex-start;
+  }
+
   .metric-grid,
   .cleanup-grid,
   .cleanup-summary-grid,

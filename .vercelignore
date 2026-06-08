@@ -3,6 +3,7 @@ raw_api_exports/
 backups/
 exports/
 logs/
+profile_images/
 staging_database/
 crm_database/
 *.sqlite

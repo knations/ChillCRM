@@ -154,7 +154,7 @@ def main() -> int:
             health_status, health_body = read_url(f"{base_url}/api/health")
             row(rows, "handler_health_route", "pass" if health_status == 200 and '"ok": true' in health_body else "fail", f"status={health_status}")
             index_status, index_body = read_url(f"{base_url}/")
-            row(rows, "handler_index_route", "pass" if index_status == 200 and "Local CRM" in index_body else "fail", f"status={index_status}")
+            row(rows, "handler_index_route", "pass" if index_status == 200 and "ChillCRM" in index_body else "fail", f"status={index_status}")
             row(rows, "handler_users_view_route", "pass" if index_status == 200 and 'id="usersView"' in index_body and 'data-view="users"' in index_body else "fail", "owner Users view is present in index shell")
             static_status, static_body = read_url(f"{base_url}/static/app.js")
             row(rows, "handler_static_route", "pass" if static_status == 200 and "renderDashboard" in static_body else "fail", f"status={static_status}")

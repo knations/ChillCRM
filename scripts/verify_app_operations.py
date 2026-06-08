@@ -42,6 +42,9 @@ def main() -> int:
     server_py = (PROJECT_ROOT / "crm_app" / "server.py").read_text(encoding="utf-8")
     styles_css = (PROJECT_ROOT / "crm_app" / "static" / "styles.css").read_text(encoding="utf-8")
     index_html = (PROJECT_ROOT / "crm_app" / "static" / "index.html").read_text(encoding="utf-8")
+    assert "<title>ChillCRM</title>" in index_html
+    assert "<h1>ChillCRM</h1>" in index_html
+    assert "Have Fun Get Rich" in index_html
     reset_script = (PROJECT_ROOT / "scripts" / "reset_app_user_password.py").read_text(encoding="utf-8")
     backup_restore_script = (PROJECT_ROOT / "scripts" / "verify_backup_restore_drill.py").read_text(encoding="utf-8")
     cutover_rollback_script = (PROJECT_ROOT / "scripts" / "verify_cutover_rollback_package_readiness.py").read_text(encoding="utf-8")

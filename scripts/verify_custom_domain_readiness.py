@@ -191,7 +191,7 @@ def build_rows(args: argparse.Namespace) -> list[dict[str, Any]]:
     root_text = root.text()
     effective_url = root.final_url
     https_ok = bool((effective_url or canonical_url).lower().startswith("https://") and root.status == 200)
-    app_shell_ok = all(token in root_text for token in ["<title>Local CRM</title>", "authOverlay", "/static/app.js"])
+    app_shell_ok = all(token in root_text for token in ["<title>ChillCRM</title>", "authOverlay", "/static/app.js"])
     add_check(
         rows,
         "https_app_shell",

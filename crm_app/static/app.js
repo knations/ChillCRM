@@ -1203,6 +1203,7 @@ async function renderDashboard() {
       </div>
       ${recordTable(data.recently_updated, "recent")}
     </div>
+    ${productionStatusPanel(data.production_status)}
   `;
   wireRecordButtons(els.dashboard);
   wireTaskButtons(els.dashboard);
@@ -1221,7 +1222,7 @@ function startTodayPanel(start) {
   const steps = start.steps || [];
   const tone = start.status === "ready" ? "green" : start.status === "attention" ? "coral" : "gold";
   return `
-    <div class="band start-today-panel ${escapeHtml(start.status || "")}">
+    <div class="band start-today-panel ${steps.length ? "" : "no-steps"} ${escapeHtml(start.status || "")}">
       <div class="band-header">
         <div>
           <h3>${escapeHtml(start.title || "Start Today")}</h3>
@@ -1258,6 +1259,35 @@ function startTodayPanel(start) {
             : ""
         }
       </div>
+    </div>
+  `;
+}
+
+function productionStatusPanel(status) {
+  if (!status?.title) return "";
+  const steps = status.steps || [];
+  const tone = status.status === "ready" ? "green" : status.status === "attention" ? "coral" : "gold";
+  return `
+    <div class="band production-status-panel ${escapeHtml(status.status || "")}">
+      <div class="band-header">
+        <div>
+          <h3>${escapeHtml(status.title || "System Status")}</h3>
+          <p>${escapeHtml(status.message || "")}</p>
+          ${status.summary ? `<p class="muted">${escapeHtml(status.summary)}</p>` : ""}
+        </div>
+        <div class="start-today-actions">
+          <span class="pill ${tone}">${escapeHtml(labelize(status.status || "waiting"))}</span>
+          <button type="button" class="text-button nav-jump" data-view="${escapeHtml(status.view || "migrationStatus")}">${escapeHtml(status.action || "Open Status")}</button>
+          ${status.report ? `<a class="text-button action-link" href="${escapeHtml(status.report)}" target="_blank" rel="noreferrer">Evidence</a>` : ""}
+        </div>
+      </div>
+      ${
+        steps.length
+          ? `<div class="start-guide-steps production-status-steps">
+              ${steps.map((step) => startTodayStep(step)).join("")}
+            </div>`
+          : ""
+      }
     </div>
   `;
 }

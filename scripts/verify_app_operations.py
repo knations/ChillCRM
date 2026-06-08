@@ -1575,15 +1575,18 @@ def main() -> int:
     assert "dailyOperatingGuidePanel" in app_js
     assert "dashboard_start_today" in server_py
     assert "start_today" in server_py
-    assert "Production CRM" in server_py
+    assert "Start Work" in server_py
+    assert "System Status" in server_py
     assert "Hosted Staging" not in server_py
     assert "Remote staging is read-only" not in server_py
     assert "Start Today" in app_js
     assert "startTodayPanel" in app_js
+    assert "productionStatusPanel" in app_js
     assert "decision-prep-band" in styles_css
     assert "cleanup-starter-panel" in styles_css
     assert "daily-guide-panel" in styles_css
     assert "start-today-panel" in styles_css
+    assert "production-status-panel" in styles_css
     assert "application/zip" in server_py
     assert ".package-content-list" in styles_css
     assert 'state.listDateFilters[state.listType] = { field: "", from: "", to: "" }' in app_js
@@ -2376,13 +2379,18 @@ def main() -> int:
         assert [step["key"] for step in start_today["steps"]] == ["followup", "pipeline", "quality", "archive_review"]
         hosted_summary = handler.hosted_summary()
         hosted_start_today = hosted_summary["start_today"]
-        assert hosted_start_today["title"] == "Production CRM"
+        assert hosted_start_today["title"] == "Start Work"
         assert "staging" not in hosted_start_today["message"].lower()
         assert hosted_start_today["action"] == "Open People"
         assert hosted_start_today["view"] == "people"
-        assert hosted_start_today["next_action"]["title"] == "Work From The Live CRM"
-        assert hosted_start_today["step_count"] == 4
-        assert [step["key"] for step in hosted_start_today["steps"]] == [
+        assert hosted_start_today["next_action"]["title"] == "Open The Client Workspace"
+        assert hosted_start_today["step_count"] == 0
+        assert hosted_start_today["steps"] == []
+        hosted_production_status = hosted_summary["production_status"]
+        assert hosted_production_status["title"] == "System Status"
+        assert hosted_production_status["action"] == "Open Status"
+        assert hosted_production_status["step_count"] == 4
+        assert [step["key"] for step in hosted_production_status["steps"]] == [
             "hosted_writes",
             "private_documents",
             "status_evidence",

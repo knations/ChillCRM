@@ -590,6 +590,10 @@ button {
   padding: 14px 16px 16px;
 }
 
+.start-today-panel.no-steps .start-today-body {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .start-next-card {
   background: var(--surface-soft);
   border: 1px solid var(--line);
@@ -655,6 +659,18 @@ button {
 .start-guide-step strong {
   min-width: 0;
   overflow-wrap: anywhere;
+}
+
+.production-status-panel {
+  margin-top: 20px;
+}
+
+.production-status-panel .band-header p {
+  margin: 6px 0 0;
+}
+
+.production-status-steps {
+  padding: 14px 16px 16px;
 }
 
 .status-grid {

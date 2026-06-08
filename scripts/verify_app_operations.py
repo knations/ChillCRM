@@ -227,6 +227,11 @@ def main() -> int:
     assert "syncActiveListRows()" in app_js
     assert "active-record-row" in app_js
     assert ".data-table tbody tr.active-record-row" in styles_css
+    assert "backdrop-filter: blur(18px)" in styles_css
+    assert "scroll-snap-type: x proximity" in styles_css
+    assert ".data-table thead {\n    display: none;" in styles_css
+    assert ".table-tools .filter-row {\n    background: transparent;" in styles_css
+    assert "#globalSearch,\n  .table-tools input,\n  .filter-row input," in styles_css
     assert 'aria-current="true"' in app_js
     assert "listTypeForDetailType" in app_js
     assert "detailBelongsToCurrentList" in app_js

@@ -247,7 +247,13 @@ def main() -> int:
     assert "personTagSuggestions" in app_js
     assert "wirePersonTagPicker(" in app_js
     assert "resolvePersonTagChoice(" in app_js
+    assert "/api/create_tag" in app_js
+    assert "/api/rename_tag" in app_js
+    assert "createTagForm" in app_js
+    assert "rename-tag-button" in app_js
     assert ".person-tag-picker" in styles_css
+    assert ".tag-create-form" in styles_css
+    assert ".tag-row-actions" in styles_css
     assert 'id="listTagFilter"' not in app_js
     assert ".tag-search-filter" in styles_css
     assert "state.searchRequestId" in app_js
@@ -2118,6 +2124,31 @@ def main() -> int:
             and row.get("match_context", "").startswith("Tag:")
             for row in tag_search
         )
+        created_tag = handler.create_tag({"name": "Operations Verification Empty Tag"})
+        assert created_tag["ok"] is True
+        assert created_tag["created"] is True
+        created_tag_id = created_tag["tag"]["source_id"]
+        existing_tag = handler.create_tag({"name": "operations verification empty tag"})
+        assert existing_tag["created"] is False
+        assert existing_tag["tag"]["source_id"] == created_tag_id
+        renamed_tag = handler.rename_tag({"id": created_tag_id, "name": "Operations Verification Renamed Tag"})
+        assert renamed_tag["ok"] is True
+        assert renamed_tag["changed"] is True
+        assert renamed_tag["tag"]["display_name"] == "Operations Verification Renamed Tag"
+        assert renamed_tag["tag"]["normalized_name"] == "operations verification renamed tag"
+        try:
+            handler.rename_tag({"id": created_tag_id, "name": "Priority Client"})
+            raise AssertionError("Expected duplicate tag rename to fail")
+        except ValueError as exc:
+            assert "Tag name already exists" in str(exc)
+        with sqlite3.connect(test_db) as conn:
+            renamed_row = conn.execute(
+                "SELECT display_name, normalized_name FROM tags WHERE id = ?",
+                (created_tag_id,),
+            ).fetchone()
+            assert renamed_row == ("Operations Verification Renamed Tag", "operations verification renamed tag")
+            assert conn.execute("SELECT count(*) FROM audit_log WHERE action = 'create_tag'").fetchone()[0] >= 1
+            assert conn.execute("SELECT count(*) FROM audit_log WHERE action = 'rename_tag'").fetchone()[0] >= 1
         addressed_person = handler.record_detail({"type": ["person"], "id": ["2"]})
         assert addressed_person["address_fields_available"] is True
         assert addressed_person["addresses"], "Expected address fields for person 2"

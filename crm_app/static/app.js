@@ -55,6 +55,7 @@ const state = {
   tagQ: "",
   tagRecordType: "",
   tagSavedViewId: "",
+  tagManageNotice: null,
   customFieldPage: 1,
   customFieldQ: "",
   customFieldRecordType: "",
@@ -542,6 +543,11 @@ function currentUserRoles() {
 
 function currentUserCanManageUsers() {
   return currentUserRoles().has("owner");
+}
+
+function currentUserCanEditTags() {
+  if (!state.auth?.auth_required) return true;
+  return ["owner", "admin", "staff"].some((role) => currentUserRoles().has(role));
 }
 
 function updateOwnerNavigation() {
@@ -3125,6 +3131,33 @@ function tagRecordTypeOptions() {
   ];
 }
 
+function setTagManageNotice(message, tone = "info") {
+  state.tagManageNotice = message ? { message, tone } : null;
+}
+
+function tagManageNotice() {
+  if (!state.tagManageNotice?.message) return "";
+  return `<div class="tag-management-notice ${escapeHtml(state.tagManageNotice.tone || "info")}">${escapeHtml(state.tagManageNotice.message)}</div>`;
+}
+
+function tagCreateForm() {
+  if (!currentUserCanEditTags()) return "";
+  return `
+    <form id="createTagForm" class="tag-create-form">
+      <input id="newTagName" type="text" maxlength="120" placeholder="New tag name" aria-label="New tag name" autocomplete="off">
+      <button class="text-button" id="createTagButton" type="submit">Add Tag</button>
+    </form>
+  `;
+}
+
+function tagNameEditor(tag, options = {}) {
+  const disabled = currentUserCanEditTags() ? "" : "disabled";
+  const compact = options.compact ? " compact" : "";
+  return `
+    <input class="tag-name-input${compact}" type="text" maxlength="120" value="${escapeHtml(tag.display_name || "")}" data-original-name="${escapeHtml(tag.display_name || "")}" aria-label="Tag name" ${disabled}>
+  `;
+}
+
 function currentCustomFieldSettings() {
   return {
     q: state.customFieldQ,
@@ -4395,6 +4428,91 @@ function wireTagButtons(root) {
   });
 }
 
+function updateTagRenameButtonState(input) {
+  const container = input.closest(".tag-management-row, .tag-detail-rename");
+  const button = container?.querySelector(".rename-tag-button");
+  if (!button) return;
+  const original = input.dataset.originalName || "";
+  const value = input.value.trim();
+  button.disabled = !value || value === original;
+}
+
+async function renameTagFromControl(button) {
+  const container = button.closest(".tag-management-row, .tag-detail-rename");
+  const input = container?.querySelector(".tag-name-input");
+  const tagId = button.dataset.id || container?.dataset.id || "";
+  if (!input || !tagId) return;
+  const name = input.value.trim();
+  const originalName = input.dataset.originalName || "";
+  if (!name || name === originalName) return;
+  button.disabled = true;
+  try {
+    setStatus("Renaming tag");
+    const result = await postJson("/api/rename_tag", { id: Number(tagId), name });
+    const tagName = result.tag?.display_name || name;
+    setTagManageNotice(result.changed === false ? "Tag name was already current." : `Renamed tag to ${tagName}.`, "success");
+    if (state.tagQ && state.tagQ.toLowerCase() === originalName.toLowerCase()) {
+      state.tagQ = tagName;
+      state.tagPage = 1;
+    }
+    if (state.view === "tags") await renderTags();
+    if (container.classList.contains("tag-detail-rename") || els.detail.querySelector(`.tag-detail-rename [data-id="${tagId}"]`)) {
+      await showTagDetail(tagId);
+    }
+    setStatus("Tag renamed");
+  } catch (error) {
+    setTagManageNotice(error.message, "error");
+    if (state.view === "tags") await renderTags();
+    setStatus("Rename failed");
+  }
+}
+
+function wireTagManagementControls(root) {
+  if (!currentUserCanEditTags()) return;
+  const createForm = root.querySelector("#createTagForm");
+  if (createForm) {
+    createForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const input = createForm.querySelector("#newTagName");
+      const button = createForm.querySelector("#createTagButton");
+      const name = input?.value.trim() || "";
+      if (!name || !button) return;
+      button.disabled = true;
+      try {
+        setStatus("Adding tag");
+        const result = await postJson("/api/create_tag", { name });
+        const tagName = result.tag?.display_name || name;
+        setTagManageNotice(result.created === false ? `Tag already exists: ${tagName}.` : `Created tag: ${tagName}.`, result.created === false ? "info" : "success");
+        clearSelectedTagSavedView();
+        state.tagQ = tagName;
+        state.tagRecordType = "";
+        state.tagPage = 1;
+        await renderTags();
+        if (result.tag?.source_id) await showTagDetail(result.tag.source_id);
+        setStatus(result.created === false ? "Tag already exists" : "Tag created");
+      } catch (error) {
+        setTagManageNotice(error.message, "error");
+        await renderTags();
+        setStatus("Add tag failed");
+      }
+    });
+  }
+  root.querySelectorAll(".tag-name-input").forEach((input) => {
+    updateTagRenameButtonState(input);
+    input.addEventListener("input", () => updateTagRenameButtonState(input));
+    input.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter") return;
+      const button = input.closest(".tag-management-row, .tag-detail-rename")?.querySelector(".rename-tag-button");
+      if (!button || button.disabled) return;
+      event.preventDefault();
+      renameTagFromControl(button);
+    });
+  });
+  root.querySelectorAll(".rename-tag-button").forEach((button) => {
+    button.addEventListener("click", () => renameTagFromControl(button));
+  });
+}
+
 function wireCustomFieldButtons(root) {
   root.querySelectorAll(".custom-field-button").forEach((button) => {
     button.addEventListener("click", () => showCustomFieldDetail(button.dataset.recordType, button.dataset.fieldName));
@@ -5370,7 +5488,17 @@ function renderTagDetail(detail) {
     <div class="detail-content">
       ${detailHeader(tag.display_name || "(blank tag)", `${formatNumber(detail.total)} assigned ${detailRecordType ? detailRecordType.toLowerCase() : "records"}`, null, { mobileBackLabel: mobileDetailBackLabel() })}
       <div class="detail-section">
-        <h3>Tag</h3>
+        <div class="inline-header">
+          <h3>Tag</h3>
+        </div>
+        ${
+          currentUserCanEditTags()
+            ? `<div class="tag-detail-rename" data-id="${tag.source_id}">
+                ${tagNameEditor(tag, { compact: true })}
+                <button class="text-button rename-tag-button" type="button" data-id="${tag.source_id}" disabled>Save Name</button>
+              </div>`
+            : ""
+        }
         <dl class="kv">
           <dt>Definitions</dt>
           <dd>${formatNumber(tag.definition_count)}</dd>
@@ -5399,6 +5527,7 @@ function renderTagDetail(detail) {
     </div>
   `;
   resetDetailScroll();
+  wireTagManagementControls(els.detail);
   wireRecordButtons(els.detail);
 }
 
@@ -6753,6 +6882,10 @@ async function renderTags() {
       </div>
       <a class="text-button action-link" href="/api/export?${escapeHtml(exportParams.toString())}">Export CSV</a>
     </div>
+    <div class="tag-management-bar">
+      ${tagCreateForm()}
+      ${tagManageNotice()}
+    </div>
     <div class="table-tools">
       <input id="tagSearch" type="search" value="${escapeHtml(state.tagQ)}" placeholder="Filter tags">
       <select id="tagRecordTypeFilter" aria-label="Tag record type">
@@ -6779,16 +6912,15 @@ async function renderTags() {
                 <th>Assignments</th>
                 <th>Definitions</th>
                 <th>Used On</th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
               ${data.tags
                 .map((tag) => `
-                  <tr>
+                  <tr class="tag-management-row" data-id="${tag.source_id}">
                     <td>
-                      <button class="record-button tag-detail-button" data-id="${tag.source_id}">
-                        ${escapeHtml(tag.display_name || "(blank tag)")}
-                      </button>
+                      ${tagNameEditor(tag)}
                     </td>
                     <td>${formatNumber(tag.assignment_count)}</td>
                     <td class="muted">${formatNumber(tag.definition_count)}</td>
@@ -6799,6 +6931,12 @@ async function renderTags() {
                             ? tag.record_types.map((type) => `<span class="tag">${escapeHtml(labelize(type))}</span>`).join("")
                             : `<span class="muted">Unassigned</span>`
                         }
+                      </div>
+                    </td>
+                    <td>
+                      <div class="tag-row-actions">
+                        ${currentUserCanEditTags() ? `<button class="text-button rename-tag-button" type="button" data-id="${tag.source_id}" disabled>Save</button>` : ""}
+                        <button class="text-button tag-detail-button" type="button" data-id="${tag.source_id}">Open</button>
                       </div>
                     </td>
                   </tr>
@@ -6877,6 +7015,7 @@ async function renderTags() {
     state.tagPage += 1;
     renderTags();
   });
+  wireTagManagementControls(els.tags);
   wireTagButtons(els.tags);
   setStatus("Ready");
 }

@@ -1112,6 +1112,8 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             "/api/update_record",
             "/api/create_record",
             "/api/set_record_lifecycle",
+            "/api/create_tag",
+            "/api/rename_tag",
             "/api/update_tags",
             "/api/update_addresses",
             "/api/upload_profile_image",
@@ -1192,6 +1194,8 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         "/api/update_record": "create_edit_records",
         "/api/create_record": "create_edit_records",
         "/api/set_record_lifecycle": "create_edit_records",
+        "/api/create_tag": "edit_addresses_tags",
+        "/api/rename_tag": "edit_addresses_tags",
         "/api/update_tags": "edit_addresses_tags",
         "/api/update_addresses": "edit_addresses_tags",
         "/api/upload_profile_image": "create_edit_records",
@@ -2824,6 +2828,10 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                 self.send_json(self.create_record(payload, auth_user, action_key))
             elif path == "/api/set_record_lifecycle":
                 self.send_json(self.set_record_lifecycle(payload, auth_user, action_key))
+            elif path == "/api/create_tag":
+                self.send_json(self.create_tag(payload, auth_user, action_key))
+            elif path == "/api/rename_tag":
+                self.send_json(self.rename_tag(payload, auth_user, action_key))
             elif path == "/api/update_tags":
                 self.send_json(self.update_tags(payload, auth_user, action_key))
             elif path == "/api/update_addresses":
@@ -8108,6 +8116,10 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             return f"Updated {field}"
         if action == "update_tags":
             return "Updated tags"
+        if action == "create_tag":
+            return "Created tag"
+        if action == "rename_tag":
+            return "Renamed tag"
         if action == "update_address":
             return "Updated address"
         if action == "add_note":
@@ -19732,6 +19744,138 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             )
             conn.commit()
         return {"ok": True, "backup": str(backup_path), "detail": self.record_detail({"type": [record_type], "id": [str(record_id)]})}
+
+    def create_tag(self, payload: dict[str, Any], actor_user: dict[str, Any] | None = None, permission_action: str | None = "edit_addresses_tags") -> dict[str, Any]:
+        tag_name = self.clean_tag_definition_name(payload.get("name") or payload.get("display_name"))
+        normalized = normalize_text(tag_name)
+        with self.db() as conn:
+            existing = row_to_dict(
+                conn.execute(
+                    "SELECT id AS source_id, display_name, normalized_name, definition_count FROM tags WHERE normalized_name = ?",
+                    (normalized,),
+                ).fetchone()
+            )
+            if existing:
+                return {"ok": True, "created": False, "backup": None, "tag": existing}
+        backup_path = self.create_backup("before_create_tag")
+        with self.db() as conn:
+            existing = row_to_dict(
+                conn.execute(
+                    "SELECT id AS source_id, display_name, normalized_name, definition_count FROM tags WHERE normalized_name = ?",
+                    (normalized,),
+                ).fetchone()
+            )
+            if existing:
+                return {"ok": True, "created": False, "backup": None, "tag": existing}
+            conn.execute(
+                """
+                INSERT INTO tags (normalized_name, display_name, definition_count)
+                VALUES (?, ?, 0)
+                """,
+                (normalized, tag_name),
+            )
+            tag_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+            self.insert_audit_log(
+                conn,
+                action="create_tag",
+                record_type="tag",
+                record_id=tag_id,
+                field_name="display_name",
+                old_value=None,
+                new_value=tag_name,
+                note=f"Backup: {backup_path.name}",
+                actor_user=actor_user,
+                permission_action=permission_action,
+            )
+            conn.commit()
+        return {
+            "ok": True,
+            "created": True,
+            "backup": str(backup_path),
+            "tag": self.tags({"id": [str(tag_id)]}).get("tag"),
+        }
+
+    def rename_tag(self, payload: dict[str, Any], actor_user: dict[str, Any] | None = None, permission_action: str | None = "edit_addresses_tags") -> dict[str, Any]:
+        tag_id = int(payload.get("id") or payload.get("tag_id") or 0)
+        if tag_id <= 0:
+            raise ValueError("Tag id is required.")
+        tag_name = self.clean_tag_definition_name(payload.get("name") or payload.get("display_name"))
+        normalized = normalize_text(tag_name)
+        with self.db() as conn:
+            existing = row_to_dict(
+                conn.execute(
+                    "SELECT id AS source_id, display_name, normalized_name, definition_count FROM tags WHERE id = ?",
+                    (tag_id,),
+                ).fetchone()
+            )
+            if not existing:
+                raise ValueError("Tag not found.")
+            duplicate = row_to_dict(
+                conn.execute(
+                    "SELECT id AS source_id, display_name FROM tags WHERE normalized_name = ? AND id <> ?",
+                    (normalized, tag_id),
+                ).fetchone()
+            )
+            if duplicate:
+                raise ValueError(f"Tag name already exists: {duplicate['display_name']}.")
+            if existing["display_name"] == tag_name and existing["normalized_name"] == normalized:
+                return {"ok": True, "changed": False, "backup": None, "tag": existing}
+        backup_path = self.create_backup(f"before_rename_tag_{tag_id}")
+        with self.db() as conn:
+            existing = row_to_dict(
+                conn.execute(
+                    "SELECT id AS source_id, display_name, normalized_name, definition_count FROM tags WHERE id = ?",
+                    (tag_id,),
+                ).fetchone()
+            )
+            if not existing:
+                raise ValueError("Tag not found.")
+            duplicate = row_to_dict(
+                conn.execute(
+                    "SELECT id AS source_id, display_name FROM tags WHERE normalized_name = ? AND id <> ?",
+                    (normalized, tag_id),
+                ).fetchone()
+            )
+            if duplicate:
+                raise ValueError(f"Tag name already exists: {duplicate['display_name']}.")
+            conn.execute(
+                """
+                UPDATE tags
+                SET display_name = ?, normalized_name = ?
+                WHERE id = ?
+                """,
+                (tag_name, normalized, tag_id),
+            )
+            self.insert_audit_log(
+                conn,
+                action="rename_tag",
+                record_type="tag",
+                record_id=tag_id,
+                field_name="display_name",
+                old_value=existing["display_name"],
+                new_value=tag_name,
+                note=f"Backup: {backup_path.name}",
+                actor_user=actor_user,
+                permission_action=permission_action,
+            )
+            conn.commit()
+        return {
+            "ok": True,
+            "changed": True,
+            "backup": str(backup_path),
+            "tag": self.tags({"id": [str(tag_id)]}).get("tag"),
+        }
+
+    def clean_tag_definition_name(self, value: Any) -> str:
+        text = str(value or "").strip()
+        if not text:
+            raise ValueError("Tag name is required.")
+        if "," in text:
+            raise ValueError("Tag names cannot include commas.")
+        normalized = normalize_text(text)
+        if not normalized:
+            raise ValueError("Tag name is required.")
+        return text[:120]
 
     def parse_tag_names(self, value: Any) -> list[str]:
         if value is None:

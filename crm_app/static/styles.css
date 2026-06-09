@@ -3507,6 +3507,72 @@ button {
   gap: 6px;
 }
 
+.tag-management-bar {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.tag-create-form {
+  align-items: center;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(220px, 420px) auto;
+}
+
+.tag-create-form input,
+.tag-name-input {
+  min-height: 38px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  padding: 0 10px;
+  width: 100%;
+}
+
+.tag-name-input.compact {
+  max-width: 420px;
+}
+
+.tag-create-form input:focus,
+.tag-name-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+  outline: 0;
+}
+
+.tag-management-notice {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--muted);
+  padding: 9px 10px;
+}
+
+.tag-management-notice.success {
+  background: var(--accent-soft);
+  border-color: rgba(65, 140, 120, 0.35);
+  color: #17624f;
+}
+
+.tag-management-notice.error {
+  background: #fff3ef;
+  border-color: #e0b6aa;
+  color: #9d3f29;
+}
+
+.tag-row-actions,
+.tag-detail-rename {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.tag-detail-rename {
+  margin-bottom: 12px;
+}
+
 .sample-list {
   display: flex;
   flex-wrap: wrap;
@@ -4715,6 +4781,18 @@ button {
     width: 42px;
   }
 
+  .tag-create-form,
+  .tag-detail-rename {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .tag-create-form .text-button,
+  .tag-detail-rename .text-button,
+  .tag-row-actions .text-button {
+    width: 100%;
+  }
+
   .icon-button,
   .text-button,
   .segment-button {
@@ -4951,6 +5029,10 @@ button {
 
   .tag-list-table td:nth-child(4)::before {
     content: "Used On";
+  }
+
+  .tag-list-table td:nth-child(5)::before {
+    content: "Actions";
   }
 
   .linked-resource-table td:nth-child(1)::before,

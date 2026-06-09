@@ -141,6 +141,39 @@ def main() -> int:
         assert hosted_runtime["database_adapter_enabled"] is True
         assert hosted_runtime["local_write_freeze"]["enabled"] is False
         assert hosted_runtime["local_write_freeze"]["mode"] == "ignored_hosted_adapter"
+        assert json.loads(runtime_handler.audit_value_for_storage("from google")) == "from google"
+        assert json.loads(runtime_handler.audit_value_for_storage(["from google", "BMSE July 2026"])) == [
+            "from google",
+            "BMSE July 2026",
+        ]
+        assert runtime_handler.next_hosted_primary_key(
+            type(
+                "ProbeConn",
+                (),
+                {
+                    "execute": lambda self, sql: type(
+                        "ProbeCursor",
+                        (),
+                        {"fetchone": lambda self: {"next_id": 72}},
+                    )()
+                },
+            )(),
+            "tags",
+        ) == 72
+        assert runtime_handler.next_hosted_primary_key(
+            type(
+                "ProbeConn",
+                (),
+                {
+                    "execute": lambda self, sql: type(
+                        "ProbeCursor",
+                        (),
+                        {"fetchone": lambda self: {"next_id": 73}},
+                    )()
+                },
+            )(),
+            "tag_assignments",
+        ) == 73
         os.environ["CRM_ENV"] = "staging"
         assert runtime_handler.runtime_context()["environment"] == "staging"
         os.environ["APP_BASE_URL"] = "https://chillcrm.app"

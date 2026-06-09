@@ -1564,8 +1564,8 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         actor_user: dict[str, Any] | None = None,
         permission_action: str | None = None,
     ) -> None:
-        old_text = old_value if old_value is None or isinstance(old_value, str) else json.dumps(old_value, ensure_ascii=False, sort_keys=True, default=json_response_default)
-        new_text = new_value if new_value is None or isinstance(new_value, str) else json.dumps(new_value, ensure_ascii=False, sort_keys=True, default=json_response_default)
+        old_text = self.audit_value_for_storage(old_value)
+        new_text = self.audit_value_for_storage(new_value)
         audit_id: int | None = None
         if self.hosted_postgres_adapter_enabled():
             row = conn.execute("SELECT COALESCE(max(id), 0) + 1 AS next_id FROM audit_log").fetchone()
@@ -1635,6 +1635,15 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                     """,
                     (action, record_type, record_id, field_name, old_text, new_text, note),
                 )
+
+    def audit_value_for_storage(self, value: Any) -> Any:
+        if value is None:
+            return None
+        if self.hosted_postgres_adapter_enabled():
+            return json.dumps(value, ensure_ascii=False, sort_keys=True, default=json_response_default)
+        if isinstance(value, str):
+            return value
+        return json.dumps(value, ensure_ascii=False, sort_keys=True, default=json_response_default)
 
     def record_permission_denial(self, path: str, action_key: str | None, user: dict[str, Any] | None) -> None:
         if not self.auth_required_enabled() or not action_key or not user:
@@ -19722,12 +19731,21 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             tag_ids = [self.ensure_tag(conn, tag_name) for tag_name in submitted]
             conn.execute("DELETE FROM tag_assignments WHERE record_type = ? AND record_id = ?", (record_type, record_id))
             for tag_id, tag_name in zip(tag_ids, submitted):
+                assignment_id = self.next_hosted_primary_key(conn, "tag_assignments")
+                id_column = "id, " if assignment_id is not None else ""
+                id_placeholder = "?, " if assignment_id is not None else ""
                 conn.execute(
-                    """
-                    INSERT INTO tag_assignments (tag_id, record_type, record_id, source_name)
-                    VALUES (?, ?, ?, ?)
+                    f"""
+                    INSERT INTO tag_assignments ({id_column}tag_id, record_type, record_id, source_name)
+                    VALUES ({id_placeholder}?, ?, ?, ?)
                     """,
-                    (tag_id, record_type, record_id, tag_name),
+                    (
+                        *((assignment_id,) if assignment_id is not None else ()),
+                        tag_id,
+                        record_type,
+                        record_id,
+                        tag_name,
+                    ),
                 )
             conn.execute(f"UPDATE {table} SET updated_at = ? WHERE id = ?", (timestamp, record_id))
             self.insert_audit_log(
@@ -19767,14 +19785,22 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             )
             if existing:
                 return {"ok": True, "created": False, "backup": None, "tag": existing}
+            tag_id = self.next_hosted_primary_key(conn, "tags")
+            id_column = "id, " if tag_id is not None else ""
+            id_placeholder = "?, " if tag_id is not None else ""
             conn.execute(
-                """
-                INSERT INTO tags (normalized_name, display_name, definition_count)
-                VALUES (?, ?, 0)
+                f"""
+                INSERT INTO tags ({id_column}normalized_name, display_name, definition_count)
+                VALUES ({id_placeholder}?, ?, 0)
                 """,
-                (normalized, tag_name),
+                (
+                    *((tag_id,) if tag_id is not None else ()),
+                    normalized,
+                    tag_name,
+                ),
             )
-            tag_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+            if tag_id is None:
+                tag_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
             self.insert_audit_log(
                 conn,
                 action="create_tag",
@@ -19906,14 +19932,21 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         existing = conn.execute("SELECT id FROM tags WHERE normalized_name = ?", (normalized,)).fetchone()
         if existing:
             return existing["id"]
+        hosted_id = self.next_hosted_primary_key(conn, "tags")
+        id_column = "id, " if hosted_id is not None else ""
+        id_placeholder = "?, " if hosted_id is not None else ""
         conn.execute(
-            """
-            INSERT INTO tags (normalized_name, display_name, definition_count)
-            VALUES (?, ?, 0)
+            f"""
+            INSERT INTO tags ({id_column}normalized_name, display_name, definition_count)
+            VALUES ({id_placeholder}?, ?, 0)
             """,
-            (normalized, display_name),
+            (
+                *((hosted_id,) if hosted_id is not None else ()),
+                normalized,
+                display_name,
+            ),
         )
-        return conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+        return hosted_id if hosted_id is not None else conn.execute("SELECT last_insert_rowid()").fetchone()[0]
 
     def update_addresses(self, payload: dict[str, Any], actor_user: dict[str, Any] | None = None, permission_action: str | None = "edit_addresses_tags") -> dict[str, Any]:
         record_type = str(payload.get("type", "")).lower()
@@ -20076,7 +20109,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
     def next_hosted_primary_key(self, conn: Any, table_name: str) -> int | None:
         if not self.hosted_postgres_adapter_enabled():
             return None
-        if table_name not in {"people", "companies", "leads", "deals"}:
+        if table_name not in {"people", "companies", "leads", "deals", "tags", "tag_assignments"}:
             raise ValueError(f"Unsupported hosted primary key table: {table_name}")
         row = conn.execute(f"SELECT COALESCE(max(id), 0) + 1 AS next_id FROM {table_name}").fetchone()
         return int(row["next_id"] if row else 1)

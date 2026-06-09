@@ -2667,6 +2667,29 @@ button {
   margin: 0;
 }
 
+.tag-section-actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.person-tag-picker {
+  align-items: center;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(220px, 1fr) auto;
+  margin: 12px 0;
+}
+
+.person-tag-picker[hidden] {
+  display: none;
+}
+
+.person-tag-search input {
+  width: 100%;
+}
+
 .edit-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -5075,6 +5098,18 @@ button {
   .app-shell.mobile-detail-open .inline-header {
     align-items: flex-start;
     gap: 8px;
+  }
+
+  .app-shell.mobile-detail-open .tag-section-actions {
+    justify-content: flex-end;
+  }
+
+  .app-shell.mobile-detail-open .person-tag-picker {
+    grid-template-columns: 1fr;
+  }
+
+  .app-shell.mobile-detail-open .person-tag-picker .text-button {
+    width: 100%;
   }
 
   .app-shell.mobile-detail-open .edit-grid,

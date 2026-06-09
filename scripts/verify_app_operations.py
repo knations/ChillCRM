@@ -243,6 +243,11 @@ def main() -> int:
     assert "listTagSuggestions" in app_js
     assert "tagSuggestionOptions(" in app_js
     assert "fetchListTagSuggestions(" in app_js
+    assert "openAddPersonTagButton" in app_js
+    assert "personTagSuggestions" in app_js
+    assert "wirePersonTagPicker(" in app_js
+    assert "resolvePersonTagChoice(" in app_js
+    assert ".person-tag-picker" in styles_css
     assert 'id="listTagFilter"' not in app_js
     assert ".tag-search-filter" in styles_css
     assert "state.searchRequestId" in app_js

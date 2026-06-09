@@ -94,6 +94,8 @@ const state = {
   debounce: null,
   tagDebounce: null,
   tagSuggestionRequestId: 0,
+  personTagDebounce: null,
+  personTagSuggestionRequestId: 0,
   searchRequestId: 0,
   searchReturnView: "dashboard",
   currentDetail: null,
@@ -3770,6 +3772,30 @@ function findTagSuggestion(tags, value) {
   return (tags || []).find((tag) => tagDisplayName(tag).toLowerCase() === normalized) || null;
 }
 
+function firstPartialTagSuggestion(tags, value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (!normalized) return null;
+  return (tags || []).find((tag) => tagDisplayName(tag).toLowerCase().includes(normalized)) || null;
+}
+
+function tagNamesFromEditorValue(value) {
+  return String(value || "")
+    .split(",")
+    .map((tag) => tag.trim())
+    .filter(Boolean);
+}
+
+function tagEditorValueFromNames(tags) {
+  return tagNamesFromEditorValue(tags.join(", ")).join(", ");
+}
+
+function addTagNameToEditorValue(value, tagName) {
+  const current = tagNamesFromEditorValue(value);
+  const normalized = tagName.trim().toLowerCase();
+  if (!normalized || current.some((tag) => tag.toLowerCase() === normalized)) return tagEditorValueFromNames(current);
+  return tagEditorValueFromNames([...current, tagName.trim()]);
+}
+
 async function fetchListTagSuggestions(query) {
   const params = new URLSearchParams({ page_size: "100" });
   if (query) params.set("q", query);
@@ -4935,7 +4961,7 @@ function renderDetail(detail) {
       ${reviewFlagsSection(detail.review_flags || [])}
       ${ownerSection(detail.owner)}
       ${addressSection(detail)}
-      ${detailTags(detail.tags || [])}
+      ${detailTags(detail, detail.tags || [])}
       ${applicationProfile(detail.application_profile || [])}
       ${keyValues(record)}
       ${detail.company ? linkSection("Company", [detail.company], "company") : ""}
@@ -5769,9 +5795,112 @@ function addTaskForm(detail) {
   `;
 }
 
+async function saveDetailTags(detail, tagsValue, button, labels) {
+  await runDetailAction(button, labels, async () => {
+    const updated = await postJson("/api/update_tags", {
+      type: detail.type,
+      id: detail.record.source_id,
+      tags: tagsValue,
+    });
+    renderDetail(updated.detail);
+    if (state.view === "dashboard") await renderDashboard();
+    if (state.view === "tags") await renderTags();
+    if (state.view === "cleanup") await renderCleanup();
+    await refreshCurrentListForDetail(updated.detail);
+  });
+}
+
+async function resolvePersonTagChoice(value, currentSuggestions) {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  let selected = findTagSuggestion(currentSuggestions, trimmed) || firstPartialTagSuggestion(currentSuggestions, trimmed);
+  if (selected) return selected;
+  const refreshed = await fetchListTagSuggestions(trimmed);
+  const suggestions = uniqueTags(refreshed.tags || []);
+  return findTagSuggestion(suggestions, trimmed) || firstPartialTagSuggestion(suggestions, trimmed);
+}
+
+function wirePersonTagPicker(detail) {
+  if (detail.type !== "person") return;
+  const openButton = document.querySelector("#openAddPersonTagButton");
+  const picker = document.querySelector("#personTagPicker");
+  const input = document.querySelector("#personTagSearch");
+  const datalist = document.querySelector("#personTagSuggestions");
+  const addButton = document.querySelector("#addPersonTagButton");
+  const editor = document.querySelector("#tagEditor");
+  if (!openButton || !picker || !input || !datalist || !addButton || !editor) return;
+
+  let currentSuggestions = [];
+  const setPickerOptions = (tags) => {
+    currentSuggestions = uniqueTags(tags || []);
+    datalist.innerHTML = tagSuggestionOptions(currentSuggestions);
+  };
+  const loadSuggestions = async (query) => {
+    const requestId = ++state.personTagSuggestionRequestId;
+    const data = await fetchListTagSuggestions(query);
+    if (requestId !== state.personTagSuggestionRequestId) return;
+    setPickerOptions(data.tags || []);
+  };
+
+  openButton.addEventListener("click", async () => {
+    picker.hidden = !picker.hidden;
+    openButton.textContent = picker.hidden ? "Add Tag" : "Cancel";
+    if (picker.hidden) return;
+    input.value = "";
+    addButton.disabled = true;
+    await loadSuggestions("");
+    input.focus();
+  });
+
+  input.addEventListener("input", () => {
+    const value = input.value.trim();
+    addButton.disabled = !value;
+    window.clearTimeout(state.personTagDebounce);
+    state.personTagDebounce = window.setTimeout(async () => {
+      try {
+        await loadSuggestions(value);
+      } catch (error) {
+        setStatus("Tag search failed");
+      }
+    }, 180);
+  });
+
+  input.addEventListener("change", () => {
+    const value = input.value.trim();
+    const selected = findTagSuggestion(currentSuggestions, value);
+    if (selected) input.value = tagDisplayName(selected);
+    addButton.disabled = !input.value.trim();
+  });
+
+  input.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" || addButton.disabled) return;
+    event.preventDefault();
+    addButton.click();
+  });
+
+  addButton.addEventListener("click", async () => {
+    await runDetailAction(addButton, { progress: "Adding tag", success: "Tag added", failure: "Add tag failed" }, async () => {
+      const selected = await resolvePersonTagChoice(input.value, currentSuggestions);
+      if (!selected) throw new Error("Choose a tag from the existing tag list.");
+      editor.value = addTagNameToEditorValue(editor.value, tagDisplayName(selected));
+      const updated = await postJson("/api/update_tags", {
+        type: detail.type,
+        id: detail.record.source_id,
+        tags: editor.value,
+      });
+      renderDetail(updated.detail);
+      if (state.view === "dashboard") await renderDashboard();
+      if (state.view === "tags") await renderTags();
+      if (state.view === "cleanup") await renderCleanup();
+      await refreshCurrentListForDetail(updated.detail);
+    });
+  });
+}
+
 function wireDetailForms(detail) {
   document.querySelector(".detail-close-button")?.addEventListener("click", closeCurrentRecordDetail);
   wireProfileImageControls(detail);
+  wirePersonTagPicker(detail);
 
   document.querySelectorAll(".contact-copy-button").forEach((button) => {
     button.addEventListener("click", async () => {
@@ -5875,18 +6004,7 @@ function wireDetailForms(detail) {
   if (tagsButton) {
     tagsButton.addEventListener("click", async () => {
       const editor = document.querySelector("#tagEditor");
-      await runDetailAction(tagsButton, { progress: "Saving tags", success: "Tags saved", failure: "Tag save failed" }, async () => {
-        const updated = await postJson("/api/update_tags", {
-          type: detail.type,
-          id: detail.record.source_id,
-          tags: editor.value,
-        });
-        renderDetail(updated.detail);
-        if (state.view === "dashboard") await renderDashboard();
-        if (state.view === "tags") await renderTags();
-        if (state.view === "cleanup") await renderCleanup();
-        await refreshCurrentListForDetail(updated.detail);
-      });
+      await saveDetailTags(detail, editor.value, tagsButton, { progress: "Saving tags", success: "Tags saved", failure: "Tag save failed" });
     });
   }
 
@@ -7754,14 +7872,32 @@ function taskDateInputValue(value) {
   return value ? String(value).slice(0, 10) : "";
 }
 
-function detailTags(tags) {
+function personTagPicker(detail) {
+  if (detail?.type !== "person") return "";
+  return `
+      <div class="person-tag-picker" id="personTagPicker" hidden>
+        <div class="person-tag-search">
+          <input id="personTagSearch" type="text" list="personTagSuggestions" placeholder="Search tags" aria-label="Search tags to add" autocomplete="off">
+          <datalist id="personTagSuggestions"></datalist>
+        </div>
+        <button class="text-button" id="addPersonTagButton" type="button" disabled>Add</button>
+      </div>
+  `;
+}
+
+function detailTags(detail, tags) {
+  const canAddPersonTag = detail?.type === "person";
   return `
     <div class="detail-section">
       <div class="inline-header">
         <h3>Tags</h3>
-        <button class="text-button" id="saveTagsButton">Save</button>
+        <div class="tag-section-actions">
+          ${canAddPersonTag ? `<button class="text-button" id="openAddPersonTagButton" type="button">Add Tag</button>` : ""}
+          <button class="text-button" id="saveTagsButton" type="button">Save</button>
+        </div>
       </div>
       <div class="tag-list">${tags.length ? tags.map((tag) => `<span class="tag">${escapeHtml(tag)}</span>`).join("") : `<span class="muted">No tags saved.</span>`}</div>
+      ${personTagPicker(detail)}
       <textarea id="tagEditor" class="note-input compact-input" rows="2">${escapeHtml(tags.join(", "))}</textarea>
     </div>
   `;

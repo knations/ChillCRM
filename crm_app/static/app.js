@@ -5613,6 +5613,7 @@ function renderCleanupGroupDetail(detail) {
       </div>
       ${cleanupDecisionSection(detail)}
       ${cleanupMergeDraft(detail.merge_draft)}
+      ${duplicatePeopleMergePanel(detail)}
       ${
         isTagGroup
           ? `<div class="detail-section">
@@ -5685,6 +5686,7 @@ function renderCleanupGroupDetail(detail) {
   resetDetailScroll();
   wireRecordButtons(els.detail);
   wireCleanupFlagButtons(els.detail);
+  wireDuplicatePeopleMerge(detail);
   const saveCleanupDecision = async (openNext = false) => {
     const decision = document.querySelector("#cleanupDecisionSelect").value;
     const note = document.querySelector("#cleanupDecisionNote").value.trim();
@@ -8908,6 +8910,60 @@ function cleanupFieldComparison(comparisons) {
       </div>
     </div>
   `;
+}
+
+function duplicatePeopleMergePanel(detail) {
+  if (detail.type !== "duplicate_people" || detail.status !== "open" || !detail.merge_draft?.keeper) return "";
+  const keeper = detail.merge_draft.keeper;
+  const mergeableCount = Math.max(0, Number(detail.counts?.record_count || 0) - 1);
+  return `
+    <div class="detail-section merge-apply-panel">
+      <div class="inline-header">
+        <h3>Apply Reviewed Merge</h3>
+        <span class="pill">Owner/Admin</span>
+      </div>
+      <p>Keep ${escapeHtml(keeper.record_name || `Person #${keeper.record_id}`)} active, move linked history onto that person, fill blank keeper fields, and preserve conflicts in a merge note. Duplicate people are marked inactive, not deleted.</p>
+      <div class="cleanup-record-stats">
+        <span>${formatNumber(mergeableCount)} duplicate records</span>
+        <span>Tags, notes, tasks, deals, files</span>
+        <span>Audit logged</span>
+      </div>
+      <textarea id="duplicatePeopleMergeNote" class="note-input" rows="3" placeholder="Optional merge note"></textarea>
+      <div class="review-actions">
+        <button class="text-button primary-action" id="applyDuplicatePeopleMergeButton" data-keeper-id="${escapeHtml(keeper.record_id || "")}">Merge People</button>
+      </div>
+    </div>
+  `;
+}
+
+function wireDuplicatePeopleMerge(detail) {
+  const button = document.querySelector("#applyDuplicatePeopleMergeButton");
+  if (!button) return;
+  button.addEventListener("click", async () => {
+    const keeperName = detail.merge_draft?.keeper?.record_name || `Person #${button.dataset.keeperId || ""}`;
+    const ok = window.confirm(`Merge this duplicate people group into ${keeperName}? The duplicates will be marked inactive and preserved in the audit trail.`);
+    if (!ok) return;
+    const note = document.querySelector("#duplicatePeopleMergeNote")?.value.trim() || "";
+    await runDetailAction(
+      button,
+      { progress: "Merging duplicate people", success: "Duplicate people merged", failure: "People merge failed" },
+      async () => {
+        const merged = await postJson("/api/merge_duplicate_people", {
+          key: detail.group_key,
+          status: detail.status,
+          keeper_id: Number(button.dataset.keeperId || 0),
+          note,
+        });
+        await renderCleanup();
+        if (merged.detail) {
+          renderDetail(merged.detail);
+          await refreshCurrentListForDetail(merged.detail);
+        } else if (merged.cleanup_detail) {
+          renderCleanupGroupDetail(merged.cleanup_detail);
+        }
+      }
+    );
+  });
 }
 
 function cleanupMergeDraft(draft) {

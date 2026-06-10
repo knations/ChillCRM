@@ -4164,6 +4164,20 @@ button {
   overflow-wrap: anywhere;
 }
 
+.merge-apply-panel {
+  border-color: #b9d8c3;
+  background: #f3fbf6;
+}
+
+.merge-apply-panel p {
+  margin: 0 0 12px;
+  color: var(--muted);
+}
+
+.merge-apply-panel textarea {
+  margin-top: 12px;
+}
+
 .cleanup-record-list {
   display: grid;
   gap: 8px;

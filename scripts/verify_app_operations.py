@@ -174,6 +174,34 @@ def main() -> int:
             )(),
             "tag_assignments",
         ) == 73
+        assert runtime_handler.next_hosted_primary_key(
+            type(
+                "ProbeConn",
+                (),
+                {
+                    "execute": lambda self, sql: type(
+                        "ProbeCursor",
+                        (),
+                        {"fetchone": lambda self: {"next_id": 74}},
+                    )()
+                },
+            )(),
+            "notes",
+        ) == 74
+        assert runtime_handler.next_hosted_primary_key(
+            type(
+                "ProbeConn",
+                (),
+                {
+                    "execute": lambda self, sql: type(
+                        "ProbeCursor",
+                        (),
+                        {"fetchone": lambda self: {"next_id": 75}},
+                    )()
+                },
+            )(),
+            "local_addresses",
+        ) == 75
         os.environ["CRM_ENV"] = "staging"
         assert runtime_handler.runtime_context()["environment"] == "staging"
         os.environ["APP_BASE_URL"] = "https://chillcrm.app"
@@ -853,6 +881,14 @@ def main() -> int:
     assert "Matrix CSV" in app_js
     assert "cleanup_review_starter_packet" in server_py
     assert "cleanup_starter_packet" in server_py
+    assert "/api/merge_duplicate_people" in server_py
+    assert "/api/merge_duplicate_people" in app_js
+    assert "merge_duplicate_people" in server_py
+    assert "applyDuplicatePeopleMergeButton" in app_js
+    assert "duplicatePeopleMergePanel" in app_js
+    assert "wireDuplicatePeopleMerge" in app_js
+    assert "Duplicate people are marked inactive, not deleted." in app_js
+    assert ".merge-apply-panel" in styles_css
     assert "Decision Prep Packet" in app_js
     assert "decisionPrepPacketPanel" in app_js
     assert "worksheetActionLinks" in app_js
@@ -5369,6 +5405,313 @@ def main() -> int:
         assert any(row.get("keeper_name") for row in cleanup_merge_export["rows"])
         assert any(row.get("keeper_reason") for row in cleanup_merge_export["rows"])
         assert any(row.get("field_name") for row in cleanup_merge_export["rows"] if row["row_type"] == "manual_review_field")
+        merge_group_key = "merge.unit@example.test"
+        with sqlite3.connect(test_db) as conn:
+            company_for_merge = conn.execute("SELECT id FROM companies ORDER BY id LIMIT 1").fetchone()[0]
+            stage_for_merge = conn.execute("SELECT id, pipeline_id FROM stages ORDER BY position, id LIMIT 1").fetchone()
+            conn.execute(
+                """
+                INSERT INTO people (
+                    zendesk_contact_id, company_id, first_name, last_name, name, normalized_name,
+                    email, normalized_email, phone, mobile, title, owner_user_id,
+                    customer_status, prospect_status, created_at, updated_at, source_json
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    None,
+                    company_for_merge,
+                    "Merge",
+                    "Keeper",
+                    "Merge Keeper",
+                    "merge keeper",
+                    "merge.unit@example.test",
+                    merge_group_key,
+                    None,
+                    None,
+                    "Keeper Title",
+                    None,
+                    "none",
+                    "none",
+                    "2026-06-09T10:00:00+00:00",
+                    "2026-06-09T10:00:00+00:00",
+                    "{}",
+                ),
+            )
+            merge_keeper_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+            conn.execute(
+                """
+                INSERT INTO people (
+                    zendesk_contact_id, company_id, first_name, last_name, name, normalized_name,
+                    email, normalized_email, phone, mobile, title, owner_user_id,
+                    customer_status, prospect_status, created_at, updated_at, source_json
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    None,
+                    company_for_merge,
+                    "Merge",
+                    "Duplicate",
+                    "Merge Duplicate",
+                    "merge duplicate",
+                    "merge.unit@example.test",
+                    merge_group_key,
+                    "555-222-3333",
+                    "555-333-4444",
+                    "Loser Alternate Title",
+                    owner_id,
+                    "VIP",
+                    "Hot Prospect",
+                    "2026-06-09T11:00:00+00:00",
+                    "2026-06-09T11:00:00+00:00",
+                    "{}",
+                ),
+            )
+            merge_loser_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+            conn.execute(
+                "INSERT INTO tags (normalized_name, display_name, definition_count) VALUES (?, ?, 0)",
+                ("merge verification tag", "Merge Verification Tag"),
+            )
+            merge_tag_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+            conn.execute(
+                "INSERT INTO tag_assignments (tag_id, record_type, record_id, source_name) VALUES (?, 'person', ?, ?)",
+                (merge_tag_id, merge_loser_id, "Merge Verification Tag"),
+            )
+            conn.execute(
+                """
+                INSERT INTO notes (
+                    zendesk_note_id, record_type, record_id, creator_user_id, content,
+                    note_type, is_important, created_at, updated_at, source_json
+                )
+                VALUES (?, 'person', ?, ?, ?, 'zendesk', 0, ?, ?, ?)
+                """,
+                (None, merge_loser_id, None, "Loser note should move to keeper.", "2026-06-09T11:05:00+00:00", "2026-06-09T11:05:00+00:00", "{}"),
+            )
+            conn.execute(
+                """
+                INSERT INTO tasks (
+                    zendesk_task_id, record_type, record_id, owner_user_id, creator_user_id,
+                    content, completed, completed_at, due_date, remind_at, overdue,
+                    created_at, updated_at, source_json
+                )
+                VALUES (?, 'person', ?, ?, ?, ?, 0, NULL, ?, NULL, 0, ?, ?, ?)
+                """,
+                (
+                    None,
+                    merge_loser_id,
+                    None,
+                    None,
+                    "Loser task should move to keeper.",
+                    "2026-06-12",
+                    "2026-06-09T11:06:00+00:00",
+                    "2026-06-09T11:06:00+00:00",
+                    "{}",
+                ),
+            )
+            conn.execute(
+                """
+                INSERT INTO deals (
+                    zendesk_deal_id, person_id, company_id, pipeline_id, stage_id, name, value,
+                    currency, source_id, loss_reason_id, unqualified_reason_id, hot,
+                    estimated_close_date, last_activity_at, created_at, updated_at, source_json
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    None,
+                    merge_loser_id,
+                    company_for_merge,
+                    stage_for_merge[1],
+                    stage_for_merge[0],
+                    "Loser Deal Should Move",
+                    123.0,
+                    "USD",
+                    None,
+                    None,
+                    None,
+                    0,
+                    None,
+                    "2026-06-09T11:07:00+00:00",
+                    "2026-06-09T11:07:00+00:00",
+                    "2026-06-09T11:07:00+00:00",
+                    "{}",
+                ),
+            )
+            merge_deal_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+            conn.execute(
+                """
+                INSERT INTO local_addresses (
+                    record_type, record_id, address_key, label, line1, line2, city, state,
+                    postal_code, country, source, created_at, updated_at
+                )
+                VALUES ('person', ?, 'address', 'Primary Address', '1 Keeper Way', NULL, 'Keeper City', 'KS', '11111', 'USA', 'local', ?, ?)
+                """,
+                (merge_keeper_id, "2026-06-09T11:08:00+00:00", "2026-06-09T11:08:00+00:00"),
+            )
+            conn.execute(
+                """
+                INSERT INTO local_addresses (
+                    record_type, record_id, address_key, label, line1, line2, city, state,
+                    postal_code, country, source, created_at, updated_at
+                )
+                VALUES ('person', ?, 'address', 'Primary Address', '2 Loser Lane', NULL, 'Loser City', 'LS', '22222', 'USA', 'local', ?, ?)
+                """,
+                (merge_loser_id, "2026-06-09T11:09:00+00:00", "2026-06-09T11:09:00+00:00"),
+            )
+            conn.execute(
+                """
+                INSERT INTO local_addresses (
+                    record_type, record_id, address_key, label, line1, line2, city, state,
+                    postal_code, country, source, created_at, updated_at
+                )
+                VALUES ('person', ?, 'shipping_address', 'Shipping Address', '3 Shipping Way', NULL, 'Ship City', 'SS', '33333', 'USA', 'local', ?, ?)
+                """,
+                (merge_loser_id, "2026-06-09T11:10:00+00:00", "2026-06-09T11:10:00+00:00"),
+            )
+            conn.execute(
+                "INSERT INTO custom_field_values (record_type, record_id, field_name, field_value) VALUES ('person', ?, ?, ?)",
+                (merge_keeper_id, "Merge Field", "Keeper Value"),
+            )
+            conn.execute(
+                "INSERT INTO custom_field_values (record_type, record_id, field_name, field_value) VALUES ('person', ?, ?, ?)",
+                (merge_loser_id, "Merge Field", "Loser Value"),
+            )
+            conn.execute(
+                "INSERT INTO custom_field_values (record_type, record_id, field_name, field_value) VALUES ('person', ?, ?, ?)",
+                (merge_loser_id, "Loser Only Field", "Loser Only Value"),
+            )
+            conn.execute(
+                """
+                INSERT INTO imported_archive_items (
+                    item_type, source_collection, zendesk_record_id, record_type, record_id,
+                    related_record_type, related_record_id, original_resource_type, original_resource_id,
+                    title, body, direction, occurred_at, created_at, updated_at, user_id,
+                    duration_seconds, phone_number, content_type, size_bytes, local_file, url, status, source_json
+                )
+                VALUES ('document', 'verification_merge_direct', 900001, 'person', ?, NULL, NULL, 'person', ?, 'Merge Direct File', 'Direct archive should move', NULL, ?, ?, ?, NULL, NULL, NULL, 'text/plain', 10, NULL, NULL, NULL, ?)
+                """,
+                (merge_loser_id, merge_loser_id, "2026-06-09T11:11:00+00:00", "2026-06-09T11:11:00+00:00", "2026-06-09T11:11:00+00:00", "{}"),
+            )
+            conn.execute(
+                """
+                INSERT INTO imported_archive_items (
+                    item_type, source_collection, zendesk_record_id, record_type, record_id,
+                    related_record_type, related_record_id, original_resource_type, original_resource_id,
+                    title, body, direction, occurred_at, created_at, updated_at, user_id,
+                    duration_seconds, phone_number, content_type, size_bytes, local_file, url, status, source_json
+                )
+                VALUES ('call', 'verification_merge_related', 900002, NULL, NULL, 'person', ?, 'person', ?, 'Merge Related Call', 'Related archive should move', 'outbound', ?, ?, ?, NULL, 90, '5552223333', NULL, NULL, NULL, NULL, NULL, ?)
+                """,
+                (merge_loser_id, merge_loser_id, "2026-06-09T11:12:00+00:00", "2026-06-09T11:12:00+00:00", "2026-06-09T11:12:00+00:00", "{}"),
+            )
+            conn.execute(
+                """
+                INSERT INTO record_profile_images (
+                    record_type, record_id, storage_backend, storage_bucket, storage_key, local_file,
+                    original_filename, content_type, bytes, sha256, width, height, status,
+                    app_user_id, actor_email, created_at, updated_at
+                )
+                VALUES ('person', ?, 'local', NULL, 'profile-images/people/test.png', NULL,
+                    'merge-loser.png', 'image/png', 12, 'merge-test-sha', 100, 100, 'active',
+                    NULL, NULL, ?, ?)
+                """,
+                (merge_loser_id, "2026-06-09T11:13:00+00:00", "2026-06-09T11:13:00+00:00"),
+            )
+            for record_id, related_id in [(merge_keeper_id, merge_loser_id), (merge_loser_id, merge_keeper_id)]:
+                conn.execute(
+                    """
+                    INSERT INTO review_flags (
+                        flag_type, severity, record_type, record_id, related_record_type,
+                        related_record_id, flag_key, description
+                    )
+                    VALUES ('duplicate_person_email', 'medium', 'person', ?, 'person', ?, ?, ?)
+                    """,
+                    (record_id, related_id, merge_group_key, "Verification duplicate people merge group."),
+                )
+            conn.commit()
+        merge_detail_before = handler.cleanup_groups(
+            {"type": ["duplicate_people"], "status": ["open"], "key": [merge_group_key], "page_size": ["10"]}
+        )
+        assert merge_detail_before["merge_draft"]
+        before_merge_backups = {path.name for path in server.BACKUP_DIR.glob("*.sqlite")}
+        merged_people = handler.merge_duplicate_people(
+            {
+                "key": merge_group_key,
+                "keeper_id": merge_keeper_id,
+                "status": "open",
+                "note": "verification duplicate merge",
+            }
+        )
+        assert merged_people["ok"] is True
+        assert merged_people["keeper_id"] == merge_keeper_id
+        assert merged_people["merged_ids"] == [merge_loser_id]
+        assert merged_people["summary"]["moved"]["notes"] == 1
+        assert merged_people["summary"]["moved"]["tasks"] == 1
+        assert merged_people["summary"]["moved"]["deals"] == 1
+        assert merged_people["summary"]["moved"]["archive_items"] == 2
+        assert merged_people["summary"]["profile_image"]["moved"] == 1
+        assert any(item["field"] == "phone" for item in merged_people["summary"]["filled_fields"])
+        assert any(item["field"] == "title" for item in merged_people["summary"]["field_conflicts"])
+        assert any(item["address_key"] == "shipping_address" for item in merged_people["summary"]["address_fills"])
+        assert any(item["address_key"] == "address" for item in merged_people["summary"]["address_conflicts"])
+        assert any(item["field"] == "Merge Field" for item in merged_people["summary"]["custom_field_conflicts"])
+        after_merge_backups = {path.name for path in server.BACKUP_DIR.glob("*.sqlite")}
+        assert len(after_merge_backups - before_merge_backups) == 1
+        merged_detail = merged_people["detail"]
+        assert merged_detail["record"]["phone"] == "555-222-3333"
+        assert merged_detail["record"]["mobile"] == "555-333-4444"
+        assert merged_detail["record"]["title"] == "Keeper Title"
+        assert merged_detail["record"]["customer_status"] == "VIP"
+        assert "Merge Verification Tag" in merged_detail["tags"]
+        assert any(note["content"] == "Loser note should move to keeper." for note in merged_detail["notes"])
+        merge_note = next(note for note in merged_detail["notes"] if "Merged duplicate people into this record." in note["content"])
+        assert "Loser Alternate Title" in merge_note["content"]
+        assert "2 Loser Lane" in merge_note["content"]
+        assert "verification duplicate merge" in merge_note["content"]
+        assert any(task["content"] == "Loser task should move to keeper." for task in merged_detail["tasks"])
+        assert any(deal["source_id"] == merge_deal_id for deal in merged_detail["deals"])
+        assert any(item["title"] == "Merge Direct File" for item in merged_detail["archive_items"])
+        assert any(item["title"] == "Merge Related Call" for item in merged_detail["archive_items"])
+        assert any(address["address_key"] == "shipping_address" and address["line1"] == "3 Shipping Way" for address in merged_detail["addresses"])
+        assert any(field["field_name"] == "Loser Only Field" and field["field_value"] == "Loser Only Value" for field in merged_detail["custom_fields"])
+        assert merged_detail["profile_image"]
+        with sqlite3.connect(test_db) as conn:
+            assert conn.execute(
+                "SELECT count(*) FROM tag_assignments WHERE record_type = 'person' AND record_id = ?",
+                (merge_loser_id,),
+            ).fetchone()[0] == 0
+            assert conn.execute(
+                "SELECT lifecycle_status FROM local_record_lifecycle WHERE record_type = 'person' AND record_id = ?",
+                (merge_loser_id,),
+            ).fetchone()[0] == "inactive"
+            assert conn.execute("SELECT person_id FROM deals WHERE id = ?", (merge_deal_id,)).fetchone()[0] == merge_keeper_id
+            assert conn.execute(
+                "SELECT count(*) FROM review_flags WHERE flag_key = ? AND status = 'open'",
+                (merge_group_key,),
+            ).fetchone()[0] == 0
+            assert conn.execute(
+                "SELECT count(*) FROM review_flags WHERE flag_key = ? AND status = 'resolved'",
+                (merge_group_key,),
+            ).fetchone()[0] == 2
+            merge_audit = conn.execute(
+                """
+                SELECT action, record_type, record_id, field_name, new_value, note, permission_action
+                FROM audit_log
+                WHERE action = 'merge_duplicate_people'
+                ORDER BY id DESC
+                LIMIT 1
+                """
+            ).fetchone()
+            assert merge_audit is not None
+            assert merge_audit[1] == "person"
+            assert merge_audit[2] == merge_keeper_id
+            assert merge_audit[3] == "duplicate_people"
+            assert str(merge_loser_id) in merge_audit[4]
+            assert "Backup:" in merge_audit[5]
+            assert merge_audit[6] == "merge_duplicate_people"
+        merge_activity = handler.activity({"type": ["person"], "id": [str(merge_keeper_id)], "limit": ["50"]})["activity"]
+        assert any(row["activity_type"] == "cleanup_decision" and "Merged duplicate people" in row["summary"] for row in merge_activity)
         application_profile_rows = handler.export_rows({"type": ["application_profiles"]})["rows"]
         assert application_profile_rows
         assert any(row["record_type"] == "lead" and row["APP Number"] for row in application_profile_rows)

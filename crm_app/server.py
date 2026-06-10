@@ -1128,6 +1128,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             "/api/complete_task",
             "/api/resolve_flag",
             "/api/save_cleanup_decision",
+            "/api/merge_duplicate_people",
             "/api/save_project_decision",
             "/api/save_view",
             "/api/delete_view",
@@ -1149,6 +1150,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         "link_archive_item": frozenset({"owner", "admin"}),
         "resolve_cleanup_flags": frozenset({"owner", "admin"}),
         "save_cleanup_decision": frozenset({"owner", "admin"}),
+        "merge_duplicate_people": frozenset({"owner", "admin"}),
         "save_project_decision": frozenset({"owner"}),
         "manual_backup": frozenset({"owner", "admin", "migration_operator"}),
         "restore_backup": frozenset({"owner"}),
@@ -1210,6 +1212,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         "/api/save_archive_review": "archive_review_status",
         "/api/resolve_flag": "resolve_cleanup_flags",
         "/api/save_cleanup_decision": "save_cleanup_decision",
+        "/api/merge_duplicate_people": "merge_duplicate_people",
         "/api/save_project_decision": "save_project_decision",
         "/api/save_view": "search_filter_save_views",
         "/api/delete_view": "search_filter_save_views",
@@ -2869,6 +2872,8 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                 self.send_json(self.resolve_flag(payload, auth_user, action_key))
             elif path == "/api/save_cleanup_decision":
                 self.send_json(self.save_cleanup_decision(payload, auth_user, action_key))
+            elif path == "/api/merge_duplicate_people":
+                self.send_json(self.merge_duplicate_people(payload, auth_user, action_key))
             elif path == "/api/save_project_decision":
                 self.send_json(self.save_project_decision(payload, auth_user, action_key))
             elif path == "/api/save_view":
@@ -8073,7 +8078,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             "activity_type": "project_decision"
             if action == "save_project_decision"
             else "cleanup_decision"
-            if action in {"resolve_flag", "save_cleanup_decision"}
+            if action in {"resolve_flag", "save_cleanup_decision", "merge_duplicate_people"}
             else "audit",
             "record_type": row["record_type"],
             "record_id": row["record_id"],
@@ -8109,6 +8114,10 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             note = self.audit_user_note(row["note"])
             note_text = f": {note}" if note else ""
             return f"Cleanup group decision: {label}{note_text}"
+        if action == "merge_duplicate_people":
+            merged_ids = self.audit_note_metadata(row["note"], "merged_ids")
+            merged_text = f" · merged {merged_ids}" if merged_ids else ""
+            return f"Merged duplicate people into Person #{row['record_id']}{merged_text}"
         if action == "save_project_decision":
             key = str(row["field_name"] or "")
             definition = next((item for item in PROJECT_DECISIONS if item["key"] == key), None)
@@ -19046,6 +19055,663 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             "detail": self.cleanup_groups({"type": [group_type], "status": [status], "key": [group_key]}),
         }
 
+    def merge_duplicate_people(
+        self,
+        payload: dict[str, Any],
+        actor_user: dict[str, Any] | None = None,
+        permission_action: str | None = "merge_duplicate_people",
+    ) -> dict[str, Any]:
+        group_key = normalize_text(payload.get("key") or payload.get("group_key") or payload.get("email"))
+        keeper_id = self.optional_int(payload.get("keeper_id"))
+        status = str(payload.get("status") or "open").strip().lower()
+        user_note = self.clean_optional(payload.get("note")) or ""
+        if not group_key:
+            raise ValueError("Duplicate people group key is required.")
+        if status not in {"open", "ignored", "resolved"}:
+            status = "open"
+
+        backup_path = self.create_backup(f"before_merge_people_{group_key[:20] or 'group'}")
+        timestamp = now_iso()
+        with self.db() as conn:
+            if not self.cleanup_group_exists(conn, "duplicate_people", group_key):
+                raise ValueError("Duplicate people group not found.")
+            people = rows_to_dicts(
+                conn.execute(
+                    """
+                    SELECT *
+                    FROM people
+                    WHERE normalized_email = ?
+                    ORDER BY updated_at DESC, id
+                    """,
+                    (group_key,),
+                ).fetchall()
+            )
+            if len(people) < 2:
+                raise ValueError("At least two people are required to merge a duplicate group.")
+            records = rows_to_dicts(
+                conn.execute(
+                    """
+                    SELECT 'person' AS record_type, id AS source_id, name, email,
+                           phone, mobile, title AS detail, updated_at
+                    FROM people
+                    WHERE normalized_email = ?
+                    ORDER BY updated_at DESC, id
+                    """,
+                    (group_key,),
+                ).fetchall()
+            )
+            self.enrich_cleanup_records(conn, records)
+            field_comparison = self.cleanup_field_comparison(conn, records)
+            draft = self.cleanup_merge_draft("duplicate_people", records, field_comparison)
+            available_ids = {int(row["id"]) for row in people}
+            draft_keeper_id = int((draft or {}).get("keeper", {}).get("record_id") or 0)
+            if keeper_id is None:
+                keeper_id = draft_keeper_id
+            if keeper_id not in available_ids:
+                raise ValueError("Keeper person must be one of the duplicate people in this group.")
+            loser_ids = [int(row["id"]) for row in people if int(row["id"]) != keeper_id]
+            if not loser_ids:
+                raise ValueError("No duplicate people remain after choosing the keeper.")
+
+            keeper = row_to_dict(conn.execute("SELECT * FROM people WHERE id = ?", (keeper_id,)).fetchone())
+            loser_records = [
+                row_to_dict(conn.execute("SELECT * FROM people WHERE id = ?", (loser_id,)).fetchone())
+                for loser_id in loser_ids
+            ]
+            rank_by_id = {int(record["source_id"]): self.cleanup_merge_source_rank(record) for record in records}
+            loser_records.sort(key=lambda row: rank_by_id.get(int(row["id"]), (0, "", 0)), reverse=True)
+            summary = self.apply_duplicate_people_merge(
+                conn,
+                group_key=group_key,
+                keeper=keeper,
+                loser_records=loser_records,
+                rank_by_id=rank_by_id,
+                timestamp=timestamp,
+            )
+            note_content = self.duplicate_people_merge_note_content(
+                group_key=group_key,
+                keeper=keeper,
+                loser_records=loser_records,
+                summary=summary,
+                user_note=user_note,
+            )
+            note_id = self.insert_local_note_row(
+                conn,
+                "person",
+                keeper_id,
+                note_content,
+                timestamp,
+                {
+                    "local_source": "duplicate_people_merge",
+                    "group_key": group_key,
+                    "keeper_id": keeper_id,
+                    "merged_person_ids": loser_ids,
+                },
+            )
+            summary["merge_note_id"] = note_id
+            flag_note = f"Merged duplicate people into person #{keeper_id}. Backup: {backup_path.name}"
+            if user_note:
+                flag_note = f"{flag_note}; {user_note}"
+            conn.execute(
+                """
+                UPDATE review_flags
+                SET status = 'resolved', resolved_at = ?, resolution_note = ?
+                WHERE flag_type = 'duplicate_person_email'
+                  AND flag_key = ?
+                  AND status = 'open'
+                """,
+                (timestamp, flag_note, group_key),
+            )
+            self.insert_audit_log(
+                conn,
+                action="merge_duplicate_people",
+                record_type="person",
+                record_id=keeper_id,
+                field_name="duplicate_people",
+                old_value={"group_key": group_key, "merged_person_ids": loser_ids},
+                new_value=summary,
+                note=f"group_key={group_key}; merged_ids={','.join(str(item) for item in loser_ids)}; Backup: {backup_path.name}; {user_note}".strip(),
+                actor_user=actor_user,
+                permission_action=permission_action,
+            )
+            conn.commit()
+        return {
+            "ok": True,
+            "backup": str(backup_path),
+            "group_key": group_key,
+            "keeper_id": keeper_id,
+            "merged_ids": loser_ids,
+            "summary": summary,
+            "detail": self.record_detail({"type": ["person"], "id": [str(keeper_id)]}),
+            "cleanup_detail": self.cleanup_groups({"type": ["duplicate_people"], "status": ["resolved"], "key": [group_key]}),
+        }
+
+    def apply_duplicate_people_merge(
+        self,
+        conn: Any,
+        *,
+        group_key: str,
+        keeper: dict[str, Any],
+        loser_records: list[dict[str, Any]],
+        rank_by_id: dict[int, tuple[int, str, int]],
+        timestamp: str,
+    ) -> dict[str, Any]:
+        keeper_id = int(keeper["id"])
+        loser_ids = [int(row["id"]) for row in loser_records]
+        summary: dict[str, Any] = {
+            "filled_fields": [],
+            "field_conflicts": [],
+            "address_fills": [],
+            "address_conflicts": [],
+            "custom_field_conflicts": [],
+            "profile_image": {"moved": 0, "conflicts": []},
+            "moved": {
+                "tags": 0,
+                "notes": 0,
+                "tasks": 0,
+                "deals": 0,
+                "custom_fields": 0,
+                "archive_items": 0,
+            },
+            "inactive_person_ids": loser_ids,
+        }
+        field_labels = {
+            "first_name": "First Name",
+            "last_name": "Last Name",
+            "name": "Name",
+            "email": "Email",
+            "phone": "Phone",
+            "mobile": "Mobile",
+            "company_id": "Organization ID",
+            "title": "Title",
+            "owner_user_id": "Owner",
+            "customer_status": "Customer Status",
+            "prospect_status": "Prospect Status",
+        }
+        scalar_fields = [
+            "first_name",
+            "last_name",
+            "name",
+            "email",
+            "phone",
+            "mobile",
+            "company_id",
+            "title",
+            "owner_user_id",
+            "customer_status",
+            "prospect_status",
+        ]
+        updates: dict[str, Any] = {}
+        for field in scalar_fields:
+            keeper_value = keeper.get(field)
+            candidates = [row for row in loser_records if not self.merge_value_is_blank(field, row.get(field))]
+            if self.merge_value_is_blank(field, keeper_value) and candidates:
+                source = max(candidates, key=lambda row: rank_by_id.get(int(row["id"]), (0, "", 0)))
+                updates[field] = source.get(field)
+                summary["filled_fields"].append(
+                    {
+                        "field": field,
+                        "label": field_labels[field],
+                        "value": source.get(field),
+                        "from_person_id": source["id"],
+                        "from_person_name": source.get("name"),
+                    }
+                )
+                keeper[field] = source.get(field)
+                keeper_value = source.get(field)
+            if self.merge_value_is_blank(field, keeper_value):
+                continue
+            alternatives = []
+            seen: set[str] = set()
+            for row in candidates:
+                value = row.get(field)
+                normalized = self.merge_normalized_value(field, value)
+                if not normalized or self.merge_values_equal(field, value, keeper_value) or normalized in seen:
+                    continue
+                seen.add(normalized)
+                alternatives.append(
+                    {
+                        "person_id": row["id"],
+                        "person_name": row.get("name"),
+                        "value": value,
+                    }
+                )
+            if alternatives:
+                summary["field_conflicts"].append(
+                    {
+                        "field": field,
+                        "label": field_labels[field],
+                        "keeper_value": keeper_value,
+                        "alternatives": alternatives,
+                    }
+                )
+        if "email" in updates:
+            updates["normalized_email"] = normalize_text(updates["email"])
+        if "name" in updates:
+            updates["normalized_name"] = normalize_text(updates["name"])
+        if updates:
+            updates["updated_at"] = timestamp
+            assignments = ", ".join(f"{field} = ?" for field in updates)
+            conn.execute(
+                f"UPDATE people SET {assignments} WHERE id = ?",
+                [*updates.values(), keeper_id],
+            )
+
+        self.merge_people_tags(conn, keeper_id, loser_ids, summary)
+        self.merge_people_addresses(conn, keeper, loser_records, timestamp, summary)
+        self.merge_people_custom_fields(conn, keeper_id, loser_ids, summary)
+        self.merge_people_profile_images(conn, keeper_id, loser_ids, summary)
+        placeholders = ",".join("?" for _ in loser_ids)
+        for table, label in [("notes", "notes"), ("tasks", "tasks")]:
+            count = conn.execute(
+                f"SELECT count(*) AS count FROM {table} WHERE record_type = 'person' AND record_id IN ({placeholders})",
+                loser_ids,
+            ).fetchone()[0]
+            if count:
+                conn.execute(
+                    f"""
+                    UPDATE {table}
+                    SET record_id = ?, updated_at = ?
+                    WHERE record_type = 'person' AND record_id IN ({placeholders})
+                    """,
+                    [keeper_id, timestamp, *loser_ids],
+                )
+            summary["moved"][label] = int(count or 0)
+        deal_count = conn.execute(
+            f"SELECT count(*) AS count FROM deals WHERE person_id IN ({placeholders})",
+            loser_ids,
+        ).fetchone()[0]
+        if deal_count:
+            conn.execute(
+                f"UPDATE deals SET person_id = ?, updated_at = ? WHERE person_id IN ({placeholders})",
+                [keeper_id, timestamp, *loser_ids],
+            )
+        summary["moved"]["deals"] = int(deal_count or 0)
+        archive_direct_count = conn.execute(
+            f"""
+            SELECT count(*) AS count
+            FROM imported_archive_items
+            WHERE record_type = 'person' AND record_id IN ({placeholders})
+            """,
+            loser_ids,
+        ).fetchone()[0]
+        archive_related_count = conn.execute(
+            f"""
+            SELECT count(*) AS count
+            FROM imported_archive_items
+            WHERE related_record_type = 'person' AND related_record_id IN ({placeholders})
+            """,
+            loser_ids,
+        ).fetchone()[0]
+        if archive_direct_count:
+            conn.execute(
+                f"""
+                UPDATE imported_archive_items
+                SET record_id = ?
+                WHERE record_type = 'person' AND record_id IN ({placeholders})
+                """,
+                [keeper_id, *loser_ids],
+            )
+        if archive_related_count:
+            conn.execute(
+                f"""
+                UPDATE imported_archive_items
+                SET related_record_id = ?
+                WHERE related_record_type = 'person' AND related_record_id IN ({placeholders})
+                """,
+                [keeper_id, *loser_ids],
+            )
+        summary["moved"]["archive_items"] = int((archive_direct_count or 0) + (archive_related_count or 0))
+        self.ensure_record_lifecycle_schema(conn)
+        lifecycle_note = f"Merged into person #{keeper_id} from duplicate email group {group_key}."
+        for loser_id in loser_ids:
+            conn.execute(
+                """
+                INSERT INTO local_record_lifecycle (
+                    record_type, record_id, lifecycle_status, lifecycle_note,
+                    created_at, updated_at, deactivated_at, reactivated_at
+                )
+                VALUES ('person', ?, 'inactive', ?, ?, ?, ?, NULL)
+                ON CONFLICT(record_type, record_id) DO UPDATE SET
+                    lifecycle_status = excluded.lifecycle_status,
+                    lifecycle_note = excluded.lifecycle_note,
+                    updated_at = excluded.updated_at,
+                    deactivated_at = excluded.deactivated_at
+                """,
+                (loser_id, lifecycle_note, timestamp, timestamp, timestamp),
+            )
+        conn.execute(
+            f"UPDATE people SET updated_at = ? WHERE id IN ({placeholders})",
+            [timestamp, *loser_ids],
+        )
+        return summary
+
+    def merge_people_tags(self, conn: Any, keeper_id: int, loser_ids: list[int], summary: dict[str, Any]) -> None:
+        placeholders = ",".join("?" for _ in loser_ids)
+        keeper_tag_ids = {
+            int(row["tag_id"])
+            for row in conn.execute(
+                "SELECT tag_id FROM tag_assignments WHERE record_type = 'person' AND record_id = ?",
+                (keeper_id,),
+            ).fetchall()
+        }
+        loser_tags = rows_to_dicts(
+            conn.execute(
+                f"""
+                SELECT ta.tag_id, coalesce(ta.source_name, t.display_name, t.normalized_name) AS source_name
+                FROM tag_assignments ta
+                LEFT JOIN tags t ON t.id = ta.tag_id
+                WHERE ta.record_type = 'person' AND ta.record_id IN ({placeholders})
+                ORDER BY ta.id
+                """,
+                loser_ids,
+            ).fetchall()
+        )
+        inserted = 0
+        for row in loser_tags:
+            tag_id = int(row["tag_id"])
+            if tag_id in keeper_tag_ids:
+                continue
+            assignment_id = self.next_hosted_primary_key(conn, "tag_assignments")
+            id_column = "id, " if assignment_id is not None else ""
+            id_placeholder = "?, " if assignment_id is not None else ""
+            conn.execute(
+                f"""
+                INSERT INTO tag_assignments ({id_column}tag_id, record_type, record_id, source_name)
+                VALUES ({id_placeholder}?, 'person', ?, ?)
+                """,
+                (
+                    *((assignment_id,) if assignment_id is not None else ()),
+                    tag_id,
+                    keeper_id,
+                    row.get("source_name"),
+                ),
+            )
+            keeper_tag_ids.add(tag_id)
+            inserted += 1
+        if loser_tags:
+            conn.execute(
+                f"DELETE FROM tag_assignments WHERE record_type = 'person' AND record_id IN ({placeholders})",
+                loser_ids,
+            )
+        summary["moved"]["tags"] = inserted
+
+    def merge_people_addresses(
+        self,
+        conn: Any,
+        keeper: dict[str, Any],
+        loser_records: list[dict[str, Any]],
+        timestamp: str,
+        summary: dict[str, Any],
+    ) -> None:
+        keeper_id = int(keeper["id"])
+        for address_key, label in self.address_key_labels("person").items():
+            for loser in loser_records:
+                loser_values = self.current_address_values(conn, "person", int(loser["id"]), loser, address_key, label)
+                if not self.merge_address_has_values(loser_values):
+                    continue
+                keeper_values = self.current_address_values(conn, "person", keeper_id, keeper, address_key, label)
+                if not self.merge_address_has_values(keeper_values):
+                    existing = conn.execute(
+                        """
+                        SELECT id
+                        FROM local_addresses
+                        WHERE record_type = 'person' AND record_id = ? AND address_key = ?
+                        """,
+                        (keeper_id, address_key),
+                    ).fetchone()
+                    if existing:
+                        conn.execute(
+                            """
+                            UPDATE local_addresses
+                            SET label = ?, line1 = ?, line2 = ?, city = ?, state = ?,
+                                postal_code = ?, country = ?, source = 'merge', updated_at = ?
+                            WHERE id = ?
+                            """,
+                            (
+                                label,
+                                loser_values["line1"],
+                                loser_values["line2"],
+                                loser_values["city"],
+                                loser_values["state"],
+                                loser_values["postal_code"],
+                                loser_values["country"],
+                                timestamp,
+                                existing["id"],
+                            ),
+                        )
+                    else:
+                        address_id = self.next_hosted_primary_key(conn, "local_addresses")
+                        id_column = "id, " if address_id is not None else ""
+                        id_placeholder = "?, " if address_id is not None else ""
+                        conn.execute(
+                            f"""
+                            INSERT INTO local_addresses (
+                                {id_column}record_type, record_id, address_key, label, line1, line2,
+                                city, state, postal_code, country, source, created_at, updated_at
+                            )
+                            VALUES ({id_placeholder}'person', ?, ?, ?, ?, ?, ?, ?, ?, ?, 'merge', ?, ?)
+                            """,
+                            (
+                                *((address_id,) if address_id is not None else ()),
+                                keeper_id,
+                                address_key,
+                                label,
+                                loser_values["line1"],
+                                loser_values["line2"],
+                                loser_values["city"],
+                                loser_values["state"],
+                                loser_values["postal_code"],
+                                loser_values["country"],
+                                timestamp,
+                                timestamp,
+                            ),
+                        )
+                    summary["address_fills"].append(
+                        {
+                            "address_key": address_key,
+                            "label": label,
+                            "from_person_id": loser["id"],
+                            "from_person_name": loser.get("name"),
+                            "value": self.merge_address_display(loser_values),
+                        }
+                    )
+                    keeper = row_to_dict(conn.execute("SELECT * FROM people WHERE id = ?", (keeper_id,)).fetchone()) or keeper
+                    continue
+                if not self.merge_address_values_equal(keeper_values, loser_values):
+                    summary["address_conflicts"].append(
+                        {
+                            "address_key": address_key,
+                            "label": label,
+                            "keeper_value": self.merge_address_display(keeper_values),
+                            "from_person_id": loser["id"],
+                            "from_person_name": loser.get("name"),
+                            "value": self.merge_address_display(loser_values),
+                        }
+                    )
+
+    def merge_people_custom_fields(self, conn: Any, keeper_id: int, loser_ids: list[int], summary: dict[str, Any]) -> None:
+        placeholders = ",".join("?" for _ in loser_ids)
+        keeper_rows = rows_to_dicts(
+            conn.execute(
+                """
+                SELECT field_name, field_value
+                FROM custom_field_values
+                WHERE record_type = 'person' AND record_id = ?
+                  AND coalesce(trim(field_value), '') <> ''
+                """,
+                (keeper_id,),
+            ).fetchall()
+        )
+        keeper_values: dict[str, set[str]] = {}
+        for row in keeper_rows:
+            keeper_values.setdefault(row["field_name"], set()).add(self.merge_normalized_value(row["field_name"], row["field_value"]))
+        loser_rows = rows_to_dicts(
+            conn.execute(
+                f"""
+                SELECT record_id, field_name, field_value
+                FROM custom_field_values
+                WHERE record_type = 'person' AND record_id IN ({placeholders})
+                """,
+                loser_ids,
+            ).fetchall()
+        )
+        for row in loser_rows:
+            value = row.get("field_value")
+            if self.merge_value_is_blank(str(row.get("field_name") or ""), value):
+                continue
+            field_name = str(row.get("field_name") or "")
+            normalized = self.merge_normalized_value(field_name, value)
+            existing_values = keeper_values.get(field_name, set())
+            if existing_values and normalized not in existing_values:
+                summary["custom_field_conflicts"].append(
+                    {
+                        "field": field_name,
+                        "from_person_id": row["record_id"],
+                        "value": value,
+                    }
+                )
+            keeper_values.setdefault(field_name, set()).add(normalized)
+        if loser_rows:
+            conn.execute(
+                f"""
+                UPDATE custom_field_values
+                SET record_id = ?
+                WHERE record_type = 'person' AND record_id IN ({placeholders})
+                """,
+                [keeper_id, *loser_ids],
+            )
+        summary["moved"]["custom_fields"] = len(loser_rows)
+
+    def merge_people_profile_images(self, conn: Any, keeper_id: int, loser_ids: list[int], summary: dict[str, Any]) -> None:
+        if not self.profile_image_table_exists(conn):
+            return
+        keeper_image = self.active_profile_image_row(conn, "person", keeper_id)
+        for loser_id in loser_ids:
+            loser_image = self.active_profile_image_row(conn, "person", loser_id)
+            if not loser_image:
+                continue
+            if not keeper_image:
+                conn.execute(
+                    """
+                    UPDATE record_profile_images
+                    SET record_id = ?, updated_at = CURRENT_TIMESTAMP
+                    WHERE id = ?
+                    """,
+                    (keeper_id, loser_image["id"]),
+                )
+                keeper_image = self.active_profile_image_row(conn, "person", keeper_id)
+                summary["profile_image"]["moved"] += 1
+            else:
+                summary["profile_image"]["conflicts"].append(
+                    {
+                        "from_person_id": loser_id,
+                        "image_id": loser_image["id"],
+                        "original_filename": loser_image.get("original_filename"),
+                    }
+                )
+
+    def merge_value_is_blank(self, field: str, value: Any) -> bool:
+        if value is None:
+            return True
+        text = str(value).strip()
+        if field in {"customer_status", "prospect_status"} and text.lower() in {"", "none", "null"}:
+            return True
+        return text == ""
+
+    def merge_normalized_value(self, field: str, value: Any) -> str:
+        if self.merge_value_is_blank(field, value):
+            return ""
+        if field in {"company_id", "owner_user_id"}:
+            return str(value).strip()
+        return " ".join(str(value).split()).casefold()
+
+    def merge_values_equal(self, field: str, left: Any, right: Any) -> bool:
+        return self.merge_normalized_value(field, left) == self.merge_normalized_value(field, right)
+
+    def merge_address_has_values(self, values: dict[str, Any]) -> bool:
+        return any(values.get(field) for field in ["line1", "line2", "city", "state", "postal_code", "country"])
+
+    def merge_address_values_equal(self, left: dict[str, Any], right: dict[str, Any]) -> bool:
+        return all(
+            " ".join(str(left.get(field) or "").split()).casefold()
+            == " ".join(str(right.get(field) or "").split()).casefold()
+            for field in ["line1", "line2", "city", "state", "postal_code", "country"]
+        )
+
+    def merge_address_display(self, values: dict[str, Any]) -> str:
+        return ", ".join(
+            str(values.get(field)).strip()
+            for field in ["line1", "line2", "city", "state", "postal_code", "country"]
+            if values.get(field)
+        )
+
+    def duplicate_people_merge_note_content(
+        self,
+        *,
+        group_key: str,
+        keeper: dict[str, Any],
+        loser_records: list[dict[str, Any]],
+        summary: dict[str, Any],
+        user_note: str,
+    ) -> str:
+        lines = [
+            "Merged duplicate people into this record.",
+            "",
+            f"Duplicate email group: {group_key}",
+            f"Keeper: {keeper.get('name') or 'Person'} (Person #{keeper['id']})",
+            "Merged inactive duplicate records:",
+        ]
+        for loser in loser_records:
+            descriptor = " · ".join(
+                part
+                for part in [loser.get("name"), loser.get("email"), loser.get("phone") or loser.get("mobile")]
+                if part
+            )
+            lines.append(f"- Person #{loser['id']}: {descriptor or '(blank)'}")
+        if summary.get("filled_fields"):
+            lines.extend(["", "Blank keeper fields filled:"])
+            for item in summary["filled_fields"]:
+                lines.append(
+                    f"- {item['label']}: {item.get('value') or '(blank)'} from Person #{item['from_person_id']}"
+                )
+        moved = summary.get("moved") or {}
+        moved_parts = [f"{label}: {count}" for label, count in moved.items() if int(count or 0)]
+        if moved_parts:
+            lines.extend(["", "Moved onto keeper:", "- " + "; ".join(moved_parts)])
+        if summary.get("address_fills"):
+            lines.extend(["", "Addresses added to keeper:"])
+            for item in summary["address_fills"]:
+                lines.append(f"- {item['label']}: {item['value']} from Person #{item['from_person_id']}")
+        if summary.get("field_conflicts"):
+            lines.extend(["", "Field values preserved for review instead of overwriting keeper:"])
+            for conflict in summary["field_conflicts"]:
+                alternatives = "; ".join(
+                    f"Person #{item['person_id']}: {item.get('value') or '(blank)'}"
+                    for item in conflict.get("alternatives", [])
+                )
+                lines.append(f"- {conflict['label']} keeper has {conflict.get('keeper_value') or '(blank)'}; alternatives: {alternatives}")
+        if summary.get("address_conflicts"):
+            lines.extend(["", "Address values preserved for review instead of overwriting keeper:"])
+            for conflict in summary["address_conflicts"]:
+                lines.append(
+                    f"- {conflict['label']} keeper has {conflict['keeper_value']}; Person #{conflict['from_person_id']} has {conflict['value']}"
+                )
+        if summary.get("custom_field_conflicts"):
+            lines.extend(["", "Custom field values preserved as additional rows and flagged for review:"])
+            for conflict in summary["custom_field_conflicts"]:
+                lines.append(f"- {conflict['field']} from Person #{conflict['from_person_id']}: {conflict.get('value') or '(blank)'}")
+        profile_conflicts = (summary.get("profile_image") or {}).get("conflicts") or []
+        if profile_conflicts:
+            lines.extend(["", "Profile photos preserved on inactive duplicates for review:"])
+            for conflict in profile_conflicts:
+                filename = f" ({conflict['original_filename']})" if conflict.get("original_filename") else ""
+                lines.append(f"- Person #{conflict['from_person_id']} image #{conflict['image_id']}{filename}")
+        if user_note:
+            lines.extend(["", f"Owner note: {user_note}"])
+        lines.extend(["", "Original duplicate person records were marked inactive, not deleted."])
+        return "\n".join(lines)
+
     def save_project_decision(self, payload: dict[str, Any], actor_user: dict[str, Any] | None = None, permission_action: str | None = "save_project_decision") -> dict[str, Any]:
         decision_key = str(payload.get("key") or "").strip()
         status = str(payload.get("status") or "pending").strip().lower()
@@ -20109,7 +20775,17 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
     def next_hosted_primary_key(self, conn: Any, table_name: str) -> int | None:
         if not self.hosted_postgres_adapter_enabled():
             return None
-        if table_name not in {"people", "companies", "leads", "deals", "tags", "tag_assignments"}:
+        if table_name not in {
+            "people",
+            "companies",
+            "leads",
+            "deals",
+            "tags",
+            "tag_assignments",
+            "notes",
+            "tasks",
+            "local_addresses",
+        }:
             raise ValueError(f"Unsupported hosted primary key table: {table_name}")
         row = conn.execute(f"SELECT COALESCE(max(id), 0) + 1 AS next_id FROM {table_name}").fetchone()
         return int(row["next_id"] if row else 1)
@@ -20355,6 +21031,42 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             return "deals", {"name", "person_id", "company_id", "value", "currency", "hot", "estimated_close_date", "stage_id"}
         raise ValueError(f"Unsupported record type: {record_type}")
 
+    def insert_local_note_row(
+        self,
+        conn: Any,
+        record_type: str,
+        record_id: int,
+        content: str,
+        timestamp: str,
+        source_payload: dict[str, Any] | None = None,
+    ) -> int:
+        note_id = self.next_hosted_primary_key(conn, "notes")
+        id_column = "id, " if note_id is not None else ""
+        id_placeholder = "?, " if note_id is not None else ""
+        conn.execute(
+            f"""
+            INSERT INTO notes (
+                {id_column}zendesk_note_id, record_type, record_id, creator_user_id, content,
+                note_type, is_important, created_at, updated_at, source_json
+            )
+            VALUES ({id_placeholder}?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                *((note_id,) if note_id is not None else ()),
+                None,
+                record_type,
+                record_id,
+                None,
+                content,
+                "local",
+                0,
+                timestamp,
+                timestamp,
+                json.dumps(source_payload or {}, ensure_ascii=False),
+            ),
+        )
+        return note_id if note_id is not None else conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+
     def add_note(self, payload: dict[str, Any], actor_user: dict[str, Any] | None = None, permission_action: str | None = "notes_tasks_followups") -> dict[str, Any]:
         record_type = str(payload.get("type", "")).lower()
         record_id = int(payload.get("id", 0))
@@ -20369,17 +21081,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         backup_path = self.create_backup(f"before_note_{record_type}_{record_id}")
         timestamp = now_iso()
         with self.db() as conn:
-            conn.execute(
-                """
-                INSERT INTO notes (
-                    zendesk_note_id, record_type, record_id, creator_user_id, content,
-                    note_type, is_important, created_at, updated_at, source_json
-                )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (None, record_type, record_id, None, content, "local", 0, timestamp, timestamp, "{}"),
-            )
-            note_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+            note_id = self.insert_local_note_row(conn, record_type, record_id, content, timestamp)
             self.insert_audit_log(
                 conn,
                 action="add_note",

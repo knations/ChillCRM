@@ -5789,6 +5789,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         quality_issue = self.clean_optional(params.get("quality_issue", [""])[0] if params.get("quality_issue") else "")
         quality_issue = self.normalize_list_quality_issue(record_type, quality_issue)
         provenance_filter = self.normalize_list_provenance_filter(params.get("provenance", [""])[0] if params.get("provenance") else "")
+        lifecycle_filter = self.normalize_people_lifecycle_filter(params.get("lifecycle", ["active"])[0] if params.get("lifecycle") else "active") if record_type == "people" else None
         status_field = self.clean_optional(params.get("status_field", [""])[0] if params.get("status_field") else "")
         status_value = self.clean_optional(params.get("status_value", [""])[0] if params.get("status_value") else "")
         status_field, status_value = self.normalize_list_status_filter(record_type, status_field, status_value)
@@ -5816,6 +5817,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                     owner_user_id,
                     quality_issue,
                     provenance_filter,
+                    lifecycle_filter,
                     date_field,
                     date_from,
                     date_to,
@@ -5854,6 +5856,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             owner_options = self.list_owner_filter_options(conn, record_type)
             quality_options = self.list_quality_filter_options(conn, record_type)
             provenance_options = self.list_provenance_filter_options(conn, record_type)
+            lifecycle_counts = self.people_lifecycle_counts(conn) if record_type == "people" else {}
 
         return {
             "type": record_type,
@@ -5870,6 +5873,8 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             "quality_options": quality_options,
             "provenance": provenance_filter,
             "provenance_options": provenance_options,
+            "lifecycle_filter": lifecycle_filter,
+            "lifecycle_counts": lifecycle_counts,
             "date_field": date_field,
             "date_from": date_from,
             "date_to": date_to,
@@ -5907,6 +5912,46 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
     def normalize_list_provenance_filter(self, provenance_filter: Any) -> str | None:
         value = str(provenance_filter or "").strip().lower()
         return value if value in {"imported", "local", "changed"} else None
+
+    def normalize_people_lifecycle_filter(self, lifecycle_filter: Any) -> str:
+        value = str(lifecycle_filter or "").strip().lower()
+        return "all" if value == "all" else "active"
+
+    def apply_people_lifecycle_filter(self, conn: sqlite3.Connection, clauses: list[str], lifecycle_filter: str | None) -> None:
+        if lifecycle_filter != "active" or not self.record_lifecycle_table_exists(conn):
+            return
+        clauses.append(
+            """
+            NOT EXISTS (
+                SELECT 1
+                FROM local_record_lifecycle lrl
+                WHERE lrl.record_type = 'person'
+                  AND lrl.record_id = people.id
+                  AND lrl.lifecycle_status = 'inactive'
+            )
+            """
+        )
+
+    def people_lifecycle_counts(self, conn: sqlite3.Connection) -> dict[str, int]:
+        total = int(conn.execute("SELECT count(*) FROM people").fetchone()[0])
+        if not self.record_lifecycle_table_exists(conn):
+            return {"active": total, "inactive": 0, "all": total}
+        inactive = int(
+            conn.execute(
+                """
+                SELECT count(*)
+                FROM people
+                WHERE EXISTS (
+                    SELECT 1
+                    FROM local_record_lifecycle lrl
+                    WHERE lrl.record_type = 'person'
+                      AND lrl.record_id = people.id
+                      AND lrl.lifecycle_status = 'inactive'
+                )
+                """
+            ).fetchone()[0]
+        )
+        return {"active": max(total - inactive, 0), "inactive": inactive, "all": total}
 
     def list_provenance_metadata(self, record_type: str) -> tuple[str, str, str]:
         if record_type == "people":
@@ -6159,6 +6204,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         owner_user_id: int | None,
         quality_issue: str | None,
         provenance_filter: str | None,
+        lifecycle_filter: str | None,
         date_field: str | None,
         date_from: str,
         date_to: str,
@@ -6197,6 +6243,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             values.append(owner_user_id)
         self.apply_list_quality_filter("people", clauses, quality_issue)
         self.apply_list_provenance_filter("people", clauses, provenance_filter)
+        self.apply_people_lifecycle_filter(conn, clauses, lifecycle_filter)
         self.apply_list_date_filter("people", clauses, values, date_field, date_from, date_to)
         where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
         total = conn.execute(
@@ -9228,6 +9275,9 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             "source": record.get("provenance_label"),
             "zendesk_id": record.get("zendesk_id"),
             "local_change_count": record.get("local_change_count"),
+            "lifecycle_status": record.get("lifecycle_status"),
+            "lifecycle_label": record.get("lifecycle_label"),
+            "lifecycle_note": record.get("lifecycle_note"),
             "created_at": record.get("created_at"),
             "updated_at": record.get("updated_at"),
         }

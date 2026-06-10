@@ -1777,6 +1777,13 @@ button {
   border-color: var(--accent);
 }
 
+.people-lifecycle-toggle.active {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: #065c5b;
+  font-weight: 700;
+}
+
 .text-button.danger {
   border-color: #e0b6aa;
   color: #9d3f29;

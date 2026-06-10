@@ -5710,6 +5710,24 @@ def main() -> int:
             assert str(merge_loser_id) in merge_audit[4]
             assert "Backup:" in merge_audit[5]
             assert merge_audit[6] == "merge_duplicate_people"
+        active_people_after_merge = handler.list_records(
+            {"type": ["people"], "q": [merge_group_key], "page_size": ["10"]}
+        )
+        all_people_after_merge = handler.list_records(
+            {"type": ["people"], "q": [merge_group_key], "lifecycle": ["all"], "page_size": ["10"]}
+        )
+        assert active_people_after_merge["lifecycle_filter"] == "active"
+        assert all_people_after_merge["lifecycle_filter"] == "all"
+        assert active_people_after_merge["lifecycle_counts"]["inactive"] >= 1
+        assert {record["source_id"] for record in active_people_after_merge["records"]} == {merge_keeper_id}
+        assert {record["source_id"] for record in all_people_after_merge["records"]} == {merge_keeper_id, merge_loser_id}
+        inactive_merge_record = next(record for record in all_people_after_merge["records"] if record["source_id"] == merge_loser_id)
+        assert inactive_merge_record["lifecycle_status"] == "inactive"
+        exported_all_people_after_merge = handler.export_list_rows(
+            {"type": ["people"], "q": [merge_group_key], "lifecycle": ["all"]}
+        )
+        exported_inactive_merge_record = next(row for row in exported_all_people_after_merge["rows"] if row["source_id"] == merge_loser_id)
+        assert exported_inactive_merge_record["lifecycle_status"] == "inactive"
         merge_activity = handler.activity({"type": ["person"], "id": [str(merge_keeper_id)], "limit": ["50"]})["activity"]
         assert any(row["activity_type"] == "cleanup_decision" and "Merged duplicate people" in row["summary"] for row in merge_activity)
         application_profile_rows = handler.export_rows({"type": ["application_profiles"]})["rows"]

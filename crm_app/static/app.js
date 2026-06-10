@@ -37,6 +37,9 @@ const state = {
     leads: "",
     deals: "",
   },
+  listLifecycleFilters: {
+    people: "active",
+  },
   listSavedViewId: {
     people: "",
     companies: "",
@@ -3577,6 +3580,25 @@ function currentListProvenanceFilter(options = null) {
   return validValue;
 }
 
+function currentPeopleLifecycleFilter() {
+  const current = state.listLifecycleFilters.people === "all" ? "all" : "active";
+  state.listLifecycleFilters.people = current;
+  return current;
+}
+
+function peopleLifecycleFilterControls(data = {}) {
+  if (state.listType !== "people") return "";
+  const current = currentPeopleLifecycleFilter();
+  const inactiveCount = Number(data.lifecycle_counts?.inactive || 0);
+  const showingAll = current === "all";
+  const label = showingAll
+    ? "Hide Inactive"
+    : inactiveCount
+      ? `Show Inactive (${formatNumber(inactiveCount)})`
+      : "Show Inactive";
+  return `<button class="text-button people-lifecycle-toggle ${showingAll ? "active" : ""}" id="peopleLifecycleToggle" type="button" data-next="${showingAll ? "active" : "all"}">${escapeHtml(label)}</button>`;
+}
+
 function provenanceFilterLabel(value) {
   return {
     imported: "Imported from Zendesk",
@@ -3628,6 +3650,7 @@ function currentListSettings() {
     profile_value: state.listProfileValue,
     quality_issue: qualityIssue,
     provenance,
+    lifecycle: state.listType === "people" ? currentPeopleLifecycleFilter() : "",
     date_field: dateFilter.field,
     date_from: dateFilter.from,
     date_to: dateFilter.to,
@@ -3651,6 +3674,9 @@ function applyListSettings(settings = {}) {
   };
   state.listQualityIssues[state.listType] = settings.quality_issue || "";
   state.listProvenanceFilters[state.listType] = settings.provenance || "";
+  if (state.listType === "people") {
+    state.listLifecycleFilters.people = settings.lifecycle === "all" ? "all" : "active";
+  }
   state.listOwnerUserId = ownerFilterSupported(state.listType) ? settings.owner_user_id || "" : "";
   if (profileFilterSupported(state.listType)) {
     state.listProfileField = settings.profile_field || "";
@@ -3682,6 +3708,7 @@ function resetCurrentListView() {
   state.listDateFilters[state.listType] = { field: "", from: "", to: "" };
   state.listQualityIssues[state.listType] = "";
   state.listProvenanceFilters[state.listType] = "";
+  if (state.listType === "people") state.listLifecycleFilters.people = "active";
   state.listSort[state.listType] = { field: "updated_at", direction: "desc" };
   state.listSavedViewId[state.listType] = "";
   state.page = 1;
@@ -3844,6 +3871,7 @@ async function renderList() {
   const dateFilter = currentListDateFilter();
   const qualityIssue = currentListQualityIssue();
   const provenance = currentListProvenanceFilter();
+  const lifecycle = state.listType === "people" ? currentPeopleLifecycleFilter() : "";
   const params = new URLSearchParams({
     type: state.listType,
     page: String(state.page),
@@ -3852,6 +3880,7 @@ async function renderList() {
     sort: sort.field,
     direction: sort.direction,
   });
+  if (state.listType === "people") params.set("lifecycle", lifecycle);
   if (state.listTagId) params.set("tag_id", state.listTagId);
   if (statusFilter.field && statusFilter.value) {
     params.set("status_field", statusFilter.field);
@@ -3900,6 +3929,7 @@ async function renderList() {
   const selectedProfileValue = selectedProfileField?.values.find((item) => item.value === state.listProfileValue);
   const selectedQualityIssue = (data.quality_options || []).find((item) => item.issue === data.quality_issue);
   const selectedProvenance = (data.provenance_options || []).find((item) => item.value === data.provenance);
+  const lifecycleSummary = state.listType === "people" ? (data.lifecycle_filter === "all" ? " · Includes inactive" : " · Active only") : "";
   const selectedDateField = (data.date_options || []).find((item) => item.field === data.date_field);
   const dateRangeText = data.date_from && data.date_to
     ? `${data.date_from} to ${data.date_to}`
@@ -3913,7 +3943,7 @@ async function renderList() {
     <div class="section-header">
       <div>
         <h2>${escapeHtml(listTitles[state.listType])}</h2>
-        <p>${formatNumber(data.total)} records${selectedTag ? ` tagged ${escapeHtml(selectedTag.display_name)}` : ""}${selectedOwner ? ` · Owner: ${escapeHtml(selectedOwner.label)}` : ""}${selectedQualityIssue ? ` · Quality: ${escapeHtml(selectedQualityIssue.label)}` : ""}${selectedProvenance ? ` · Source: ${escapeHtml(selectedProvenance.label)}` : ""}${selectedStatusValue ? ` · ${escapeHtml(selectedStatusField.label)}: ${escapeHtml(selectedStatusValue.value)}` : ""}${selectedProfileValue ? ` · ${escapeHtml(state.listProfileField)}: ${escapeHtml(selectedProfileValue.value)}` : ""}${dateSummary}</p>
+        <p>${formatNumber(data.total)} records${lifecycleSummary}${selectedTag ? ` tagged ${escapeHtml(selectedTag.display_name)}` : ""}${selectedOwner ? ` · Owner: ${escapeHtml(selectedOwner.label)}` : ""}${selectedQualityIssue ? ` · Quality: ${escapeHtml(selectedQualityIssue.label)}` : ""}${selectedProvenance ? ` · Source: ${escapeHtml(selectedProvenance.label)}` : ""}${selectedStatusValue ? ` · ${escapeHtml(selectedStatusField.label)}: ${escapeHtml(selectedStatusValue.value)}` : ""}${selectedProfileValue ? ` · ${escapeHtml(state.listProfileField)}: ${escapeHtml(selectedProfileValue.value)}` : ""}${dateSummary}</p>
       </div>
       <button class="text-button" id="newRecordButton">New</button>
     </div>
@@ -3921,6 +3951,7 @@ async function renderList() {
       <div class="filter-row">
         ${savedViewControls(savedViews)}
         <input id="listSearch" type="search" value="${escapeHtml(state.q)}" placeholder="Filter ${escapeHtml(listTitles[state.listType].toLowerCase())}">
+        ${peopleLifecycleFilterControls(data)}
         ${tagSearchControl(tagSuggestions, selectedTag)}
         ${ownerFilterControls(data.owner_options || [])}
         ${listProvenanceFilterControls(data.provenance_options || [])}
@@ -3949,6 +3980,7 @@ async function renderList() {
   const listTagSearch = document.querySelector("#listTagSearch");
   const listTagSuggestions = document.querySelector("#listTagSuggestions");
   const listTagClear = document.querySelector("#listTagClear");
+  const peopleLifecycleToggle = document.querySelector("#peopleLifecycleToggle");
   const listOwnerFilter = document.querySelector("#listOwnerFilter");
   const listProvenanceFilter = document.querySelector("#listProvenanceFilter");
   const listQualityIssue = document.querySelector("#listQualityIssue");
@@ -4085,6 +4117,14 @@ async function renderList() {
     state.page = 1;
     renderList();
   });
+  if (peopleLifecycleToggle) {
+    peopleLifecycleToggle.addEventListener("click", () => {
+      clearSelectedSavedView();
+      state.listLifecycleFilters.people = peopleLifecycleToggle.dataset.next === "all" ? "all" : "active";
+      state.page = 1;
+      renderList();
+    });
+  }
   if (listOwnerFilter) {
     listOwnerFilter.addEventListener("change", () => {
       clearSelectedSavedView();

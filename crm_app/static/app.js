@@ -8390,6 +8390,138 @@ function cleanupStatusLabel(status) {
   return cleanupStatuses.find((item) => item.status === status)?.label || labelize(status || "open");
 }
 
+function cleanupFiltersActive() {
+  return Boolean(
+    state.cleanupGroupQ ||
+      state.cleanupPriority ||
+      state.cleanupPolicyLane ||
+      state.cleanupDecision
+  );
+}
+
+function emptyCleanupGroupData(error = "") {
+  return {
+    type: state.cleanupGroupType,
+    label: cleanupGroupTypes.find((item) => item.type === state.cleanupGroupType)?.label || "Cleanup Groups",
+    status: state.cleanupStatus,
+    q: state.cleanupGroupQ,
+    priority: state.cleanupPriority,
+    decision: state.cleanupDecision,
+    policy_lane: state.cleanupPolicyLane,
+    sort: state.cleanupSort,
+    page: state.cleanupGroupPage,
+    page_size: 25,
+    total: 0,
+    groups: [],
+    error,
+  };
+}
+
+function fallbackCleanupData(groupData, reviewData) {
+  const totals = {
+    duplicate_contact_email_groups: 0,
+    duplicate_lead_email_groups: 0,
+    contact_lead_overlap_groups: 0,
+    duplicate_tag_groups: 0,
+    relationship_issues: 0,
+  };
+  const typeTotalMap = {
+    duplicate_people: "duplicate_contact_email_groups",
+    duplicate_leads: "duplicate_lead_email_groups",
+    lead_person_overlap: "contact_lead_overlap_groups",
+    duplicate_tags: "duplicate_tag_groups",
+  };
+  const totalKey = typeTotalMap[groupData?.type];
+  if (totalKey) totals[totalKey] = Number(groupData?.total || 0);
+  return {
+    totals,
+    duplicate_contact_emails: [],
+    duplicate_lead_emails: [],
+    contact_lead_overlap_count: totals.contact_lead_overlap_groups,
+    duplicate_tags: [],
+    relationship_issue_count: 0,
+    status_counts: {
+      open: state.cleanupStatus === "open" ? Number(reviewData?.total || groupData?.total || 0) : 0,
+      ignored: state.cleanupStatus === "ignored" ? Number(reviewData?.total || groupData?.total || 0) : 0,
+      resolved: state.cleanupStatus === "resolved" ? Number(reviewData?.total || groupData?.total || 0) : 0,
+    },
+    report_links: [],
+  };
+}
+
+function cleanupSummaryUnavailablePanel(error) {
+  if (!error) return "";
+  return `
+    <div class="band cleanup-recovery-card">
+      <div class="band-header">
+        <h3>Cleanup Summary Paused</h3>
+        <button class="text-button" id="retryCleanupSummaryButton">Retry</button>
+      </div>
+      <p>The grouped review table below can still be used. The heavier cleanup insight panels did not finish loading.</p>
+      <p class="muted">${escapeHtml(error.message || String(error))}</p>
+    </div>
+  `;
+}
+
+function cleanupInsightPanels(data, cleanupError) {
+  if (cleanupError) return cleanupSummaryUnavailablePanel(cleanupError);
+  return `
+    ${nextActionPanel(data.next_action)}
+    ${leadPersonOverlapDecisionPanel(data.lead_person_overlap_decision)}
+    ${mergeCleanupDecisionPanel(data.duplicate_people_decision, {
+      title: "Duplicate People Evidence",
+      groupType: "duplicate_people",
+      decisionKey: "duplicate_people_merge_policy",
+      recordLabel: "People records",
+      showLabel: "Show People Review",
+      refreshLabel: "Refresh People Review",
+      pillClass: "gold",
+    })}
+    ${mergeCleanupDecisionPanel(data.duplicate_leads_decision, {
+      title: "Duplicate Leads Evidence",
+      groupType: "duplicate_leads",
+      decisionKey: "duplicate_leads_merge_policy",
+      recordLabel: "Lead records",
+      showLabel: "Show Leads Review",
+      refreshLabel: "Refresh Leads Review",
+      pillClass: "gold",
+    })}
+    ${duplicateTagDecisionPanel(data.duplicate_tag_decision)}
+    ${cleanupPolicyPanel(data.merge_policy)}
+    ${guidedReviewQueuePanel(data.guided_review_queue)}
+    ${cleanupStarterPacketPanel(data.cleanup_starter)}
+    ${cleanupExecutionPreviewPanel(data.execution_preview)}
+    ${cleanupExecutionPreviewPanel(data.recommended_execution_preview, "Recommended Path Simulation")}
+  `;
+}
+
+function cleanupGroupEmptyState(groupData) {
+  if (groupData.error) {
+    return `
+      <div class="empty-state">
+        <h3>Cleanup groups did not load</h3>
+        <p>${escapeHtml(groupData.error)}</p>
+        <button class="text-button" id="retryCleanupGroupsButton">Retry</button>
+      </div>
+    `;
+  }
+  if (cleanupFiltersActive()) {
+    return `
+      <div class="empty-state">
+        <h3>No groups matched</h3>
+        <p>No ${cleanupStatusLabel(state.cleanupStatus).toLowerCase()} cleanup groups matched the current filters.</p>
+        <button class="text-button" id="resetCleanupFiltersButton">Clear Filters</button>
+      </div>
+    `;
+  }
+  return `
+    <div class="empty-state">
+      <h3>No groups</h3>
+      <p>No ${cleanupStatusLabel(state.cleanupStatus).toLowerCase()} ${cleanupGroupTypes.find((item) => item.type === state.cleanupGroupType)?.label.toLowerCase() || "cleanup"} groups are currently available.</p>
+    </div>
+  `;
+}
+
 function cleanupDecisionLabel(decision) {
   return cleanupDecisionOptions.find((item) => item.value === decision)?.label || labelize(decision || "No decision");
 }
@@ -9112,13 +9244,30 @@ async function renderCleanup() {
     decision: state.cleanupDecision,
     sort: state.cleanupSort,
   });
-  const [data, reviewData, backupData, groupData] = await Promise.all([
-    fetchJson("/api/cleanup"),
-    fetchJson(`/api/review_flags?status=${encodeURIComponent(state.cleanupStatus)}&page_size=50`),
-    fetchJson("/api/backups"),
-    fetchJson(`/api/cleanup_groups?${groupParams.toString()}`),
+  const [cleanupResult, reviewResult, backupResult, groupResult] = await Promise.allSettled([
+    fetchJson("/api/cleanup", { timeoutMs: 10000 }),
+    fetchJson(`/api/review_flags?status=${encodeURIComponent(state.cleanupStatus)}&page_size=50`, { timeoutMs: 10000 }),
+    fetchJson("/api/backups", { timeoutMs: 10000 }),
+    fetchJson(`/api/cleanup_groups?${groupParams.toString()}`, { timeoutMs: 12000 }),
   ]);
-  const latestBackup = backupData.backups[0];
+  const groupData =
+    groupResult.status === "fulfilled"
+      ? groupResult.value
+      : emptyCleanupGroupData(groupResult.reason?.message || "The grouped cleanup request failed.");
+  const reviewData =
+    reviewResult.status === "fulfilled"
+      ? reviewResult.value
+      : { total: groupData.total || 0, flags: [] };
+  const backupData =
+    backupResult.status === "fulfilled"
+      ? backupResult.value
+      : { backups: [] };
+  const data =
+    cleanupResult.status === "fulfilled"
+      ? cleanupResult.value
+      : fallbackCleanupData(groupData, reviewData);
+  const cleanupLoadError = cleanupResult.status === "rejected" ? cleanupResult.reason : null;
+  const latestBackup = (backupData.backups || [])[0];
   const totalGroupPages = Math.max(1, Math.ceil(groupData.total / groupData.page_size));
   const cleanupExportParams = new URLSearchParams(groupParams);
   cleanupExportParams.delete("page");
@@ -9142,38 +9291,13 @@ async function renderCleanup() {
         .join("")}
     </div>
     <div class="cleanup-grid">
-      <div class="signal"><strong>${formatNumber(data.totals.duplicate_contact_email_groups)}</strong><span>Duplicate person email flags</span></div>
-      <div class="signal"><strong>${formatNumber(data.totals.duplicate_lead_email_groups)}</strong><span>Duplicate lead email flags</span></div>
-      <div class="signal"><strong>${formatNumber(data.totals.contact_lead_overlap_groups)}</strong><span>Lead/person email flags</span></div>
-      <div class="signal"><strong>${formatNumber(data.totals.duplicate_tag_groups)}</strong><span>Duplicate tag definition flags</span></div>
-      <div class="signal"><strong>${formatNumber(data.totals.relationship_issues)}</strong><span>Relationship issues</span></div>
+      <div class="signal"><strong>${formatNumber(data.totals?.duplicate_contact_email_groups || 0)}</strong><span>Duplicate person email flags</span></div>
+      <div class="signal"><strong>${formatNumber(data.totals?.duplicate_lead_email_groups || 0)}</strong><span>Duplicate lead email flags</span></div>
+      <div class="signal"><strong>${formatNumber(data.totals?.contact_lead_overlap_groups || 0)}</strong><span>Lead/person email flags</span></div>
+      <div class="signal"><strong>${formatNumber(data.totals?.duplicate_tag_groups || 0)}</strong><span>Duplicate tag definition flags</span></div>
+      <div class="signal"><strong>${formatNumber(data.totals?.relationship_issues || 0)}</strong><span>Relationship issues</span></div>
     </div>
-    ${nextActionPanel(data.next_action)}
-    ${leadPersonOverlapDecisionPanel(data.lead_person_overlap_decision)}
-    ${mergeCleanupDecisionPanel(data.duplicate_people_decision, {
-      title: "Duplicate People Evidence",
-      groupType: "duplicate_people",
-      decisionKey: "duplicate_people_merge_policy",
-      recordLabel: "People records",
-      showLabel: "Show People Review",
-      refreshLabel: "Refresh People Review",
-      pillClass: "gold",
-    })}
-    ${mergeCleanupDecisionPanel(data.duplicate_leads_decision, {
-      title: "Duplicate Leads Evidence",
-      groupType: "duplicate_leads",
-      decisionKey: "duplicate_leads_merge_policy",
-      recordLabel: "Lead records",
-      showLabel: "Show Leads Review",
-      refreshLabel: "Refresh Leads Review",
-      pillClass: "gold",
-    })}
-    ${duplicateTagDecisionPanel(data.duplicate_tag_decision)}
-    ${cleanupPolicyPanel(data.merge_policy)}
-    ${guidedReviewQueuePanel(data.guided_review_queue)}
-    ${cleanupStarterPacketPanel(data.cleanup_starter)}
-    ${cleanupExecutionPreviewPanel(data.execution_preview)}
-    ${cleanupExecutionPreviewPanel(data.recommended_execution_preview, "Recommended Path Simulation")}
+    ${cleanupInsightPanels(data, cleanupLoadError)}
     <div class="band">
       <div class="band-header">
         <h3>Grouped Review</h3>
@@ -9239,7 +9363,7 @@ async function renderCleanup() {
                   .join("")}
               </tbody>
             </table>`
-          : `<div class="empty-state"><h3>No groups</h3><p>No ${cleanupStatusLabel(state.cleanupStatus).toLowerCase()} cleanup groups matched this filter.</p></div>`
+          : cleanupGroupEmptyState(groupData)
       }
     </div>
     <div class="band">
@@ -9273,7 +9397,7 @@ async function renderCleanup() {
       <table class="data-table">
         <thead><tr><th>Tag</th><th>Definitions</th><th>Types</th></tr></thead>
         <tbody>
-          ${data.duplicate_tags
+          ${(data.duplicate_tags || [])
             .map((row) => `
               <tr>
                 <td>${escapeHtml(row.tag)}</td>
@@ -9291,18 +9415,20 @@ async function renderCleanup() {
         <span class="muted">${latestBackup ? `Latest backup: ${escapeHtml(latestBackup.name)}` : "No backups yet"}</span>
       </div>
       <div class="detail-content report-links">
-        ${data.report_links.map((link) => `<a href="${link}" target="_blank" rel="noreferrer">${escapeHtml(link.split("/").pop())}</a>`).join("")}
+        ${(data.report_links || []).length
+          ? data.report_links.map((link) => `<a href="${link}" target="_blank" rel="noreferrer">${escapeHtml(link.split("/").pop())}</a>`).join("")
+          : `<span class="muted">Reports are unavailable while the cleanup summary is paused.</span>`}
       </div>
     </div>
     <div class="band">
       <div class="band-header">
         <h3>Backups</h3>
-        <span class="muted">${formatNumber(backupData.backups.length)} saved</span>
+        <span class="muted">${formatNumber((backupData.backups || []).length)} saved</span>
       </div>
       <table class="data-table">
         <thead><tr><th>Backup</th><th>Size</th><th>Modified</th><th></th></tr></thead>
         <tbody>
-          ${backupData.backups.slice(0, 12)
+          ${(backupData.backups || []).slice(0, 12)
             .map((backup) => `
               <tr>
                 <td>${escapeHtml(backup.name)}</td>
@@ -9321,6 +9447,16 @@ async function renderCleanup() {
   wireNavJumps(els.cleanup);
   wireCleanupGroupButtons(els.cleanup);
   wireCleanupFlagButtons(els.cleanup);
+  document.querySelector("#retryCleanupSummaryButton")?.addEventListener("click", () => renderCleanup());
+  document.querySelector("#retryCleanupGroupsButton")?.addEventListener("click", () => renderCleanup());
+  document.querySelector("#resetCleanupFiltersButton")?.addEventListener("click", () => {
+    state.cleanupGroupQ = "";
+    state.cleanupPriority = "";
+    state.cleanupPolicyLane = "";
+    state.cleanupDecision = "";
+    state.cleanupGroupPage = 1;
+    renderCleanup();
+  });
   document.querySelectorAll(".cleanup-status-tab").forEach((button) => {
     button.addEventListener("click", () => {
       state.cleanupStatus = button.dataset.status;

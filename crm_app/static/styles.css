@@ -4178,6 +4178,15 @@ button {
   margin-top: 12px;
 }
 
+.cleanup-recovery-card {
+  border-color: #d8c99b;
+  background: #fffaf0;
+}
+
+.cleanup-recovery-card p {
+  margin: 0 0 8px;
+}
+
 .cleanup-record-list {
   display: grid;
   gap: 8px;

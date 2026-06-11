@@ -5728,6 +5728,14 @@ def main() -> int:
         )
         exported_inactive_merge_record = next(row for row in exported_all_people_after_merge["rows"] if row["source_id"] == merge_loser_id)
         assert exported_inactive_merge_record["lifecycle_status"] == "inactive"
+        default_merge_search = handler.search({"q": [merge_group_key], "mode": ["quick"]})["results"]
+        all_merge_search = handler.search(
+            {"q": [merge_group_key], "mode": ["quick"], "include_inactive_people": ["1"]}
+        )["results"]
+        assert any(row["type"] == "person" and row["source_id"] == merge_keeper_id for row in default_merge_search)
+        assert not any(row["type"] == "person" and row["source_id"] == merge_loser_id for row in default_merge_search)
+        assert any(row["type"] == "person" and row["source_id"] == merge_keeper_id for row in all_merge_search)
+        assert any(row["type"] == "person" and row["source_id"] == merge_loser_id for row in all_merge_search)
         merge_activity = handler.activity({"type": ["person"], "id": [str(merge_keeper_id)], "limit": ["50"]})["activity"]
         assert any(row["activity_type"] == "cleanup_decision" and "Merged duplicate people" in row["summary"] for row in merge_activity)
         application_profile_rows = handler.export_rows({"type": ["application_profiles"]})["rows"]

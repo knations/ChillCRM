@@ -16979,18 +16979,23 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             return {"q": q, "results": []}
         mode = (params.get("mode", ["full"])[0] or "full").strip().lower()
         quick_mode = mode in {"quick", "top", "fast"}
+        include_inactive_people = self.param_truthy(params.get("include_inactive_people", [""])[0] if params.get("include_inactive_people") else "")
         like = f"%{q}%"
         with self.db() as conn:
+            people_clauses = ["(people.name LIKE ? OR people.email LIKE ? OR people.phone LIKE ? OR people.mobile LIKE ?)"]
+            people_values: list[Any] = [like, like, like, like]
+            if not include_inactive_people:
+                self.apply_people_lifecycle_filter(conn, people_clauses, "active")
             people = rows_to_dicts(
                 conn.execute(
-                    """
+                    f"""
                     SELECT 'person' AS type, id AS source_id, 'person' AS kind, name, email, phone, updated_at
                     FROM people
-                    WHERE name LIKE ? OR email LIKE ? OR phone LIKE ? OR mobile LIKE ?
+                    WHERE {' AND '.join(people_clauses)}
                     ORDER BY updated_at DESC
                     LIMIT 12
                     """,
-                    (like, like, like, like),
+                    people_values,
                 ).fetchall()
             )
             companies = rows_to_dicts(
@@ -17029,25 +17034,27 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                     (like,),
                 ).fetchall()
             )
-            relationship_matches = self.search_relationships(conn, q)
+            relationship_matches = self.search_relationships(conn, q, include_inactive_people=include_inactive_people)
             primary_matches = people + companies + leads + deals
             if quick_mode:
+                results = self.merge_search_results(primary_matches, relationship_matches)
+                if not include_inactive_people:
+                    results = self.filter_inactive_people_search_results(conn, results)
+                self.attach_lifecycle_summaries(conn, "person", [row for row in results if row.get("type") == "person"])
                 return {
                     "q": q,
                     "mode": "quick",
                     "search_note": "Fast search covers records and direct relationships. Use section filters for archive, links, and deeper history.",
-                    "results": self.merge_search_results(primary_matches, relationship_matches),
+                    "results": results,
                 }
-            address_matches = self.search_addresses(conn, q)
+            address_matches = self.search_addresses(conn, q, include_inactive_people=include_inactive_people)
             note_matches = self.search_notes(conn, q)
             task_matches = self.search_tasks(conn, q)
             tag_matches = self.search_tags(conn, q)
             linked_resource_matches = self.search_linked_resources(q)
             custom_field_matches = self.search_custom_field_values(conn, q)
             archive_matches = self.search_archive_items(conn, q)
-        return {
-            "q": q,
-            "results": self.merge_search_results(
+            results = self.merge_search_results(
                 primary_matches,
                 relationship_matches
                 + address_matches
@@ -17057,7 +17064,13 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                 + linked_resource_matches
                 + custom_field_matches
                 + archive_matches,
-            ),
+            )
+            if not include_inactive_people:
+                results = self.filter_inactive_people_search_results(conn, results)
+            self.attach_lifecycle_summaries(conn, "person", [row for row in results if row.get("type") == "person"])
+        return {
+            "q": q,
+            "results": results,
         }
 
     def merge_search_results(self, primary: list[dict[str, Any]], secondary: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -17071,17 +17084,65 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             merged.append(row)
         return merged
 
-    def search_relationships(self, conn: sqlite3.Connection, q: str) -> list[dict[str, Any]]:
+    def param_truthy(self, value: Any) -> bool:
+        return str(value or "").strip().lower() in {"1", "true", "yes", "on", "all"}
+
+    def active_person_condition(self, conn: sqlite3.Connection, alias: str) -> str:
+        if not self.record_lifecycle_table_exists(conn):
+            return "1 = 1"
+        return f"""
+            NOT EXISTS (
+                SELECT 1
+                FROM local_record_lifecycle lrl
+                WHERE lrl.record_type = 'person'
+                  AND lrl.record_id = {alias}.id
+                  AND lrl.lifecycle_status = 'inactive'
+            )
+        """
+
+    def inactive_person_ids_for_search(self, conn: sqlite3.Connection) -> set[int]:
+        if not self.record_lifecycle_table_exists(conn):
+            return set()
+        return {
+            int(row["record_id"])
+            for row in rows_to_dicts(
+                conn.execute(
+                    """
+                    SELECT record_id
+                    FROM local_record_lifecycle
+                    WHERE record_type = 'person'
+                      AND lifecycle_status = 'inactive'
+                    """
+                ).fetchall()
+            )
+            if row.get("record_id") is not None
+        }
+
+    def filter_inactive_people_search_results(self, conn: sqlite3.Connection, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        inactive_ids = self.inactive_person_ids_for_search(conn)
+        if not inactive_ids:
+            return rows
+        return [
+            row
+            for row in rows
+            if not (row.get("type") == "person" and self.optional_int(row.get("source_id")) in inactive_ids)
+        ]
+
+    def search_relationships(self, conn: sqlite3.Connection, q: str, *, include_inactive_people: bool = False) -> list[dict[str, Any]]:
         like = f"%{q}%"
+        active_p = "1 = 1" if include_inactive_people else self.active_person_condition(conn, "p")
+        person_match = "(p.name LIKE :like OR p.email LIKE :like OR p.phone LIKE :like OR p.mobile LIKE :like OR p.title LIKE :like)"
+        deal_person_match = "(p.name LIKE :like OR p.email LIKE :like OR coalesce(p.phone, p.mobile) LIKE :like)"
         rows = rows_to_dicts(
             conn.execute(
-                """
+                f"""
                 SELECT 'person' AS type, p.id AS source_id, 'person' AS kind,
                        p.name, p.email, coalesce(p.phone, p.mobile) AS phone, p.updated_at,
                        c.name AS relationship_name, 'Company' AS relationship_type
                 FROM people p
                 JOIN companies c ON c.id = p.company_id
-                WHERE c.name LIKE :like OR c.email LIKE :like OR c.phone LIKE :like
+                WHERE (c.name LIKE :like OR c.email LIKE :like OR c.phone LIKE :like)
+                  AND {active_p}
                 ORDER BY p.updated_at DESC
                 LIMIT 36
                 """,
@@ -17091,15 +17152,14 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         rows.extend(
             rows_to_dicts(
                 conn.execute(
-                    """
+                    f"""
                     SELECT 'company' AS type, c.id AS source_id, 'company' AS kind,
                            c.name, c.email, c.phone, c.updated_at,
                            p.name AS relationship_name, 'Contact' AS relationship_type
                     FROM companies c
                     JOIN people p ON p.company_id = c.id
-                    WHERE p.name LIKE :like OR p.email LIKE :like
-                       OR p.phone LIKE :like OR p.mobile LIKE :like
-                       OR p.title LIKE :like
+                    WHERE {person_match}
+                      AND {active_p}
                     ORDER BY c.updated_at DESC
                     LIMIT 36
                     """,
@@ -17110,15 +17170,14 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         rows.extend(
             rows_to_dicts(
                 conn.execute(
-                    """
+                    f"""
                     SELECT 'lead' AS type, l.id AS source_id, 'lead' AS kind,
                            l.name, l.email, coalesce(l.phone, l.mobile) AS phone, l.updated_at,
                            p.name AS relationship_name, 'Matched Person' AS relationship_type
                     FROM leads l
                     JOIN people p ON p.id = l.possible_person_id
-                    WHERE p.name LIKE :like OR p.email LIKE :like
-                       OR p.phone LIKE :like OR p.mobile LIKE :like
-                       OR p.title LIKE :like
+                    WHERE {person_match}
+                      AND {active_p}
                     ORDER BY l.updated_at DESC
                     LIMIT 36
                     """,
@@ -17129,17 +17188,17 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         rows.extend(
             rows_to_dicts(
                 conn.execute(
-                    """
+                    f"""
                     SELECT 'deal' AS type, d.id AS source_id, 'deal' AS kind,
                            d.name, NULL AS email, NULL AS phone, d.updated_at,
                            CASE
-                             WHEN p.name LIKE :like OR p.email LIKE :like OR coalesce(p.phone, p.mobile) LIKE :like THEN p.name
+                             WHEN {deal_person_match} AND {active_p} THEN p.name
                              WHEN c.name LIKE :like OR c.email LIKE :like OR c.phone LIKE :like THEN c.name
                              WHEN s.name LIKE :like THEN s.name
                              ELSE coalesce(p.name, c.name, s.name)
                            END AS relationship_name,
                            CASE
-                             WHEN p.name LIKE :like OR p.email LIKE :like OR coalesce(p.phone, p.mobile) LIKE :like THEN 'Contact'
+                             WHEN {deal_person_match} AND {active_p} THEN 'Contact'
                              WHEN c.name LIKE :like OR c.email LIKE :like OR c.phone LIKE :like THEN 'Company'
                              WHEN s.name LIKE :like THEN 'Stage'
                              ELSE 'Related'
@@ -17148,7 +17207,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                     LEFT JOIN people p ON p.id = d.person_id
                     LEFT JOIN companies c ON c.id = d.company_id
                     LEFT JOIN stages s ON s.id = d.stage_id
-                    WHERE p.name LIKE :like OR p.email LIKE :like OR coalesce(p.phone, p.mobile) LIKE :like
+                    WHERE ({deal_person_match} AND {active_p})
                        OR c.name LIKE :like OR c.email LIKE :like OR c.phone LIKE :like
                        OR s.name LIKE :like
                     ORDER BY d.updated_at DESC
@@ -17161,13 +17220,14 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         rows.extend(
             rows_to_dicts(
                 conn.execute(
-                    """
+                    f"""
                     SELECT 'person' AS type, p.id AS source_id, 'person' AS kind,
                            p.name, p.email, coalesce(p.phone, p.mobile) AS phone, p.updated_at,
                            d.name AS relationship_name, 'Deal' AS relationship_type
                     FROM people p
                     JOIN deals d ON d.person_id = p.id
                     WHERE d.name LIKE :like
+                      AND {active_p}
                     ORDER BY p.updated_at DESC
                     LIMIT 36
                     """,
@@ -17198,11 +17258,12 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             row["match_context"] = f"{relationship_type}: {self.snippet(relationship_name)}"
         return rows
 
-    def search_addresses(self, conn: sqlite3.Connection, q: str) -> list[dict[str, Any]]:
+    def search_addresses(self, conn: sqlite3.Connection, q: str, *, include_inactive_people: bool = False) -> list[dict[str, Any]]:
         needle = q.casefold()
         matches: list[dict[str, Any]] = []
+        active_people = "1 = 1" if include_inactive_people else self.active_person_condition(conn, "people")
         record_queries = [
-            ("person", "SELECT id, name, email, phone, mobile, updated_at, source_json FROM people ORDER BY updated_at DESC"),
+            ("person", f"SELECT id, name, email, phone, mobile, updated_at, source_json FROM people WHERE {active_people} ORDER BY updated_at DESC"),
             ("company", "SELECT id, name, email, phone, NULL AS mobile, updated_at, source_json FROM companies ORDER BY updated_at DESC"),
             ("lead", "SELECT id, name, email, phone, mobile, updated_at, source_json FROM leads ORDER BY updated_at DESC"),
         ]

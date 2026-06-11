@@ -5162,7 +5162,7 @@ function renderDetail(detail) {
       ${reviewFlagsSection(detail.review_flags || [])}
       ${ownerSection(detail.owner)}
       ${addressSection(detail)}
-      ${purchasesSection(detail.purchases || [])}
+      ${detail.type === "person" ? purchasesSection(detail.purchases || []) : ""}
       ${detailTags(detail, detail.tags || [])}
       ${applicationProfile(detail.application_profile || [])}
       ${keyValues(record)}
@@ -8151,40 +8151,46 @@ function addressSection(detail) {
 }
 
 function purchasesSection(purchases) {
-  if (!purchases.length) return "";
+  const purchaseCountLabel = purchases.length
+    ? `${formatNumber(purchases.length)} purchase${purchases.length === 1 ? "" : "s"}`
+    : "No purchases yet";
   return `
     <div class="detail-section purchases-section">
       <div class="inline-header">
         <h3>Purchases</h3>
-        <span class="muted">${formatNumber(purchases.length)} purchases</span>
+        <span class="muted">${purchaseCountLabel}</span>
       </div>
-      <div class="purchase-list">
-        ${purchases
-          .map(
-            (purchase) => `
-              <div class="purchase-card">
-                <div class="purchase-card-header">
-                  <strong>${escapeHtml(purchase.product_name || "Purchase")}</strong>
-                  ${purchase.price_label ? `<span class="purchase-price">${escapeHtml(purchase.price_label)}</span>` : ""}
-                </div>
-                <div class="purchase-meta-row">
-                  ${purchase.purchase_date ? `<span>${escapeHtml(formatDate(purchase.purchase_date))}</span>` : ""}
-                  ${purchase.cart_source ? `<span>${escapeHtml(purchase.cart_source)}</span>` : ""}
-                </div>
-                ${purchase.address_text ? `<div class="purchase-address">${escapeHtml(purchase.address_text)}</div>` : ""}
-                ${
-                  purchase.order_id || purchase.transaction_id
-                    ? `<div class="purchase-meta-row">
-                        ${purchase.order_id ? `<span>Order ${escapeHtml(purchase.order_id)}</span>` : ""}
-                        ${purchase.transaction_id ? `<span>Txn ${escapeHtml(purchase.transaction_id)}</span>` : ""}
-                      </div>`
-                    : ""
-                }
-              </div>
-            `
-          )
-          .join("")}
-      </div>
+      ${
+        purchases.length
+          ? `<div class="purchase-list">
+              ${purchases
+                .map(
+                  (purchase) => `
+                    <div class="purchase-card">
+                      <div class="purchase-card-header">
+                        <strong>${escapeHtml(purchase.product_name || "Purchase")}</strong>
+                        ${purchase.price_label ? `<span class="purchase-price">${escapeHtml(purchase.price_label)}</span>` : ""}
+                      </div>
+                      <div class="purchase-meta-row">
+                        ${purchase.purchase_date ? `<span>${escapeHtml(formatDate(purchase.purchase_date))}</span>` : ""}
+                        ${purchase.cart_source ? `<span>${escapeHtml(purchase.cart_source)}</span>` : ""}
+                      </div>
+                      ${purchase.address_text ? `<div class="purchase-address">${escapeHtml(purchase.address_text)}</div>` : ""}
+                      ${
+                        purchase.order_id || purchase.transaction_id
+                          ? `<div class="purchase-meta-row">
+                              ${purchase.order_id ? `<span>Order ${escapeHtml(purchase.order_id)}</span>` : ""}
+                              ${purchase.transaction_id ? `<span>Txn ${escapeHtml(purchase.transaction_id)}</span>` : ""}
+                            </div>`
+                          : ""
+                      }
+                    </div>
+                  `
+                )
+                .join("")}
+            </div>`
+          : `<div class="purchase-empty muted">Purchases sent from Zapier or future cart imports will appear here.</div>`
+      }
     </div>
   `;
 }

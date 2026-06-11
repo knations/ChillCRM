@@ -3015,6 +3015,13 @@ button {
   gap: 10px;
 }
 
+.purchase-empty {
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  padding: 12px;
+}
+
 .purchase-card {
   border: 1px solid var(--line);
   border-radius: 8px;

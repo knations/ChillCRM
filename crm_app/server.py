@@ -1131,6 +1131,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             "/api/save_cleanup_decision",
             "/api/merge_duplicate_people",
             "/api/save_project_decision",
+            "/api/webhooks/zapier_purchase",
             "/api/save_view",
             "/api/delete_view",
             "/api/backup",
@@ -1158,6 +1159,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         "manage_users_roles": frozenset({"owner"}),
         "change_own_password": frozenset({"owner", "admin", "staff", "read_only", "migration_operator"}),
         "hosted_cutover": frozenset({"owner", "migration_operator"}),
+        "inbound_purchase_webhook": frozenset({"owner", "admin"}),
     }
     get_permission_actions = {
         "/api/summary": "view_dashboard_reports",
@@ -1216,6 +1218,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         "/api/save_cleanup_decision": "save_cleanup_decision",
         "/api/merge_duplicate_people": "merge_duplicate_people",
         "/api/save_project_decision": "save_project_decision",
+        "/api/webhooks/zapier_purchase": "inbound_purchase_webhook",
         "/api/save_view": "search_filter_save_views",
         "/api/delete_view": "search_filter_save_views",
         "/api/backup": "manual_backup",
@@ -2131,7 +2134,54 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
     def should_require_auth_for_post(self, path: str) -> bool:
         if not self.auth_required_enabled():
             return False
-        return path not in {"/api/auth/login", "/api/auth/logout", "/api/auth/owner_password_recovery"}
+        return path not in {"/api/auth/login", "/api/auth/logout", "/api/auth/owner_password_recovery", "/api/webhooks/zapier_purchase"}
+
+    def zapier_purchase_webhook_secret(self) -> str:
+        return os.environ.get("CHILLCRM_ZAPIER_WEBHOOK_SECRET", "").strip() or os.environ.get("ZAPIER_WEBHOOK_SECRET", "").strip()
+
+    def zapier_purchase_webhook_token(self) -> str:
+        headers = getattr(self, "headers", {})
+        auth_header = str(headers.get("Authorization", "") if hasattr(headers, "get") else "").strip()
+        if auth_header.lower().startswith("bearer "):
+            return auth_header[7:].strip()
+        for header_name in ["X-CHILLCRM-WEBHOOK-SECRET", "X-ZAPIER-WEBHOOK-SECRET"]:
+            value = str(headers.get(header_name, "") if hasattr(headers, "get") else "").strip()
+            if value:
+                return value
+        return ""
+
+    def zapier_purchase_webhook_authorization_error(self) -> tuple[dict[str, Any], int] | None:
+        expected = self.zapier_purchase_webhook_secret()
+        if not expected:
+            return (
+                {
+                    "ok": False,
+                    "error": "Zapier purchase webhook is not configured.",
+                    "code": "webhook_secret_not_configured",
+                    "required_env": "CHILLCRM_ZAPIER_WEBHOOK_SECRET",
+                },
+                503,
+            )
+        supplied = self.zapier_purchase_webhook_token()
+        if not supplied:
+            return (
+                {
+                    "ok": False,
+                    "error": "Webhook secret is required.",
+                    "code": "webhook_secret_required",
+                },
+                401,
+            )
+        if not hmac.compare_digest(supplied, expected):
+            return (
+                {
+                    "ok": False,
+                    "error": "Webhook secret is invalid.",
+                    "code": "webhook_secret_invalid",
+                },
+                403,
+            )
+        return None
 
     def send_auth_required(self, path: str) -> None:
         self.send_json(
@@ -2835,6 +2885,12 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             if self.should_block_local_write(path):
                 self.send_local_write_frozen(path)
                 return
+            if path == "/api/webhooks/zapier_purchase":
+                authorization_error = self.zapier_purchase_webhook_authorization_error()
+                if authorization_error:
+                    payload, status = authorization_error
+                    self.send_json(payload, status)
+                    return
             payload = self.read_json_body()
             if path == "/api/update_record":
                 self.send_json(self.update_record(payload, auth_user, action_key))
@@ -2880,6 +2936,8 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                 self.send_json(self.merge_duplicate_people(payload, auth_user, action_key))
             elif path == "/api/save_project_decision":
                 self.send_json(self.save_project_decision(payload, auth_user, action_key))
+            elif path == "/api/webhooks/zapier_purchase":
+                self.send_json(self.zapier_purchase_webhook(payload))
             elif path == "/api/save_view":
                 self.send_json(self.save_view(payload))
             elif path == "/api/delete_view":
@@ -8191,6 +8249,8 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             return "Renamed tag"
         if action == "delete_tag":
             return "Deleted tag"
+        if action == "zapier_purchase_webhook":
+            return "Appended shopping cart purchase"
         if action == "update_address":
             return "Updated address"
         if action == "add_note":
@@ -20968,6 +21028,338 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             )
             conn.commit()
         return {"ok": True, "backup": str(backup_path), "detail": self.record_detail({"type": [record_type], "id": [str(local_id)]})}
+
+    def zapier_webhook_actor(self) -> dict[str, Any]:
+        return {"id": None, "email": "zapier-purchase-webhook@chillcrm.local", "roles": ["webhook"]}
+
+    def webhook_deep_value(self, payload: dict[str, Any], path: str) -> Any:
+        if path in payload:
+            return payload.get(path)
+        current: Any = payload
+        for part in path.split("."):
+            if isinstance(current, dict) and part in current:
+                current = current.get(part)
+            else:
+                return None
+        return current
+
+    def webhook_first_text(self, payload: dict[str, Any], paths: list[str], max_length: int = 500) -> str:
+        for path in paths:
+            value = self.webhook_deep_value(payload, path)
+            if value is None or isinstance(value, (dict, list)):
+                continue
+            text = str(value).strip()
+            if text:
+                return text[:max_length]
+        return ""
+
+    def clean_webhook_email(self, value: Any) -> str:
+        email = str(value or "").strip().lower()
+        if not email or "@" not in email or "." not in email.rsplit("@", 1)[-1]:
+            raise ValueError("Purchase webhook requires a valid customer email.")
+        return email[:255]
+
+    def zapier_purchase_products(self, payload: dict[str, Any]) -> list[str]:
+        names: list[str] = []
+        for list_path in ["items", "line_items", "products", "order.items", "order.line_items"]:
+            value = self.webhook_deep_value(payload, list_path)
+            if isinstance(value, list):
+                for item in value:
+                    if isinstance(item, dict):
+                        name = self.webhook_first_text(item, ["name", "title", "product_name", "item_name", "description"], 180)
+                    else:
+                        name = str(item or "").strip()[:180]
+                    if name and name not in names:
+                        names.append(name)
+        single = self.webhook_first_text(payload, ["product_name", "product", "item_name", "offer_name", "course_name", "sku"], 180)
+        if single and single not in names:
+            names.append(single)
+        return names[:10]
+
+    def zapier_purchase_summary(self, payload: dict[str, Any]) -> dict[str, Any]:
+        email = self.clean_webhook_email(
+            self.webhook_first_text(
+                payload,
+                [
+                    "email",
+                    "customer_email",
+                    "buyer_email",
+                    "billing_email",
+                    "contact.email",
+                    "customer.email",
+                    "buyer.email",
+                    "billing.email",
+                    "order.email",
+                ],
+            )
+        )
+        first_name = self.webhook_first_text(payload, ["first_name", "customer_first_name", "billing_first_name", "contact.first_name", "customer.first_name", "billing.first_name"], 120)
+        last_name = self.webhook_first_text(payload, ["last_name", "customer_last_name", "billing_last_name", "contact.last_name", "customer.last_name", "billing.last_name"], 120)
+        name = self.webhook_first_text(payload, ["name", "full_name", "customer_name", "buyer_name", "billing_name", "contact.name", "customer.name", "billing.name"], 240)
+        if not name:
+            name = " ".join(part for part in [first_name, last_name] if part).strip()
+        if not name:
+            name = email
+        phone = self.webhook_first_text(payload, ["phone", "customer_phone", "buyer_phone", "billing_phone", "contact.phone", "customer.phone", "billing.phone"], 80)
+        mobile = self.webhook_first_text(payload, ["mobile", "mobile_phone", "customer_mobile", "contact.mobile", "customer.mobile"], 80)
+        order_id = self.webhook_first_text(payload, ["order_id", "order_number", "order.id", "order.number", "id"], 120)
+        transaction_id = self.webhook_first_text(payload, ["transaction_id", "payment_id", "charge_id", "invoice_id", "checkout_id", "session_id"], 120)
+        products = self.zapier_purchase_products(payload)
+        amount = self.webhook_first_text(payload, ["total", "total_amount", "amount", "order_total", "price", "payment.amount"], 80)
+        currency = self.webhook_first_text(payload, ["currency", "payment.currency"], 20)
+        purchased_at = self.webhook_first_text(payload, ["purchased_at", "paid_at", "created_at", "order_created_at", "order.created_at", "payment.created_at"], 80)
+        cart_source = self.webhook_first_text(payload, ["shopping_cart", "cart", "platform", "source", "store", "vendor"], 120)
+        purchase_identity = self.zapier_purchase_identity(payload, email, order_id, transaction_id)
+        return {
+            "email": email,
+            "first_name": first_name,
+            "last_name": last_name,
+            "name": name,
+            "phone": phone,
+            "mobile": mobile,
+            "order_id": order_id,
+            "transaction_id": transaction_id,
+            "products": products,
+            "amount": amount,
+            "currency": currency,
+            "purchased_at": purchased_at,
+            "cart_source": cart_source,
+            "purchase_identity": purchase_identity,
+        }
+
+    def zapier_purchase_identity(self, payload: dict[str, Any], email: str, order_id: str, transaction_id: str) -> str:
+        explicit = self.webhook_first_text(payload, ["idempotency_key", "event_id", "zap_id"], 160)
+        for value in [explicit, order_id, transaction_id]:
+            if value:
+                return value[:180]
+        material = json.dumps({"email": email, "payload": payload}, ensure_ascii=False, sort_keys=True, default=json_response_default)
+        return f"payload:{hashlib.sha256(material.encode('utf-8')).hexdigest()[:24]}"
+
+    def redact_webhook_payload(self, value: Any) -> Any:
+        if isinstance(value, dict):
+            redacted: dict[str, Any] = {}
+            for key, item in value.items():
+                key_text = str(key)
+                if re.search(r"(secret|token|password|authorization|api[_-]?key)", key_text, re.IGNORECASE):
+                    redacted[key_text] = "[redacted]"
+                else:
+                    redacted[key_text] = self.redact_webhook_payload(item)
+            return redacted
+        if isinstance(value, list):
+            return [self.redact_webhook_payload(item) for item in value]
+        return value
+
+    def zapier_purchase_note_content(self, summary: dict[str, Any]) -> str:
+        lines = ["Shopping cart purchase received via Zapier."]
+        if summary.get("name") or summary.get("email"):
+            lines.append(f"Customer: {' · '.join(item for item in [summary.get('name'), summary.get('email')] if item)}")
+        if summary.get("phone") or summary.get("mobile"):
+            lines.append(f"Phone: {' · '.join(item for item in [summary.get('phone'), summary.get('mobile')] if item)}")
+        if summary.get("order_id"):
+            lines.append(f"Order: {summary['order_id']}")
+        if summary.get("transaction_id"):
+            lines.append(f"Transaction: {summary['transaction_id']}")
+        if summary.get("products"):
+            lines.append(f"Product(s): {'; '.join(summary['products'])}")
+        amount_parts = [summary.get("amount"), summary.get("currency")]
+        if any(amount_parts):
+            lines.append(f"Amount: {' '.join(item for item in amount_parts if item)}")
+        if summary.get("purchased_at"):
+            lines.append(f"Purchased at: {summary['purchased_at']}")
+        if summary.get("cart_source"):
+            lines.append(f"Source: {summary['cart_source']}")
+        lines.append(f"Purchase identity: {summary['purchase_identity']}")
+        return "\n".join(lines)
+
+    def zapier_purchase_source_payload(self, payload: dict[str, Any], summary: dict[str, Any], timestamp: str) -> dict[str, Any]:
+        return {
+            "local_source": "zapier_purchase_webhook",
+            "purchase_identity": summary["purchase_identity"],
+            "received_at": timestamp,
+            "summary": summary,
+            "payload": self.redact_webhook_payload(payload),
+        }
+
+    def zapier_purchase_note_exists(self, conn: Any, person_id: int, purchase_identity: str) -> int | None:
+        rows = conn.execute(
+            """
+            SELECT id, source_json
+            FROM notes
+            WHERE record_type = 'person' AND record_id = ?
+            ORDER BY id DESC
+            LIMIT 500
+            """,
+            (person_id,),
+        ).fetchall()
+        for row in rows:
+            source = row["source_json"]
+            if isinstance(source, str):
+                try:
+                    source = json.loads(source)
+                except json.JSONDecodeError:
+                    source = {}
+            if isinstance(source, dict) and source.get("local_source") == "zapier_purchase_webhook" and source.get("purchase_identity") == purchase_identity:
+                return int(row["id"])
+        return None
+
+    def zapier_purchase_blank_field_updates(self, person: dict[str, Any], summary: dict[str, Any]) -> dict[str, str]:
+        updates: dict[str, str] = {}
+        candidates = {
+            "first_name": summary.get("first_name"),
+            "last_name": summary.get("last_name"),
+            "name": summary.get("name"),
+            "phone": summary.get("phone"),
+            "mobile": summary.get("mobile"),
+        }
+        for field, value in candidates.items():
+            text = self.clean_optional(value)
+            if not text:
+                continue
+            current = self.clean_optional(person.get(field))
+            if field == "name" and current and current.lower() != summary["email"].lower():
+                continue
+            if not current or field == "name":
+                updates[field] = text
+        if "name" in updates:
+            updates["normalized_name"] = normalize_text(updates["name"]) or ""
+        return updates
+
+    def zapier_purchase_webhook(self, payload: dict[str, Any]) -> dict[str, Any]:
+        if not isinstance(payload, dict):
+            raise ValueError("Expected a JSON object.")
+        summary = self.zapier_purchase_summary(payload)
+        actor_user = self.zapier_webhook_actor()
+        timestamp = now_iso()
+        normalized_email = normalize_text(summary["email"])
+        if not normalized_email:
+            raise ValueError("Purchase webhook requires a valid customer email.")
+
+        with self.db() as conn:
+            existing = row_to_dict(
+                conn.execute(
+                    """
+                    SELECT id, first_name, last_name, name, email, phone, mobile
+                    FROM people
+                    WHERE normalized_email = ?
+                    ORDER BY updated_at DESC, id
+                    LIMIT 1
+                    """,
+                    (normalized_email,),
+                ).fetchone()
+            )
+            if existing:
+                duplicate_note_id = self.zapier_purchase_note_exists(conn, int(existing["id"]), summary["purchase_identity"])
+                if duplicate_note_id:
+                    return {
+                        "ok": True,
+                        "duplicate": True,
+                        "person_created": False,
+                        "person_id": int(existing["id"]),
+                        "note_id": duplicate_note_id,
+                        "backup": None,
+                        "purchase_identity": summary["purchase_identity"],
+                        "detail": self.record_detail({"type": ["person"], "id": [str(existing["id"])]}),
+                    }
+
+        backup_path = self.create_backup(f"before_zapier_purchase_{summary['purchase_identity']}")
+        with self.db() as conn:
+            person = row_to_dict(
+                conn.execute(
+                    """
+                    SELECT id, first_name, last_name, name, email, phone, mobile
+                    FROM people
+                    WHERE normalized_email = ?
+                    ORDER BY updated_at DESC, id
+                    LIMIT 1
+                    """,
+                    (normalized_email,),
+                ).fetchone()
+            )
+            person_created = False
+            field_updates: dict[str, str] = {}
+            old_field_values: dict[str, Any] = {}
+            if person:
+                person_id = int(person["id"])
+                duplicate_note_id = self.zapier_purchase_note_exists(conn, person_id, summary["purchase_identity"])
+                if duplicate_note_id:
+                    return {
+                        "ok": True,
+                        "duplicate": True,
+                        "person_created": False,
+                        "person_id": person_id,
+                        "note_id": duplicate_note_id,
+                        "backup": None,
+                        "purchase_identity": summary["purchase_identity"],
+                        "detail": self.record_detail({"type": ["person"], "id": [str(person_id)]}),
+                    }
+                field_updates = self.zapier_purchase_blank_field_updates(person, summary)
+                if field_updates:
+                    old_field_values = {field: person.get(field) for field in field_updates}
+                    assignments = ", ".join(f"{field} = ?" for field in field_updates)
+                    conn.execute(
+                        f"UPDATE people SET {assignments}, updated_at = ? WHERE id = ?",
+                        (*field_updates.values(), timestamp, person_id),
+                    )
+            else:
+                person_created = True
+                person_id = self.create_person(
+                    conn,
+                    {
+                        "name": summary["name"],
+                        "first_name": summary.get("first_name"),
+                        "last_name": summary.get("last_name"),
+                        "email": summary["email"],
+                        "phone": summary.get("phone"),
+                        "mobile": summary.get("mobile"),
+                    },
+                    timestamp,
+                )
+                conn.execute(
+                    "UPDATE people SET source_json = ? WHERE id = ?",
+                    (
+                        json.dumps(
+                            {
+                                "local_source": "zapier_purchase_webhook",
+                                "created_from_purchase_identity": summary["purchase_identity"],
+                                "created_at": timestamp,
+                            },
+                            ensure_ascii=False,
+                            sort_keys=True,
+                        ),
+                        person_id,
+                    ),
+                )
+            note_id = self.insert_local_note_row(
+                conn,
+                "person",
+                person_id,
+                self.zapier_purchase_note_content(summary),
+                timestamp,
+                self.zapier_purchase_source_payload(payload, summary, timestamp),
+            )
+            self.insert_audit_log(
+                conn,
+                action="zapier_purchase_webhook",
+                record_type="person",
+                record_id=person_id,
+                field_name="purchase",
+                old_value={"person_created": person_created, "field_values": old_field_values},
+                new_value={"purchase": summary, "field_updates": field_updates, "note_id": note_id},
+                note=f"Backup: {backup_path.name}; purchase_identity={summary['purchase_identity']}; note_id={note_id}",
+                actor_user=actor_user,
+                permission_action="inbound_purchase_webhook",
+            )
+            conn.commit()
+        return {
+            "ok": True,
+            "duplicate": False,
+            "person_created": person_created,
+            "person_id": person_id,
+            "note_id": note_id,
+            "backup": str(backup_path),
+            "purchase_identity": summary["purchase_identity"],
+            "detail": self.record_detail({"type": ["person"], "id": [str(person_id)]}),
+        }
 
     def validate_create_fields(self, record_type: str, fields: dict[str, Any]) -> None:
         if record_type in {"company", "deal"}:

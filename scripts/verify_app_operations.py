@@ -42,6 +42,7 @@ def main() -> int:
     server_py = (PROJECT_ROOT / "crm_app" / "server.py").read_text(encoding="utf-8")
     styles_css = (PROJECT_ROOT / "crm_app" / "static" / "styles.css").read_text(encoding="utf-8")
     index_html = (PROJECT_ROOT / "crm_app" / "static" / "index.html").read_text(encoding="utf-8")
+    vercel_env_example = (PROJECT_ROOT / "config" / "chillcrm_vercel.env.example").read_text(encoding="utf-8")
     assert "<title>ChillCRM</title>" in index_html
     assert "<h1>ChillCRM</h1>" in index_html
     assert "Have Fun Get Rich" in index_html
@@ -314,6 +315,10 @@ def main() -> int:
     assert "createTagForm" in app_js
     assert "rename-tag-button" in app_js
     assert "delete-tag-button" in app_js
+    assert "/api/webhooks/zapier_purchase" in server_py
+    assert "CHILLCRM_ZAPIER_WEBHOOK_SECRET" in server_py
+    assert "CHILLCRM_ZAPIER_WEBHOOK_SECRET=placeholder_generated_webhook_secret" in vercel_env_example
+    assert "Zapier shopping-cart purchase intake" in (PROJECT_ROOT / "docs" / "operating_notes.md").read_text(encoding="utf-8")
     assert ".person-tag-picker" in styles_css
     assert ".tag-create-form" in styles_css
     assert ".tag-row-actions" in styles_css
@@ -1889,6 +1894,7 @@ def main() -> int:
                 "AUTH_BOOTSTRAP_ADMIN_PASSWORD",
                 "AUTH_BOOTSTRAP_ADMIN_NAME",
                 "SESSION_COOKIE_SECURE",
+                "CHILLCRM_ZAPIER_WEBHOOK_SECRET",
             ]
         }
         try:
@@ -1906,7 +1912,20 @@ def main() -> int:
             assert handler.should_require_auth_for_get("/") is False
             assert handler.should_require_auth_for_get("/static/app.js") is False
             assert handler.should_require_auth_for_post("/api/update_record") is True
+            assert handler.should_require_auth_for_post("/api/webhooks/zapier_purchase") is False
             assert handler.should_require_auth_for_post("/api/auth/login") is False
+            os.environ["CHILLCRM_ZAPIER_WEBHOOK_SECRET"] = "unit-test-webhook-secret"
+            handler.headers = {"Authorization": "Bearer unit-test-webhook-secret"}
+            assert handler.zapier_purchase_webhook_authorization_error() is None
+            handler.headers = {}
+            missing_webhook_secret, missing_webhook_status = handler.zapier_purchase_webhook_authorization_error()
+            assert missing_webhook_status == 401
+            assert missing_webhook_secret["code"] == "webhook_secret_required"
+            handler.headers = {"X-CHILLCRM-WEBHOOK-SECRET": "wrong-secret"}
+            invalid_webhook_secret, invalid_webhook_status = handler.zapier_purchase_webhook_authorization_error()
+            assert invalid_webhook_status == 403
+            assert invalid_webhook_secret["code"] == "webhook_secret_invalid"
+            handler.headers = {}
             assert handler.authenticate_app_user("owner@example.test", "wrong") is None
             auth_user = handler.authenticate_app_user("owner@example.test", "unit-test-password")
             assert auth_user is not None
@@ -2305,6 +2324,63 @@ def main() -> int:
         assert any(row["type"] == "person" and row["source_id"] == person_id and row.get("match_context", "").startswith("Note:") for row in note_search)
         edited_note_search = handler.search({"q": ["note edited"]})["results"]
         assert any(row["type"] == "person" and row["source_id"] == person_id and row.get("match_context", "").startswith("Note:") for row in edited_note_search)
+        purchase_created = handler.zapier_purchase_webhook(
+            {
+                "email": "purchase-webhook-ops@example.test",
+                "first_name": "Purchase",
+                "last_name": "Webhook",
+                "phone": "555-0101",
+                "order_id": "ORDER-1001",
+                "transaction_id": "TXN-1001",
+                "product_name": "Operations Verification Course",
+                "total": "197.00",
+                "currency": "USD",
+                "purchased_at": "2026-06-11T10:00:00Z",
+                "api_token": "should-not-be-stored",
+            }
+        )
+        assert purchase_created["ok"] is True
+        assert purchase_created["person_created"] is True
+        assert purchase_created["duplicate"] is False
+        purchase_person_id = purchase_created["person_id"]
+        assert purchase_created["detail"]["record"]["email"] == "purchase-webhook-ops@example.test"
+        assert any("Operations Verification Course" in note["content"] for note in purchase_created["detail"]["notes"])
+        purchase_appended = handler.zapier_purchase_webhook(
+            {
+                "customer": {"email": "purchase-webhook-ops@example.test", "name": "Replacement Name", "phone": "555-9999"},
+                "order": {"number": "ORDER-1002", "created_at": "2026-06-11T11:00:00Z"},
+                "line_items": [{"name": "Operations Verification Add-On"}],
+                "amount": "49.00",
+                "currency": "USD",
+            }
+        )
+        assert purchase_appended["ok"] is True
+        assert purchase_appended["person_created"] is False
+        assert purchase_appended["duplicate"] is False
+        assert purchase_appended["person_id"] == purchase_person_id
+        assert any("Operations Verification Add-On" in note["content"] for note in purchase_appended["detail"]["notes"])
+        purchase_duplicate = handler.zapier_purchase_webhook(
+            {
+                "email": "purchase-webhook-ops@example.test",
+                "order_id": "ORDER-1002",
+                "product_name": "Operations Verification Add-On",
+            }
+        )
+        assert purchase_duplicate["ok"] is True
+        assert purchase_duplicate["duplicate"] is True
+        with sqlite3.connect(test_db) as conn:
+            conn.row_factory = sqlite3.Row
+            purchase_person = conn.execute("SELECT name, phone FROM people WHERE id = ?", (purchase_person_id,)).fetchone()
+            assert purchase_person["name"] == "Purchase Webhook"
+            assert purchase_person["phone"] == "555-0101"
+            purchase_notes = conn.execute(
+                "SELECT source_json FROM notes WHERE record_type = 'person' AND record_id = ? ORDER BY id",
+                (purchase_person_id,),
+            ).fetchall()
+            webhook_note_sources = [json.loads(row["source_json"]) for row in purchase_notes if "zapier_purchase_webhook" in row["source_json"]]
+            assert len(webhook_note_sources) == 2
+            assert webhook_note_sources[0]["payload"]["api_token"] == "[redacted]"
+            assert conn.execute("SELECT count(*) FROM audit_log WHERE action = 'zapier_purchase_webhook' AND record_id = ?", (purchase_person_id,)).fetchone()[0] == 2
         with sqlite3.connect(test_db) as conn:
             imported_note_id = conn.execute("SELECT id FROM notes WHERE zendesk_note_id IS NOT NULL LIMIT 1").fetchone()[0]
         try:
@@ -3510,6 +3586,7 @@ def main() -> int:
         assert any(row["source_id"] == task_id and not row["completed"] for row in reopened_open_tasks["tasks"])
 
         restore_anchor = handler.create_backup("restore_anchor")
+        restore_anchor_people_count = handler.summary()["counts"]["people"]
         extra_person = handler.create_record(
             {
                 "type": "person",
@@ -3517,10 +3594,10 @@ def main() -> int:
             }
         )
         assert extra_person["ok"] is True
-        assert handler.summary()["counts"]["people"] == 999
+        assert handler.summary()["counts"]["people"] == restore_anchor_people_count + 1
         restored = handler.restore_backup({"name": restore_anchor.name})
         assert restored["ok"] is True
-        assert restored["summary"]["counts"]["people"] == 998
+        assert restored["summary"]["counts"]["people"] == restore_anchor_people_count
         assert "pre_restore" in restored["pre_restore_backup"]
 
         activity = handler.activity({"limit": ["25"]})

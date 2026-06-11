@@ -1114,6 +1114,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             "/api/set_record_lifecycle",
             "/api/create_tag",
             "/api/rename_tag",
+            "/api/delete_tag",
             "/api/update_tags",
             "/api/update_addresses",
             "/api/upload_profile_image",
@@ -1198,6 +1199,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         "/api/set_record_lifecycle": "create_edit_records",
         "/api/create_tag": "edit_addresses_tags",
         "/api/rename_tag": "edit_addresses_tags",
+        "/api/delete_tag": "edit_addresses_tags",
         "/api/update_tags": "edit_addresses_tags",
         "/api/update_addresses": "edit_addresses_tags",
         "/api/upload_profile_image": "create_edit_records",
@@ -2844,6 +2846,8 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                 self.send_json(self.create_tag(payload, auth_user, action_key))
             elif path == "/api/rename_tag":
                 self.send_json(self.rename_tag(payload, auth_user, action_key))
+            elif path == "/api/delete_tag":
+                self.send_json(self.delete_tag(payload, auth_user, action_key))
             elif path == "/api/update_tags":
                 self.send_json(self.update_tags(payload, auth_user, action_key))
             elif path == "/api/update_addresses":
@@ -8185,6 +8189,8 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             return "Created tag"
         if action == "rename_tag":
             return "Renamed tag"
+        if action == "delete_tag":
+            return "Deleted tag"
         if action == "update_address":
             return "Updated address"
         if action == "add_note":
@@ -20667,6 +20673,98 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             "changed": True,
             "backup": str(backup_path),
             "tag": self.tags({"id": [str(tag_id)]}).get("tag"),
+        }
+
+    def delete_tag(self, payload: dict[str, Any], actor_user: dict[str, Any] | None = None, permission_action: str | None = "edit_addresses_tags") -> dict[str, Any]:
+        tag_id = int(payload.get("id") or payload.get("tag_id") or 0)
+        if tag_id <= 0:
+            raise ValueError("Tag id is required.")
+        with self.db() as conn:
+            existing = row_to_dict(
+                conn.execute(
+                    "SELECT id AS source_id, display_name, normalized_name, definition_count FROM tags WHERE id = ?",
+                    (tag_id,),
+                ).fetchone()
+            )
+            if not existing:
+                raise ValueError("Tag not found.")
+
+        backup_path = self.create_backup(f"before_delete_tag_{tag_id}")
+        timestamp = now_iso()
+        record_tables = {"person": "people", "company": "companies", "lead": "leads", "deal": "deals"}
+        with self.db() as conn:
+            existing = row_to_dict(
+                conn.execute(
+                    "SELECT id AS source_id, display_name, normalized_name, definition_count FROM tags WHERE id = ?",
+                    (tag_id,),
+                ).fetchone()
+            )
+            if not existing:
+                raise ValueError("Tag not found.")
+            assignment_counts = {
+                str(row["record_type"]): int(row["count"])
+                for row in conn.execute(
+                    """
+                    SELECT record_type, count(*) AS count
+                    FROM tag_assignments
+                    WHERE tag_id = ?
+                    GROUP BY record_type
+                    """,
+                    (tag_id,),
+                ).fetchall()
+            }
+            affected_records: dict[str, set[int]] = {}
+            for row in conn.execute(
+                """
+                SELECT record_type, record_id
+                FROM tag_assignments
+                WHERE tag_id = ?
+                """,
+                (tag_id,),
+            ).fetchall():
+                record_type = str(row["record_type"] or "")
+                if record_type not in record_tables or row["record_id"] is None:
+                    continue
+                affected_records.setdefault(record_type, set()).add(int(row["record_id"]))
+            alias_count = int(conn.execute("SELECT count(*) FROM tag_aliases WHERE tag_id = ?", (tag_id,)).fetchone()[0])
+            conn.execute("DELETE FROM tag_assignments WHERE tag_id = ?", (tag_id,))
+            conn.execute("DELETE FROM tag_aliases WHERE tag_id = ?", (tag_id,))
+            conn.execute("DELETE FROM tags WHERE id = ?", (tag_id,))
+            for record_type, record_ids in affected_records.items():
+                if not record_ids:
+                    continue
+                placeholders = ",".join("?" for _ in record_ids)
+                conn.execute(
+                    f"UPDATE {record_tables[record_type]} SET updated_at = ? WHERE id IN ({placeholders})",
+                    (timestamp, *sorted(record_ids)),
+                )
+            removed_assignments = sum(assignment_counts.values())
+            self.insert_audit_log(
+                conn,
+                action="delete_tag",
+                record_type="tag",
+                record_id=tag_id,
+                field_name="tag",
+                old_value={
+                    "tag": existing,
+                    "assignment_counts": assignment_counts,
+                    "affected_record_counts": {record_type: len(record_ids) for record_type, record_ids in affected_records.items()},
+                    "alias_count": alias_count,
+                },
+                new_value=None,
+                note=f"Universal tag delete. Removed {removed_assignments} assignments and {alias_count} aliases. Backup: {backup_path.name}",
+                actor_user=actor_user,
+                permission_action=permission_action,
+            )
+            conn.commit()
+        return {
+            "ok": True,
+            "deleted": True,
+            "backup": str(backup_path),
+            "tag": existing,
+            "removed_assignments": removed_assignments,
+            "removed_aliases": alias_count,
+            "assignment_counts": assignment_counts,
         }
 
     def clean_tag_definition_name(self, value: Any) -> str:

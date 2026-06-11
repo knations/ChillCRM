@@ -4507,6 +4507,46 @@ async function renameTagFromControl(button) {
   }
 }
 
+async function deleteTagFromControl(button) {
+  const tagId = button.dataset.id || button.closest(".tag-management-row, .tag-detail-rename")?.dataset.id || "";
+  if (!tagId) return;
+  const tagName = button.dataset.name || "this tag";
+  const assignmentCount = Number(button.dataset.count || 0);
+  const assignmentLabel = assignmentCount === 1 ? "assignment" : "assignments";
+  const confirmed = window.confirm(
+    `Delete "${tagName}" everywhere?\n\nThis removes it from ${formatNumber(assignmentCount)} record ${assignmentLabel}, removes tag aliases, and removes it from the tag list completely. It will not appear as inactive.`
+  );
+  if (!confirmed) return;
+  const wasOpenInDetail = Boolean(els.detail?.querySelector(`.delete-tag-button[data-id="${tagId}"]`));
+  button.disabled = true;
+  try {
+    setStatus("Deleting tag");
+    const result = await postJson("/api/delete_tag", { id: Number(tagId) });
+    const deletedName = result.tag?.display_name || tagName;
+    const removed = Number(result.removed_assignments || 0);
+    setTagManageNotice(`Deleted tag: ${deletedName}. Removed ${formatNumber(removed)} record ${removed === 1 ? "assignment" : "assignments"}.`, "success");
+    clearSelectedTagSavedView();
+    await renderTags();
+    if (wasOpenInDetail) {
+      closeMobileDetailView();
+      els.detail.innerHTML = `
+        <div class="empty-detail">
+          <div class="empty-mark">TAG</div>
+          <h2>Tag deleted</h2>
+          <p>${escapeHtml(deletedName)} was removed from the tag list and all record assignments.</p>
+        </div>
+      `;
+    }
+    setStatus("Tag deleted");
+  } catch (error) {
+    setTagManageNotice(error.message, "error");
+    if (state.view === "tags") await renderTags();
+    setStatus("Delete failed");
+  } finally {
+    if (document.body.contains(button)) button.disabled = false;
+  }
+}
+
 function wireTagManagementControls(root) {
   if (!currentUserCanEditTags()) return;
   const createForm = root.querySelector("#createTagForm");
@@ -4550,6 +4590,9 @@ function wireTagManagementControls(root) {
   });
   root.querySelectorAll(".rename-tag-button").forEach((button) => {
     button.addEventListener("click", () => renameTagFromControl(button));
+  });
+  root.querySelectorAll(".delete-tag-button").forEach((button) => {
+    button.addEventListener("click", () => deleteTagFromControl(button));
   });
 }
 
@@ -5536,6 +5579,7 @@ function renderTagDetail(detail) {
             ? `<div class="tag-detail-rename" data-id="${tag.source_id}">
                 ${tagNameEditor(tag, { compact: true })}
                 <button class="text-button rename-tag-button" type="button" data-id="${tag.source_id}" disabled>Save Name</button>
+                <button class="text-button danger delete-tag-button" type="button" data-id="${tag.source_id}" data-name="${escapeHtml(tag.display_name || "")}" data-count="${detail.total}">Delete Tag</button>
               </div>`
             : ""
         }
@@ -6979,6 +7023,7 @@ async function renderTags() {
                       <div class="tag-row-actions">
                         ${currentUserCanEditTags() ? `<button class="text-button rename-tag-button" type="button" data-id="${tag.source_id}" disabled>Save</button>` : ""}
                         <button class="text-button tag-detail-button" type="button" data-id="${tag.source_id}">Open</button>
+                        ${currentUserCanEditTags() ? `<button class="text-button danger delete-tag-button" type="button" data-id="${tag.source_id}" data-name="${escapeHtml(tag.display_name || "")}" data-count="${tag.assignment_count || 0}">Delete</button>` : ""}
                       </div>
                     </td>
                   </tr>

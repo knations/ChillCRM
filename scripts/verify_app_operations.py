@@ -310,8 +310,10 @@ def main() -> int:
     assert "resolvePersonTagChoice(" in app_js
     assert "/api/create_tag" in app_js
     assert "/api/rename_tag" in app_js
+    assert "/api/delete_tag" in app_js
     assert "createTagForm" in app_js
     assert "rename-tag-button" in app_js
+    assert "delete-tag-button" in app_js
     assert ".person-tag-picker" in styles_css
     assert ".tag-create-form" in styles_css
     assert ".tag-row-actions" in styles_css
@@ -2210,14 +2212,52 @@ def main() -> int:
             raise AssertionError("Expected duplicate tag rename to fail")
         except ValueError as exc:
             assert "Tag name already exists" in str(exc)
+        delete_tag = handler.create_tag({"name": "Operations Verification Delete Tag"})
+        assert delete_tag["ok"] is True
+        assert delete_tag["created"] is True
+        delete_tag_id = delete_tag["tag"]["source_id"]
+        with sqlite3.connect(test_db) as conn:
+            lead_id = conn.execute("SELECT id FROM leads ORDER BY id LIMIT 1").fetchone()[0]
+            now_text = "2026-01-01T00:00:00+00:00"
+            for record_type, record_id in [
+                ("person", person_id),
+                ("company", company_id),
+                ("lead", lead_id),
+                ("deal", deal_id),
+            ]:
+                conn.execute(
+                    """
+                    INSERT INTO tag_assignments (tag_id, record_type, record_id, source_name)
+                    VALUES (?, ?, ?, ?)
+                    """,
+                    (delete_tag_id, record_type, record_id, "Operations Verification Delete Tag"),
+                )
+            conn.execute(
+                """
+                INSERT INTO tag_aliases (tag_id, zendesk_tag_id, source_name, resource_type, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (delete_tag_id, 999001, "operations-verification-delete-tag", "verification", now_text, now_text),
+            )
+            conn.commit()
+        deleted_tag = handler.delete_tag({"id": delete_tag_id})
+        assert deleted_tag["ok"] is True
+        assert deleted_tag["deleted"] is True
+        assert deleted_tag["removed_assignments"] == 4
+        assert deleted_tag["removed_aliases"] == 1
+        assert deleted_tag["assignment_counts"] == {"company": 1, "deal": 1, "lead": 1, "person": 1}
         with sqlite3.connect(test_db) as conn:
             renamed_row = conn.execute(
                 "SELECT display_name, normalized_name FROM tags WHERE id = ?",
                 (created_tag_id,),
             ).fetchone()
             assert renamed_row == ("Operations Verification Renamed Tag", "operations verification renamed tag")
+            assert conn.execute("SELECT count(*) FROM tags WHERE id = ?", (delete_tag_id,)).fetchone()[0] == 0
+            assert conn.execute("SELECT count(*) FROM tag_assignments WHERE tag_id = ?", (delete_tag_id,)).fetchone()[0] == 0
+            assert conn.execute("SELECT count(*) FROM tag_aliases WHERE tag_id = ?", (delete_tag_id,)).fetchone()[0] == 0
             assert conn.execute("SELECT count(*) FROM audit_log WHERE action = 'create_tag'").fetchone()[0] >= 1
             assert conn.execute("SELECT count(*) FROM audit_log WHERE action = 'rename_tag'").fetchone()[0] >= 1
+            assert conn.execute("SELECT count(*) FROM audit_log WHERE action = 'delete_tag' AND record_id = ?", (delete_tag_id,)).fetchone()[0] == 1
         addressed_person = handler.record_detail({"type": ["person"], "id": ["2"]})
         assert addressed_person["address_fields_available"] is True
         assert addressed_person["addresses"], "Expected address fields for person 2"

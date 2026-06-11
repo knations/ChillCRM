@@ -2395,6 +2395,39 @@ def main() -> int:
         )
         assert purchase_duplicate["ok"] is True
         assert purchase_duplicate["duplicate"] is True
+        purchase_thrivecart = handler.zapier_purchase_webhook(
+            {
+                "order_id": "TC-1003",
+                "invoice_id": "INV-TC-1003",
+                "order_date": "2026-06-09 14:15:16",
+                "product_label": "ThriveCart Verification Package",
+                "customer_name": "Thrive Cart",
+                "customer_email": "thrivecart-webhook-ops@example.test",
+                "customer_phone": "555-4444",
+                "customer_first_name": "Thrive",
+                "customer_last_name": "Cart",
+                "purchase_amount": "2000.00",
+                "purchase_currency": "USD",
+                "customer_address": "300 ThriveCart Road",
+                "customer_city": "Nashville",
+                "customer_state": "TN",
+                "customer_zip": "37203",
+                "customer_country": "US",
+            }
+        )
+        assert purchase_thrivecart["ok"] is True
+        assert purchase_thrivecart["person_created"] is True
+        assert purchase_thrivecart["duplicate"] is False
+        assert purchase_thrivecart["address"]["saved"] is True
+        thrivecart_person_id = purchase_thrivecart["person_id"]
+        assert purchase_thrivecart["detail"]["record"]["email"] == "thrivecart-webhook-ops@example.test"
+        assert purchase_thrivecart["detail"]["addresses"][0]["line1"] == "300 ThriveCart Road"
+        assert purchase_thrivecart["detail"]["addresses"][0]["country"] == "US"
+        assert any("Date: 2026-06-09 14:15:16" in note["content"] for note in purchase_thrivecart["detail"]["notes"])
+        assert any("Product Name: ThriveCart Verification Package" in note["content"] for note in purchase_thrivecart["detail"]["notes"])
+        assert any("Address: 300 ThriveCart Road, Nashville, TN 37203, US" in note["content"] for note in purchase_thrivecart["detail"]["notes"])
+        assert any("Price: 2000.00 USD" in note["content"] for note in purchase_thrivecart["detail"]["notes"])
+        assert any("Source: ThriveCart" in note["content"] for note in purchase_thrivecart["detail"]["notes"])
         with sqlite3.connect(test_db) as conn:
             conn.row_factory = sqlite3.Row
             purchase_person = conn.execute("SELECT name, phone FROM people WHERE id = ?", (purchase_person_id,)).fetchone()
@@ -2425,6 +2458,41 @@ def main() -> int:
             assert webhook_note_sources[0]["summary"]["address"]["line1"] == "100 Purchase Verification Way"
             assert webhook_note_sources[1]["summary"]["address"]["line1"] == "200 Add-On Verification Ave"
             assert conn.execute("SELECT count(*) FROM audit_log WHERE action = 'zapier_purchase_webhook' AND record_id = ?", (purchase_person_id,)).fetchone()[0] == 2
+            thrivecart_person = conn.execute("SELECT name, phone FROM people WHERE id = ?", (thrivecart_person_id,)).fetchone()
+            assert thrivecart_person["name"] == "Thrive Cart"
+            assert thrivecart_person["phone"] == "555-4444"
+            thrivecart_address = conn.execute(
+                """
+                SELECT line1, city, state, postal_code, country, source
+                FROM local_addresses
+                WHERE record_type = 'person' AND record_id = ? AND address_key = 'address'
+                """,
+                (thrivecart_person_id,),
+            ).fetchone()
+            assert thrivecart_address["line1"] == "300 ThriveCart Road"
+            assert thrivecart_address["city"] == "Nashville"
+            assert thrivecart_address["state"] == "TN"
+            assert thrivecart_address["postal_code"] == "37203"
+            assert thrivecart_address["country"] == "US"
+            assert thrivecart_address["source"] == "zapier_purchase_webhook"
+            thrivecart_note = conn.execute(
+                """
+                SELECT content, source_json
+                FROM notes
+                WHERE record_type = 'person' AND record_id = ?
+                ORDER BY id DESC
+                LIMIT 1
+                """,
+                (thrivecart_person_id,),
+            ).fetchone()
+            thrivecart_note_source = json.loads(thrivecart_note["source_json"])
+            assert "Price: 2000.00 USD" in thrivecart_note["content"]
+            assert thrivecart_note_source["summary"]["amount"] == "2000.00"
+            assert thrivecart_note_source["summary"]["currency"] == "USD"
+            assert thrivecart_note_source["summary"]["purchased_at"] == "2026-06-09 14:15:16"
+            assert thrivecart_note_source["summary"]["cart_source"] == "ThriveCart"
+            assert thrivecart_note_source["summary"]["products"] == ["ThriveCart Verification Package"]
+            assert thrivecart_note_source["summary"]["address"]["country"] == "US"
         with sqlite3.connect(test_db) as conn:
             imported_note_id = conn.execute("SELECT id FROM notes WHERE zendesk_note_id IS NOT NULL LIMIT 1").fetchone()[0]
         try:

@@ -21066,12 +21066,30 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             if isinstance(value, list):
                 for item in value:
                     if isinstance(item, dict):
-                        name = self.webhook_first_text(item, ["name", "title", "product_name", "item_name", "description"], 180)
+                        name = self.webhook_first_text(
+                            item,
+                            ["name", "title", "product_name", "product_label", "item_name", "offer_name", "description"],
+                            180,
+                        )
                     else:
                         name = str(item or "").strip()[:180]
                     if name and name not in names:
                         names.append(name)
-        single = self.webhook_first_text(payload, ["product_name", "product", "item_name", "offer_name", "course_name", "sku"], 180)
+        single = self.webhook_first_text(
+            payload,
+            [
+                "product_name",
+                "product_label",
+                "base_product_name",
+                "base_product_label",
+                "product",
+                "item_name",
+                "offer_name",
+                "course_name",
+                "sku",
+            ],
+            180,
+        )
         if single and single not in names:
             names.append(single)
         return names[:10]
@@ -21112,6 +21130,9 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             "line1": [
                 "address_line1",
                 "address1",
+                "customer_address",
+                "customer_address1",
+                "customer_address_1",
                 "street_address",
                 "street",
                 "billing_address1",
@@ -21122,22 +21143,38 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             "line2": [
                 "address_line2",
                 "address2",
+                "customer_address2",
+                "customer_address_2",
                 "suite",
                 "billing_address2",
                 "billing_line2",
                 "shipping_address2",
                 "shipping_line2",
             ],
-            "city": ["city", "address_city", "billing_city", "shipping_city"],
-            "state": ["state", "address_state", "province", "billing_state", "shipping_state"],
-            "postal_code": ["zip", "zipcode", "zip_code", "postal_code", "address_zip", "billing_zip", "shipping_zip"],
-            "country": ["country", "address_country", "billing_country", "shipping_country"],
+            "city": ["city", "address_city", "customer_city", "billing_city", "shipping_city"],
+            "state": ["state", "address_state", "customer_state", "customer_region", "province", "billing_state", "shipping_state"],
+            "postal_code": [
+                "zip",
+                "zipcode",
+                "zip_code",
+                "postal_code",
+                "customer_zip",
+                "customer_postcode",
+                "address_zip",
+                "billing_zip",
+                "shipping_zip",
+            ],
+            "country": ["country", "customer_country", "customer_country_code", "address_country", "billing_country", "shipping_country"],
         }
         candidate = {
             key: self.webhook_first_text(payload, paths, 240 if key == "line1" else 120)
             for key, paths in flat_paths.items()
         }
-        plain_address = self.webhook_first_text(payload, ["address", "street_address", "billing_address", "shipping_address"], 400)
+        plain_address = self.webhook_first_text(
+            payload,
+            ["address", "street_address", "customer_address", "billing_address", "shipping_address"],
+            400,
+        )
         if plain_address and not candidate["line1"]:
             candidate["line1"] = plain_address
         return self.clean_address_values(candidate)
@@ -21192,10 +21229,20 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         order_id = self.webhook_first_text(payload, ["order_id", "order_number", "order.id", "order.number", "id"], 120)
         transaction_id = self.webhook_first_text(payload, ["transaction_id", "payment_id", "charge_id", "invoice_id", "checkout_id", "session_id"], 120)
         products = self.zapier_purchase_products(payload)
-        amount = self.webhook_first_text(payload, ["total", "total_amount", "amount", "order_total", "price", "payment.amount"], 80)
-        currency = self.webhook_first_text(payload, ["currency", "payment.currency"], 20)
-        purchased_at = self.webhook_first_text(payload, ["purchased_at", "paid_at", "created_at", "order_created_at", "order.created_at", "payment.created_at"], 80)
+        amount = self.webhook_first_text(
+            payload,
+            ["total", "total_amount", "amount", "purchase_amount", "purchase_price", "order_total", "price", "payment.amount"],
+            80,
+        )
+        currency = self.webhook_first_text(payload, ["currency", "purchase_currency", "currency_code", "payment.currency"], 20)
+        purchased_at = self.webhook_first_text(
+            payload,
+            ["purchased_at", "purchase_date", "paid_at", "order_date", "ordered_at", "created_at", "order_created_at", "order.created_at", "payment.created_at"],
+            80,
+        )
         cart_source = self.webhook_first_text(payload, ["shopping_cart", "cart", "platform", "source", "store", "vendor"], 120)
+        if not cart_source and any(key in payload for key in ["purchase_amount", "purchase_currency", "product_label", "customer_email", "order_date"]):
+            cart_source = "ThriveCart"
         purchase_identity = self.zapier_purchase_identity(payload, email, order_id, transaction_id)
         address = self.zapier_purchase_address(payload)
         return {

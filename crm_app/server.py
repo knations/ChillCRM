@@ -21076,6 +21076,93 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             names.append(single)
         return names[:10]
 
+    def zapier_purchase_address(self, payload: dict[str, Any]) -> dict[str, str | None]:
+        field_paths = {
+            "line1": ["line1", "address1", "address_1", "street", "street1", "street_1", "street_address"],
+            "line2": ["line2", "address2", "address_2", "street2", "street_2", "suite", "apt", "apartment"],
+            "city": ["city", "town"],
+            "state": ["state", "province", "region", "state_code"],
+            "postal_code": ["postal_code", "postcode", "postal", "zip", "zip_code"],
+            "country": ["country", "country_code"],
+        }
+        for source_path in [
+            "address",
+            "billing_address",
+            "billing.address",
+            "billing",
+            "shipping_address",
+            "shipping.address",
+            "shipping",
+            "customer.address",
+            "contact.address",
+            "order.address",
+        ]:
+            value = self.webhook_deep_value(payload, source_path)
+            if not isinstance(value, dict):
+                continue
+            candidate = {
+                key: self.webhook_first_text(value, paths, 240 if key == "line1" else 120)
+                for key, paths in field_paths.items()
+            }
+            cleaned = self.clean_address_values(candidate)
+            if any(cleaned.values()):
+                return cleaned
+
+        flat_paths = {
+            "line1": [
+                "address_line1",
+                "address1",
+                "street_address",
+                "street",
+                "billing_address1",
+                "billing_line1",
+                "shipping_address1",
+                "shipping_line1",
+            ],
+            "line2": [
+                "address_line2",
+                "address2",
+                "suite",
+                "billing_address2",
+                "billing_line2",
+                "shipping_address2",
+                "shipping_line2",
+            ],
+            "city": ["city", "address_city", "billing_city", "shipping_city"],
+            "state": ["state", "address_state", "province", "billing_state", "shipping_state"],
+            "postal_code": ["zip", "zipcode", "zip_code", "postal_code", "address_zip", "billing_zip", "shipping_zip"],
+            "country": ["country", "address_country", "billing_country", "shipping_country"],
+        }
+        candidate = {
+            key: self.webhook_first_text(payload, paths, 240 if key == "line1" else 120)
+            for key, paths in flat_paths.items()
+        }
+        plain_address = self.webhook_first_text(payload, ["address", "street_address", "billing_address", "shipping_address"], 400)
+        if plain_address and not candidate["line1"]:
+            candidate["line1"] = plain_address
+        return self.clean_address_values(candidate)
+
+    def zapier_purchase_address_text(self, address: dict[str, Any] | None) -> str:
+        if not isinstance(address, dict):
+            return ""
+        line1 = self.clean_optional(address.get("line1"))
+        line2 = self.clean_optional(address.get("line2"))
+        city = self.clean_optional(address.get("city"))
+        state = self.clean_optional(address.get("state"))
+        postal_code = self.clean_optional(address.get("postal_code"))
+        country = self.clean_optional(address.get("country"))
+        parts = [item for item in [line1, line2] if item]
+        state_postal = " ".join(item for item in [state, postal_code] if item)
+        if city and state_postal:
+            parts.append(f"{city}, {state_postal}")
+        elif city:
+            parts.append(city)
+        elif state_postal:
+            parts.append(state_postal)
+        if country:
+            parts.append(country)
+        return ", ".join(parts)
+
     def zapier_purchase_summary(self, payload: dict[str, Any]) -> dict[str, Any]:
         email = self.clean_webhook_email(
             self.webhook_first_text(
@@ -21110,6 +21197,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         purchased_at = self.webhook_first_text(payload, ["purchased_at", "paid_at", "created_at", "order_created_at", "order.created_at", "payment.created_at"], 80)
         cart_source = self.webhook_first_text(payload, ["shopping_cart", "cart", "platform", "source", "store", "vendor"], 120)
         purchase_identity = self.zapier_purchase_identity(payload, email, order_id, transaction_id)
+        address = self.zapier_purchase_address(payload)
         return {
             "email": email,
             "first_name": first_name,
@@ -21125,6 +21213,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             "purchased_at": purchased_at,
             "cart_source": cart_source,
             "purchase_identity": purchase_identity,
+            "address": address,
         }
 
     def zapier_purchase_identity(self, payload: dict[str, Any], email: str, order_id: str, transaction_id: str) -> str:
@@ -21151,6 +21240,13 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
 
     def zapier_purchase_note_content(self, summary: dict[str, Any]) -> str:
         lines = ["Shopping cart purchase received via Zapier."]
+        product_names = "; ".join(summary.get("products") or []) or "Not provided"
+        price = " ".join(item for item in [summary.get("amount"), summary.get("currency")] if item) or "Not provided"
+        address = self.zapier_purchase_address_text(summary.get("address"))
+        lines.append(f"Date: {summary.get('purchase_date') or summary.get('purchased_at') or summary.get('received_at') or 'Not provided'}")
+        lines.append(f"Product Name: {product_names}")
+        lines.append(f"Address: {address or 'Not provided'}")
+        lines.append(f"Price: {price}")
         if summary.get("name") or summary.get("email"):
             lines.append(f"Customer: {' · '.join(item for item in [summary.get('name'), summary.get('email')] if item)}")
         if summary.get("phone") or summary.get("mobile"):
@@ -21159,13 +21255,6 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             lines.append(f"Order: {summary['order_id']}")
         if summary.get("transaction_id"):
             lines.append(f"Transaction: {summary['transaction_id']}")
-        if summary.get("products"):
-            lines.append(f"Product(s): {'; '.join(summary['products'])}")
-        amount_parts = [summary.get("amount"), summary.get("currency")]
-        if any(amount_parts):
-            lines.append(f"Amount: {' '.join(item for item in amount_parts if item)}")
-        if summary.get("purchased_at"):
-            lines.append(f"Purchased at: {summary['purchased_at']}")
         if summary.get("cart_source"):
             lines.append(f"Source: {summary['cart_source']}")
         lines.append(f"Purchase identity: {summary['purchase_identity']}")
@@ -21224,12 +21313,98 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             updates["normalized_name"] = normalize_text(updates["name"]) or ""
         return updates
 
+    def zapier_purchase_save_primary_address_if_blank(
+        self,
+        conn: Any,
+        person_id: int,
+        person: dict[str, Any],
+        summary: dict[str, Any],
+        timestamp: str,
+    ) -> dict[str, Any]:
+        address = summary.get("address")
+        if not isinstance(address, dict):
+            return {"saved": False, "reason": "no_address_supplied"}
+        values = self.clean_address_values(address)
+        if not any(values.values()):
+            return {"saved": False, "reason": "no_address_supplied"}
+
+        address_key = "address"
+        label = self.address_key_labels("person")[address_key]
+        old_values = self.current_address_values(conn, "person", person_id, person, address_key, label)
+        if any(old_values.values()):
+            return {
+                "saved": False,
+                "reason": "existing_address_present",
+                "address_key": address_key,
+                "old_values": old_values,
+                "incoming_values": values,
+            }
+
+        existing = conn.execute(
+            """
+            SELECT id
+            FROM local_addresses
+            WHERE record_type = 'person' AND record_id = ? AND address_key = ?
+            """,
+            (person_id, address_key),
+        ).fetchone()
+        if existing:
+            conn.execute(
+                """
+                UPDATE local_addresses
+                SET label = ?, line1 = ?, line2 = ?, city = ?, state = ?,
+                    postal_code = ?, country = ?, source = 'zapier_purchase_webhook', updated_at = ?
+                WHERE id = ?
+                """,
+                (
+                    label,
+                    values["line1"],
+                    values["line2"],
+                    values["city"],
+                    values["state"],
+                    values["postal_code"],
+                    values["country"],
+                    timestamp,
+                    existing["id"],
+                ),
+            )
+        else:
+            address_id = self.next_hosted_primary_key(conn, "local_addresses")
+            id_column = "id, " if address_id is not None else ""
+            id_placeholder = "?, " if address_id is not None else ""
+            conn.execute(
+                f"""
+                INSERT INTO local_addresses (
+                    {id_column}record_type, record_id, address_key, label, line1, line2,
+                    city, state, postal_code, country, source, created_at, updated_at
+                )
+                VALUES ({id_placeholder}'person', ?, ?, ?, ?, ?, ?, ?, ?, ?, 'zapier_purchase_webhook', ?, ?)
+                """,
+                (
+                    *((address_id,) if address_id is not None else ()),
+                    person_id,
+                    address_key,
+                    label,
+                    values["line1"],
+                    values["line2"],
+                    values["city"],
+                    values["state"],
+                    values["postal_code"],
+                    values["country"],
+                    timestamp,
+                    timestamp,
+                ),
+            )
+        return {"saved": True, "address_key": address_key, "new_values": values}
+
     def zapier_purchase_webhook(self, payload: dict[str, Any]) -> dict[str, Any]:
         if not isinstance(payload, dict):
             raise ValueError("Expected a JSON object.")
         summary = self.zapier_purchase_summary(payload)
         actor_user = self.zapier_webhook_actor()
         timestamp = now_iso()
+        summary["received_at"] = timestamp
+        summary["purchase_date"] = summary.get("purchased_at") or timestamp
         normalized_email = normalize_text(summary["email"])
         if not normalized_email:
             raise ValueError("Purchase webhook requires a valid customer email.")
@@ -21329,6 +21504,8 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                         person_id,
                     ),
                 )
+            person_for_address = row_to_dict(conn.execute("SELECT * FROM people WHERE id = ?", (person_id,)).fetchone())
+            address_result = self.zapier_purchase_save_primary_address_if_blank(conn, person_id, person_for_address, summary, timestamp)
             note_id = self.insert_local_note_row(
                 conn,
                 "person",
@@ -21344,7 +21521,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                 record_id=person_id,
                 field_name="purchase",
                 old_value={"person_created": person_created, "field_values": old_field_values},
-                new_value={"purchase": summary, "field_updates": field_updates, "note_id": note_id},
+                new_value={"purchase": summary, "field_updates": field_updates, "address": address_result, "note_id": note_id},
                 note=f"Backup: {backup_path.name}; purchase_identity={summary['purchase_identity']}; note_id={note_id}",
                 actor_user=actor_user,
                 permission_action="inbound_purchase_webhook",
@@ -21356,6 +21533,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             "person_created": person_created,
             "person_id": person_id,
             "note_id": note_id,
+            "address": address_result,
             "backup": str(backup_path),
             "purchase_identity": summary["purchase_identity"],
             "detail": self.record_detail({"type": ["person"], "id": [str(person_id)]}),

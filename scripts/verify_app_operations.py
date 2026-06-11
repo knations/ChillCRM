@@ -2336,20 +2336,40 @@ def main() -> int:
                 "total": "197.00",
                 "currency": "USD",
                 "purchased_at": "2026-06-11T10:00:00Z",
+                "address": {
+                    "line1": "100 Purchase Verification Way",
+                    "line2": "Suite 9",
+                    "city": "Austin",
+                    "state": "TX",
+                    "postal_code": "78701",
+                    "country": "USA",
+                },
                 "api_token": "should-not-be-stored",
             }
         )
         assert purchase_created["ok"] is True
         assert purchase_created["person_created"] is True
         assert purchase_created["duplicate"] is False
+        assert purchase_created["address"]["saved"] is True
         purchase_person_id = purchase_created["person_id"]
         assert purchase_created["detail"]["record"]["email"] == "purchase-webhook-ops@example.test"
-        assert any("Operations Verification Course" in note["content"] for note in purchase_created["detail"]["notes"])
+        assert purchase_created["detail"]["addresses"][0]["line1"] == "100 Purchase Verification Way"
+        assert purchase_created["detail"]["addresses"][0]["city"] == "Austin"
+        assert any("Product Name: Operations Verification Course" in note["content"] for note in purchase_created["detail"]["notes"])
+        assert any("Address: 100 Purchase Verification Way, Suite 9, Austin, TX 78701, USA" in note["content"] for note in purchase_created["detail"]["notes"])
+        assert any("Price: 197.00 USD" in note["content"] for note in purchase_created["detail"]["notes"])
         purchase_appended = handler.zapier_purchase_webhook(
             {
                 "customer": {"email": "purchase-webhook-ops@example.test", "name": "Replacement Name", "phone": "555-9999"},
                 "order": {"number": "ORDER-1002", "created_at": "2026-06-11T11:00:00Z"},
                 "line_items": [{"name": "Operations Verification Add-On"}],
+                "billing": {
+                    "address1": "200 Add-On Verification Ave",
+                    "city": "Denver",
+                    "state": "CO",
+                    "zip": "80202",
+                    "country": "USA",
+                },
                 "amount": "49.00",
                 "currency": "USD",
             }
@@ -2358,7 +2378,12 @@ def main() -> int:
         assert purchase_appended["person_created"] is False
         assert purchase_appended["duplicate"] is False
         assert purchase_appended["person_id"] == purchase_person_id
-        assert any("Operations Verification Add-On" in note["content"] for note in purchase_appended["detail"]["notes"])
+        assert purchase_appended["address"]["saved"] is False
+        assert purchase_appended["address"]["reason"] == "existing_address_present"
+        assert purchase_appended["detail"]["addresses"][0]["line1"] == "100 Purchase Verification Way"
+        assert any("Product Name: Operations Verification Add-On" in note["content"] for note in purchase_appended["detail"]["notes"])
+        assert any("Address: 200 Add-On Verification Ave, Denver, CO 80202, USA" in note["content"] for note in purchase_appended["detail"]["notes"])
+        assert any("Price: 49.00 USD" in note["content"] for note in purchase_appended["detail"]["notes"])
         purchase_duplicate = handler.zapier_purchase_webhook(
             {
                 "email": "purchase-webhook-ops@example.test",
@@ -2373,6 +2398,21 @@ def main() -> int:
             purchase_person = conn.execute("SELECT name, phone FROM people WHERE id = ?", (purchase_person_id,)).fetchone()
             assert purchase_person["name"] == "Purchase Webhook"
             assert purchase_person["phone"] == "555-0101"
+            purchase_address = conn.execute(
+                """
+                SELECT line1, line2, city, state, postal_code, country, source
+                FROM local_addresses
+                WHERE record_type = 'person' AND record_id = ? AND address_key = 'address'
+                """,
+                (purchase_person_id,),
+            ).fetchone()
+            assert purchase_address["line1"] == "100 Purchase Verification Way"
+            assert purchase_address["line2"] == "Suite 9"
+            assert purchase_address["city"] == "Austin"
+            assert purchase_address["state"] == "TX"
+            assert purchase_address["postal_code"] == "78701"
+            assert purchase_address["country"] == "USA"
+            assert purchase_address["source"] == "zapier_purchase_webhook"
             purchase_notes = conn.execute(
                 "SELECT source_json FROM notes WHERE record_type = 'person' AND record_id = ? ORDER BY id",
                 (purchase_person_id,),
@@ -2380,6 +2420,8 @@ def main() -> int:
             webhook_note_sources = [json.loads(row["source_json"]) for row in purchase_notes if "zapier_purchase_webhook" in row["source_json"]]
             assert len(webhook_note_sources) == 2
             assert webhook_note_sources[0]["payload"]["api_token"] == "[redacted]"
+            assert webhook_note_sources[0]["summary"]["address"]["line1"] == "100 Purchase Verification Way"
+            assert webhook_note_sources[1]["summary"]["address"]["line1"] == "200 Add-On Verification Ave"
             assert conn.execute("SELECT count(*) FROM audit_log WHERE action = 'zapier_purchase_webhook' AND record_id = ?", (purchase_person_id,)).fetchone()[0] == 2
         with sqlite3.connect(test_db) as conn:
             imported_note_id = conn.execute("SELECT id FROM notes WHERE zendesk_note_id IS NOT NULL LIMIT 1").fetchone()[0]

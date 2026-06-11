@@ -16459,6 +16459,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             "owner": self.owner_for(conn, record.get("owner_user_id")),
             "company": company,
             "deals": self.related_deals(conn, deal_clause, tuple(deal_values)),
+            "purchases": self.related_purchases(conn, "person", record_id),
             "notes": self.related_notes(conn, "person", record_id),
             "tasks": self.related_tasks(conn, "person", record_id),
             "activity": self.activity_for(conn, "person", record_id, 30),
@@ -16707,6 +16708,105 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             ).fetchall()
         )
 
+    def decoded_json_object(self, raw: Any) -> dict[str, Any]:
+        if isinstance(raw, dict):
+            return raw
+        if not raw:
+            return {}
+        try:
+            payload = json.loads(raw)
+        except (TypeError, json.JSONDecodeError):
+            return {}
+        return payload if isinstance(payload, dict) else {}
+
+    def purchase_summary_from_note(self, note: dict[str, Any]) -> dict[str, Any] | None:
+        source = self.decoded_json_object(note.get("source_json"))
+        if source.get("local_source") != "zapier_purchase_webhook":
+            return None
+
+        summary = source.get("summary") if isinstance(source.get("summary"), dict) else {}
+        payload = source.get("payload") if isinstance(source.get("payload"), dict) else {}
+        products = summary.get("products") if isinstance(summary.get("products"), list) else []
+        products = [str(item).strip() for item in products if str(item or "").strip()]
+        if not products:
+            products = self.zapier_purchase_products(payload)
+        product_name = "; ".join(products)
+        amount = self.clean_optional(summary.get("amount")) or self.webhook_first_text(
+            payload,
+            ["total", "total_amount", "amount", "purchase_amount", "purchase_price", "order_total", "price", "payment.amount"],
+            80,
+        )
+        currency = self.clean_optional(summary.get("currency")) or self.webhook_first_text(
+            payload,
+            ["currency", "purchase_currency", "currency_code", "payment.currency"],
+            20,
+        )
+        purchase_date = (
+            self.clean_optional(summary.get("purchased_at"))
+            or self.webhook_first_text(
+                payload,
+                ["purchased_at", "purchase_date", "paid_at", "order_date", "ordered_at", "created_at", "order_created_at", "order.created_at", "payment.created_at"],
+                80,
+            )
+            or self.clean_optional(summary.get("purchase_date"))
+            or self.clean_optional(summary.get("received_at"))
+            or self.clean_optional(note.get("created_at"))
+        )
+        order_id = self.clean_optional(summary.get("order_id")) or self.webhook_first_text(
+            payload,
+            ["order_id", "order_number", "order.id", "order.number", "id"],
+            120,
+        )
+        transaction_id = self.clean_optional(summary.get("transaction_id")) or self.webhook_first_text(
+            payload,
+            ["transaction_id", "payment_id", "charge_id", "invoice_id", "checkout_id", "session_id"],
+            120,
+        )
+        cart_source = self.clean_optional(summary.get("cart_source"))
+        if not cart_source and any(key in payload for key in ["purchase_amount", "purchase_currency", "product_label", "customer_email", "order_date"]):
+            cart_source = "ThriveCart"
+        address = summary.get("address") if isinstance(summary.get("address"), dict) else {}
+        if not any(self.clean_optional(address.get(field)) for field in ["line1", "line2", "city", "state", "postal_code", "country"]):
+            address = self.zapier_purchase_address(payload)
+        address_text = self.zapier_purchase_address_text(address)
+        price_label = " ".join(part for part in [amount, currency] if part)
+        return {
+            "source_id": note.get("source_id") or note.get("id"),
+            "product_name": product_name or "Purchase",
+            "products": products,
+            "price": amount or "",
+            "currency": currency or "",
+            "price_label": price_label,
+            "purchase_date": purchase_date,
+            "order_id": order_id or "",
+            "transaction_id": transaction_id or "",
+            "cart_source": cart_source or "",
+            "purchase_identity": self.clean_optional(source.get("purchase_identity")) or "",
+            "address": address,
+            "address_text": address_text,
+            "created_at": note.get("created_at"),
+            "updated_at": note.get("updated_at"),
+        }
+
+    def related_purchases(self, conn: sqlite3.Connection, record_type: str, record_id: int) -> list[dict[str, Any]]:
+        notes = rows_to_dicts(
+            conn.execute(
+                """
+                SELECT id AS source_id, content, created_at, updated_at, source_json
+                FROM notes
+                WHERE record_type = ? AND record_id = ?
+                ORDER BY created_at DESC, id DESC
+                """,
+                (record_type, record_id),
+            ).fetchall()
+        )
+        purchases: list[dict[str, Any]] = []
+        for note in notes:
+            purchase = self.purchase_summary_from_note(note)
+            if purchase:
+                purchases.append(purchase)
+        return purchases
+
     def related_tasks(self, conn: sqlite3.Connection, record_type: str, record_id: int) -> list[dict[str, Any]]:
         return rows_to_dicts(
             conn.execute(
@@ -16729,15 +16829,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         return cleaned
 
     def source_data(self, record: dict[str, Any]) -> dict[str, Any]:
-        raw = record.get("source_json")
-        if not raw:
-            return {}
-        try:
-            payload = json.loads(raw)
-        except json.JSONDecodeError:
-            return {}
-        if not isinstance(payload, dict):
-            return {}
+        payload = self.decoded_json_object(record.get("source_json"))
         data = payload.get("data", payload)
         return data if isinstance(data, dict) else {}
 

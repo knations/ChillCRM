@@ -321,6 +321,8 @@ def main() -> int:
     assert "Zapier shopping-cart purchase intake" in (PROJECT_ROOT / "docs" / "operating_notes.md").read_text(encoding="utf-8")
     assert (PROJECT_ROOT / "scripts" / "set_vercel_zapier_webhook_secret.py").exists()
     assert (PROJECT_ROOT / "Run Vercel Zapier Webhook Setup.command").exists()
+    assert "purchasesSection(" in app_js
+    assert ".purchases-section" in styles_css
     assert ".person-tag-picker" in styles_css
     assert ".tag-create-form" in styles_css
     assert ".tag-row-actions" in styles_css
@@ -2355,6 +2357,9 @@ def main() -> int:
         assert purchase_created["address"]["saved"] is True
         purchase_person_id = purchase_created["person_id"]
         assert purchase_created["detail"]["record"]["email"] == "purchase-webhook-ops@example.test"
+        assert len(purchase_created["detail"]["purchases"]) == 1
+        assert purchase_created["detail"]["purchases"][0]["product_name"] == "Operations Verification Course"
+        assert purchase_created["detail"]["purchases"][0]["price_label"] == "197.00 USD"
         assert purchase_created["detail"]["addresses"][0]["line1"] == "100 Purchase Verification Way"
         assert purchase_created["detail"]["addresses"][0]["city"] == "Austin"
         assert any("Product Name: Operations Verification Course" in note["content"] for note in purchase_created["detail"]["notes"])
@@ -2382,6 +2387,7 @@ def main() -> int:
         assert purchase_appended["person_id"] == purchase_person_id
         assert purchase_appended["address"]["saved"] is False
         assert purchase_appended["address"]["reason"] == "existing_address_present"
+        assert len(purchase_appended["detail"]["purchases"]) == 2
         assert purchase_appended["detail"]["addresses"][0]["line1"] == "100 Purchase Verification Way"
         assert any("Product Name: Operations Verification Add-On" in note["content"] for note in purchase_appended["detail"]["notes"])
         assert any("Address: 200 Add-On Verification Ave, Denver, CO 80202, USA" in note["content"] for note in purchase_appended["detail"]["notes"])
@@ -2421,6 +2427,10 @@ def main() -> int:
         assert purchase_thrivecart["address"]["saved"] is True
         thrivecart_person_id = purchase_thrivecart["person_id"]
         assert purchase_thrivecart["detail"]["record"]["email"] == "thrivecart-webhook-ops@example.test"
+        assert len(purchase_thrivecart["detail"]["purchases"]) == 1
+        assert purchase_thrivecart["detail"]["purchases"][0]["product_name"] == "ThriveCart Verification Package"
+        assert purchase_thrivecart["detail"]["purchases"][0]["price_label"] == "2000.00 USD"
+        assert purchase_thrivecart["detail"]["purchases"][0]["purchase_date"] == "2026-06-09 14:15:16"
         assert purchase_thrivecart["detail"]["addresses"][0]["line1"] == "300 ThriveCart Road"
         assert purchase_thrivecart["detail"]["addresses"][0]["country"] == "US"
         assert any("Date: 2026-06-09 14:15:16" in note["content"] for note in purchase_thrivecart["detail"]["notes"])
@@ -2428,6 +2438,62 @@ def main() -> int:
         assert any("Address: 300 ThriveCart Road, Nashville, TN 37203, US" in note["content"] for note in purchase_thrivecart["detail"]["notes"])
         assert any("Price: 2000.00 USD" in note["content"] for note in purchase_thrivecart["detail"]["notes"])
         assert any("Source: ThriveCart" in note["content"] for note in purchase_thrivecart["detail"]["notes"])
+        legacy_thrivecart_purchase = handler.purchase_summary_from_note(
+            {
+                "source_id": 99901,
+                "created_at": "2026-06-11T21:28:40+00:00",
+                "updated_at": "2026-06-11T21:28:40+00:00",
+                "source_json": json.dumps(
+                    {
+                        "local_source": "zapier_purchase_webhook",
+                        "purchase_identity": "41910857",
+                        "summary": {
+                            "name": "Michael Popper",
+                            "email": "michaelpopper82@yahoo.com",
+                            "phone": "2017804922",
+                            "amount": "",
+                            "mobile": "",
+                            "address": {
+                                "city": None,
+                                "line1": None,
+                                "line2": None,
+                                "state": None,
+                                "country": None,
+                                "postal_code": None,
+                            },
+                            "currency": "",
+                            "order_id": "41910857",
+                            "products": ["Mike Popper 2K"],
+                            "cart_source": "",
+                            "purchased_at": "",
+                            "purchase_date": "2026-06-11T21:28:40+00:00",
+                            "transaction_id": "000000664",
+                        },
+                        "payload": {
+                            "order_id": "41910857",
+                            "invoice_id": "000000664",
+                            "order_date": "2026-06-06 01:18:42",
+                            "product_name": "Mike Popper 2K",
+                            "customer_name": "Michael Popper",
+                            "product_label": "Mike Popper 2K",
+                            "customer_email": "michaelpopper82@yahoo.com",
+                            "customer_phone": "2017804922",
+                            "purchase_amount": "2000.00",
+                            "customer_country": "US",
+                            "purchase_currency": "USD",
+                            "customer_last_name": "Popper",
+                            "customer_first_name": "Michael",
+                        },
+                    },
+                    ensure_ascii=False,
+                    sort_keys=True,
+                ),
+            }
+        )
+        assert legacy_thrivecart_purchase["product_name"] == "Mike Popper 2K"
+        assert legacy_thrivecart_purchase["price_label"] == "2000.00 USD"
+        assert legacy_thrivecart_purchase["purchase_date"] == "2026-06-06 01:18:42"
+        assert legacy_thrivecart_purchase["cart_source"] == "ThriveCart"
         with sqlite3.connect(test_db) as conn:
             conn.row_factory = sqlite3.Row
             purchase_person = conn.execute("SELECT name, phone FROM people WHERE id = ?", (purchase_person_id,)).fetchone()

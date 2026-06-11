@@ -3005,6 +3005,56 @@ button {
   white-space: pre-wrap;
 }
 
+.purchases-section {
+  border-color: #d7c9a7;
+  background: #fffaf1;
+}
+
+.purchase-list {
+  display: grid;
+  gap: 10px;
+}
+
+.purchase-card {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+}
+
+.purchase-card-header {
+  align-items: start;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.purchase-card-header strong {
+  overflow-wrap: anywhere;
+}
+
+.purchase-price {
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.purchase-meta-row {
+  color: var(--muted);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.purchase-address {
+  color: var(--text);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
 .linked-resources {
   border-color: #bdd7c7;
   background: #f7fcf9;

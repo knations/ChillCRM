@@ -5162,6 +5162,7 @@ function renderDetail(detail) {
       ${reviewFlagsSection(detail.review_flags || [])}
       ${ownerSection(detail.owner)}
       ${addressSection(detail)}
+      ${purchasesSection(detail.purchases || [])}
       ${detailTags(detail, detail.tags || [])}
       ${applicationProfile(detail.application_profile || [])}
       ${keyValues(record)}
@@ -5313,6 +5314,7 @@ function recordSnapshot(detail) {
   const tags = (detail.tags || []).length;
   const links = (detail.linked_resources || []).length;
   const archiveItems = (detail.archive_items || []).length;
+  const purchases = (detail.purchases || []).length;
   const owner = detail.owner?.name || record.owner_name || "";
   const updated = record.updated_at ? formatDate(record.updated_at) : "";
   const localChanges = Number(provenance.local_change_count || 0);
@@ -5328,6 +5330,7 @@ function recordSnapshot(detail) {
     lastLocalChange ? ["Last Local", lastLocalChange] : null,
     openTasks ? ["Open Tasks", formatNumber(openTasks)] : null,
     reviewFlags ? ["Review Flags", formatNumber(reviewFlags)] : null,
+    purchases ? ["Purchases", formatNumber(purchases)] : null,
     tags ? ["Tags", formatNumber(tags)] : null,
     links ? ["Links", formatNumber(links)] : null,
     archiveItems ? ["Archive", formatNumber(archiveItems)] : null,
@@ -8143,6 +8146,45 @@ function addressSection(detail) {
       <form id="addressForm" class="address-form">
         ${addresses.length ? addresses.map((address) => addressBlock(address, editable)).join("") : `<div class="muted">No address saved.</div>`}
       </form>
+    </div>
+  `;
+}
+
+function purchasesSection(purchases) {
+  if (!purchases.length) return "";
+  return `
+    <div class="detail-section purchases-section">
+      <div class="inline-header">
+        <h3>Purchases</h3>
+        <span class="muted">${formatNumber(purchases.length)} purchases</span>
+      </div>
+      <div class="purchase-list">
+        ${purchases
+          .map(
+            (purchase) => `
+              <div class="purchase-card">
+                <div class="purchase-card-header">
+                  <strong>${escapeHtml(purchase.product_name || "Purchase")}</strong>
+                  ${purchase.price_label ? `<span class="purchase-price">${escapeHtml(purchase.price_label)}</span>` : ""}
+                </div>
+                <div class="purchase-meta-row">
+                  ${purchase.purchase_date ? `<span>${escapeHtml(formatDate(purchase.purchase_date))}</span>` : ""}
+                  ${purchase.cart_source ? `<span>${escapeHtml(purchase.cart_source)}</span>` : ""}
+                </div>
+                ${purchase.address_text ? `<div class="purchase-address">${escapeHtml(purchase.address_text)}</div>` : ""}
+                ${
+                  purchase.order_id || purchase.transaction_id
+                    ? `<div class="purchase-meta-row">
+                        ${purchase.order_id ? `<span>Order ${escapeHtml(purchase.order_id)}</span>` : ""}
+                        ${purchase.transaction_id ? `<span>Txn ${escapeHtml(purchase.transaction_id)}</span>` : ""}
+                      </div>`
+                    : ""
+                }
+              </div>
+            `
+          )
+          .join("")}
+      </div>
     </div>
   `;
 }

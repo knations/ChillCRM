@@ -8212,7 +8212,7 @@ function detailTags(detail, tags) {
       </div>
       <div class="tag-list">${tags.length ? tags.map((tag) => `<span class="tag">${escapeHtml(tag)}</span>`).join("") : `<span class="muted">No tags saved.</span>`}</div>
       ${personTagPicker(detail)}
-      <textarea id="tagEditor" class="note-input compact-input" rows="2">${escapeHtml(tags.join(", "))}</textarea>
+      <input id="tagEditor" type="hidden" value="${escapeHtml(tags.join(", "))}">
     </div>
   `;
 }

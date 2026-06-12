@@ -5197,47 +5197,47 @@ function defaultDetailBody(detail) {
 
 function personDetailBody(detail) {
   const record = detail.record || {};
-  const overviewMain = recordFileHero(detail);
-  const overviewSide = recordSnapshot(detail);
+  const mainSections = [
+    contactActions(detail, { title: "Contact" }),
+    addressSection(detail, { title: "Addresses" }),
+    addNoteForm(detail),
+    notesSection(detail.notes || []),
+    addTaskForm(detail),
+    editForm(detail),
+    activitySection(detail.activity || []),
+    applicationProfile(detail.application_profile || []),
+    customFields(detail.custom_fields || [], detail.application_profile || []),
+    keyValues(record),
+  ]
+    .filter(Boolean)
+    .join("");
+  const sidebarSections = [
+    tasksSection(detail.tasks || [], { title: "Task List" }),
+    purchasesSection(detail.purchases || []),
+    archiveItems(detail.archive_items || [], { title: "Files", countLabel: "files" }),
+    detailTags(detail, detail.tags || []),
+    recordLifecycleSection(detail),
+    detailQualityPanel(detail),
+    reviewFlagsSection(detail.review_flags || []),
+    linkedResources(detail.linked_resources || []),
+    detail.company ? linkSection("Company", [detail.company], "company") : "",
+    detail.possible_person ? linkSection("Possible Match", [detail.possible_person], "person") : "",
+    detail.contact ? linkSection("Contact", [detail.contact], "person") : "",
+    detail.organization ? linkSection("Organization", [detail.organization], "company") : "",
+    detail.people?.length ? linkSection("People", detail.people, "person") : "",
+    detail.deals?.length ? linkSection("Deals", detail.deals, "deal") : "",
+    ownerSection(detail.owner),
+  ]
+    .filter(Boolean)
+    .join("");
   return `
     <div class="person-detail-shell">
-      ${
-        overviewMain || overviewSide
-          ? `<div class="person-detail-overview">
-              ${overviewMain ? `<div class="person-detail-overview-main">${overviewMain}</div>` : ""}
-              ${overviewSide ? `<div class="person-detail-overview-side">${overviewSide}</div>` : ""}
-            </div>`
-          : ""
-      }
       <div class="person-detail-layout">
         <div class="person-detail-main">
-          ${contactActions(detail)}
-          ${editForm(detail)}
-          ${addressSection(detail)}
-          ${applicationProfile(detail.application_profile || [])}
-          ${customFields(detail.custom_fields || [], detail.application_profile || [])}
-          ${keyValues(record)}
-          ${activitySection(detail.activity || [])}
-          ${addNoteForm(detail)}
-          ${notesSection(detail.notes || [])}
-          ${addTaskForm(detail)}
-          ${tasksSection(detail.tasks || [])}
+          ${mainSections}
         </div>
         <div class="person-detail-sidebar">
-          ${recordLifecycleSection(detail)}
-          ${detailQualityPanel(detail)}
-          ${reviewFlagsSection(detail.review_flags || [])}
-          ${detailTags(detail, detail.tags || [])}
-          ${purchasesSection(detail.purchases || [])}
-          ${archiveItems(detail.archive_items || [])}
-          ${linkedResources(detail.linked_resources || [])}
-          ${detail.company ? linkSection("Company", [detail.company], "company") : ""}
-          ${detail.possible_person ? linkSection("Possible Match", [detail.possible_person], "person") : ""}
-          ${detail.contact ? linkSection("Contact", [detail.contact], "person") : ""}
-          ${detail.organization ? linkSection("Organization", [detail.organization], "company") : ""}
-          ${detail.people?.length ? linkSection("People", detail.people, "person") : ""}
-          ${detail.deals?.length ? linkSection("Deals", detail.deals, "deal") : ""}
-          ${ownerSection(detail.owner)}
+          ${sidebarSections}
         </div>
       </div>
     </div>
@@ -5493,7 +5493,10 @@ function qualityGuidanceText(issue) {
   return guidance[issue] || "Review when known.";
 }
 
-function contactActions(detail) {
+function contactActions(detail, options = {}) {
+  const sectionTitle = options.title || "Actions";
+  const sectionClasses = ["detail-section", "contact-actions"];
+  if (detail.type === "person") sectionClasses.push("person-contact-actions");
   const sources = [{ prefix: "", type: detail.type, id: detail.record?.source_id, record: detail.record || {} }];
   if (detail.type === "deal") {
     if (detail.contact) sources.push({ prefix: "Contact", type: "person", id: detail.contact.source_id, record: detail.contact });
@@ -5541,8 +5544,8 @@ function contactActions(detail) {
       `)
       .join("");
   return `
-    <div class="detail-section contact-actions">
-      <h3>Actions</h3>
+    <div class="${sectionClasses.join(" ")}">
+      <h3>${escapeHtml(sectionTitle)}</h3>
       <div class="contact-action-list">
         ${renderContactRows(primaryRows)}
         ${contactCardStrip(cardSources)}
@@ -8195,22 +8198,43 @@ function detailTags(detail, tags) {
   `;
 }
 
-function addressSection(detail) {
-  const addresses = detail.addresses || [];
+function addressSection(detail, options = {}) {
+  const addresses = sortAddressesForDisplay(detail.addresses || []);
   if (!detail.address_fields_available) return "";
   const editable = detail.address_editable !== false;
+  const sectionTitle = options.title || (addresses.length > 1 ? "Addresses" : "Address");
   return `
     <div class="detail-section">
       <div class="inline-header">
-        <h3>Address</h3>
+        <h3>${escapeHtml(sectionTitle)}</h3>
         ${editable ? `<button class="text-button" id="saveAddressesButton">Save</button>` : ""}
       </div>
       ${detail.address_note ? `<div class="muted detail-note">${escapeHtml(detail.address_note)}</div>` : ""}
       <form id="addressForm" class="address-form">
-        ${addresses.length ? addresses.map((address) => addressBlock(address, editable)).join("") : `<div class="muted">No address saved.</div>`}
+        ${
+          addresses.length
+            ? `<div class="address-scroll-list">
+                ${addresses.map((address) => addressBlock(address, editable)).join("")}
+              </div>`
+            : `<div class="muted">No address saved.</div>`
+        }
       </form>
     </div>
   `;
+}
+
+function sortAddressesForDisplay(addresses) {
+  const order = {
+    address: 0,
+    billing_address: 1,
+    shipping_address: 2,
+  };
+  return [...addresses].sort((left, right) => {
+    const leftOrder = order[left.address_key] ?? 99;
+    const rightOrder = order[right.address_key] ?? 99;
+    if (leftOrder !== rightOrder) return leftOrder - rightOrder;
+    return String(left.label || "").localeCompare(String(right.label || ""));
+  });
 }
 
 function purchasesSection(purchases) {
@@ -8433,7 +8457,7 @@ function linkedResources(resources) {
   `;
 }
 
-function archiveItems(items) {
+function archiveItems(items, options = {}) {
   if (!items.length) return "";
   const orderedItems = [...items].sort((a, b) => {
     const aTime = Date.parse(a.occurred_at || a.updated_at || a.created_at || "") || 0;
@@ -8441,11 +8465,13 @@ function archiveItems(items) {
     if (aTime !== bTime) return bTime - aTime;
     return Number(b.source_id || b.id || 0) - Number(a.source_id || a.id || 0);
   });
+  const sectionTitle = options.title || "Archive";
+  const countLabel = options.countLabel || "items";
   return `
     <div class="detail-section archive-items">
       <div class="inline-header">
-        <h3>Archive</h3>
-        <span class="muted">${formatNumber(items.length)} items · newest first</span>
+        <h3>${escapeHtml(sectionTitle)}</h3>
+        <span class="muted">${formatNumber(items.length)} ${escapeHtml(countLabel)} · newest first</span>
       </div>
       <div class="archive-item-list">
         ${orderedItems
@@ -8557,11 +8583,12 @@ function notesSection(notes) {
   `;
 }
 
-function tasksSection(tasks) {
+function tasksSection(tasks, options = {}) {
   if (!tasks.length) return "";
+  const sectionTitle = options.title || "Tasks";
   return `
     <div class="detail-section">
-      <h3>Tasks</h3>
+      <h3>${escapeHtml(sectionTitle)}</h3>
       ${tasks
         .map((task) => `
           <div class="note task-edit-card">

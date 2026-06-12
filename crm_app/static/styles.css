@@ -2262,6 +2262,10 @@ button {
   grid-template-columns: minmax(0, 1.35fr) minmax(260px, 0.9fr);
 }
 
+.person-detail-overview-single {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .person-detail-overview-main,
 .person-detail-overview-side,
 .person-detail-main,
@@ -2685,6 +2689,14 @@ button {
 
 .contact-card-button:hover {
   border-color: var(--green);
+}
+
+.detail-panel .person-contact-actions .contact-card-strip {
+  display: none;
+}
+
+.detail-panel .person-contact-actions:not(:has(.contact-action-row)) {
+  display: none;
 }
 
 .contact-action-row {
@@ -3597,10 +3609,32 @@ button {
   background: var(--surface-soft);
   padding: 12px;
   margin-bottom: 10px;
+  scroll-snap-align: start;
 }
 
 .address-card:last-child {
   margin-bottom: 0;
+}
+
+.address-scroll-list {
+  display: grid;
+  gap: 10px;
+  align-content: start;
+  max-height: 328px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 6px;
+  scrollbar-gutter: stable;
+  scroll-snap-type: y proximity;
+}
+
+.address-scroll-list::-webkit-scrollbar {
+  width: 8px;
+}
+
+.address-scroll-list::-webkit-scrollbar-thumb {
+  background: rgba(90, 78, 56, 0.22);
+  border-radius: 999px;
 }
 
 .address-card strong {
@@ -5491,6 +5525,18 @@ button {
   .app-shell.mobile-detail-open .archive-review-actions .text-button,
   .app-shell.mobile-detail-open .cleanup-decision-actions .text-button {
     width: 100%;
+  }
+
+  .app-shell.mobile-detail-open .address-scroll-list {
+    max-height: 360px;
+  }
+
+  .app-shell.mobile-detail-open .person-contact-actions {
+    display: block;
+  }
+
+  .app-shell.mobile-detail-open .person-contact-actions .contact-card-strip {
+    display: grid;
   }
 }
 

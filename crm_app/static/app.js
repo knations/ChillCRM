@@ -8318,14 +8318,11 @@ function sortAddressesForDisplay(addresses) {
 }
 
 function purchasesSection(purchases) {
-  const purchaseCountLabel = purchases.length
-    ? `${formatNumber(purchases.length)} purchase${purchases.length === 1 ? "" : "s"} · newest first`
-    : "No purchases yet";
   return `
     <div class="detail-section purchases-section">
       <div class="inline-header">
         <h3>Purchases</h3>
-        <span class="muted">${purchaseCountLabel}</span>
+        ${purchases.length ? "" : `<span class="muted">No purchases yet</span>`}
       </div>
       ${
         purchases.length
@@ -8336,21 +8333,13 @@ function purchasesSection(purchases) {
                     <div class="purchase-card">
                       <div class="purchase-card-header">
                         <strong>${escapeHtml(purchase.product_name || "Purchase")}</strong>
-                        ${purchase.price_label ? `<span class="purchase-price">${escapeHtml(purchase.price_label)}</span>` : ""}
                       </div>
                       <div class="purchase-meta-row">
                         ${purchase.purchase_date ? `<span>${escapeHtml(formatDate(purchase.purchase_date))}</span>` : ""}
+                        ${purchase.purchase_date && purchase.cart_source ? `<span>-</span>` : ""}
                         ${purchase.cart_source ? `<span>${escapeHtml(purchase.cart_source)}</span>` : ""}
                       </div>
-                      ${purchase.address_text ? `<div class="purchase-address">${escapeHtml(purchase.address_text)}</div>` : ""}
-                      ${
-                        purchase.order_id || purchase.transaction_id
-                          ? `<div class="purchase-meta-row">
-                              ${purchase.order_id ? `<span>Order ${escapeHtml(purchase.order_id)}</span>` : ""}
-                              ${purchase.transaction_id ? `<span>Txn ${escapeHtml(purchase.transaction_id)}</span>` : ""}
-                            </div>`
-                          : ""
-                      }
+                      ${purchase.price_label ? `<div class="purchase-price-line">${escapeHtml(purchase.price_label)}</div>` : ""}
                     </div>
                   `
                 )
@@ -8570,11 +8559,11 @@ function archiveItems(items, options = {}) {
                     : item.url
                       ? `<a href="${escapeHtml(item.url)}" target="_blank" rel="noreferrer">${escapeHtml(item.title || item.label)}</a>`
                       : `<strong>${escapeHtml(item.title || item.label)}</strong>`;
+                  const meta = [formatDate(item.occurred_at), item.size_label].filter(Boolean).join(" · ");
                   return `
                     <div class="archive-item">
-                      <span class="pill">${escapeHtml(item.label || archiveItemLabel(item.item_type))}</span>
                       ${title}
-                      <small>${escapeHtml([formatDate(item.occurred_at), item.body, item.phone_number, item.size_label].filter(Boolean).join(" · "))}</small>
+                      ${meta ? `<small>${escapeHtml(meta)}</small>` : ""}
                     </div>
                   `;
                 })

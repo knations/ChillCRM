@@ -3117,10 +3117,7 @@ button {
 }
 
 .purchase-card-header {
-  align-items: start;
-  display: grid;
-  gap: 8px;
-  grid-template-columns: minmax(0, 1fr) auto;
+  display: block;
 }
 
 .purchase-card-header strong {
@@ -3131,10 +3128,10 @@ button {
   -webkit-line-clamp: 2;
 }
 
-.purchase-price {
+.purchase-price-line {
   color: var(--text);
-  font-size: 12px;
-  font-weight: 800;
+  font-size: 13px;
+  font-weight: 700;
 }
 
 .purchase-meta-row {

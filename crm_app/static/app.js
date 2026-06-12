@@ -8152,7 +8152,7 @@ function addressSection(detail) {
 
 function purchasesSection(purchases) {
   const purchaseCountLabel = purchases.length
-    ? `${formatNumber(purchases.length)} purchase${purchases.length === 1 ? "" : "s"}`
+    ? `${formatNumber(purchases.length)} purchase${purchases.length === 1 ? "" : "s"} · newest first`
     : "No purchases yet";
   return `
     <div class="detail-section purchases-section">

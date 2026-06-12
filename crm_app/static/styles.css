@@ -3013,6 +3013,22 @@ button {
 .purchase-list {
   display: grid;
   gap: 10px;
+  align-content: start;
+  max-height: 250px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 6px;
+  scrollbar-gutter: stable;
+  scroll-snap-type: y proximity;
+}
+
+.purchase-list::-webkit-scrollbar {
+  width: 8px;
+}
+
+.purchase-list::-webkit-scrollbar-thumb {
+  background: rgba(90, 78, 56, 0.28);
+  border-radius: 999px;
 }
 
 .purchase-empty {
@@ -3028,7 +3044,9 @@ button {
   background: var(--surface);
   display: grid;
   gap: 8px;
+  min-height: 112px;
   padding: 12px;
+  scroll-snap-align: start;
 }
 
 .purchase-card-header {
@@ -3039,7 +3057,11 @@ button {
 }
 
 .purchase-card-header strong {
+  display: -webkit-box;
   overflow-wrap: anywhere;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .purchase-price {
@@ -3058,8 +3080,12 @@ button {
 
 .purchase-address {
   color: var(--text);
+  display: -webkit-box;
   font-size: 13px;
+  overflow: hidden;
   overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .linked-resources {

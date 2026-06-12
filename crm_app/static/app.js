@@ -5261,7 +5261,14 @@ function personDetailBody(detail) {
   const sidebarSections = [
     tasksSection(detail.tasks || [], { title: "Task List" }),
     purchasesSection(detail.purchases || []),
-    archiveItems(fileItems, { title: "Files", countLabel: "files", uploadable: true, uploadRecordType: detail.type, uploadRecordId: detail.record?.source_id }),
+    archiveItems(fileItems, {
+      title: "Files",
+      countLabel: "files",
+      uploadable: true,
+      uploadRecordType: detail.type,
+      uploadRecordId: detail.record?.source_id,
+      sectionClass: "files-section",
+    }),
     detailTags(detail, detail.tags || []),
     recordLifecycleSection(detail),
     detailQualityPanel(detail),
@@ -8541,8 +8548,9 @@ function archiveItems(items, options = {}) {
   });
   const sectionTitle = options.title || "Archive";
   const countLabel = options.countLabel || "items";
+  const sectionClass = options.sectionClass ? ` ${options.sectionClass}` : "";
   return `
-    <div class="detail-section archive-items">
+    <div class="detail-section archive-items${sectionClass}">
       <div class="inline-header">
         <h3>${escapeHtml(sectionTitle)}</h3>
         ${

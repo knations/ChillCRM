@@ -3551,6 +3551,11 @@ button {
   background: #f8fbff;
 }
 
+.archive-items.files-section {
+  background: transparent;
+  border-color: var(--line);
+}
+
 .archive-item-list {
   display: grid;
   gap: 8px;

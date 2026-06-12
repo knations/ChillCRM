@@ -36,6 +36,7 @@ DEFAULT_DB = PROJECT_ROOT / "crm_database" / "local_crm.sqlite"
 REPORTS_DIR = PROJECT_ROOT / "reports"
 BACKUP_DIR = PROJECT_ROOT / "backups"
 PROFILE_IMAGE_DIR = PROJECT_ROOT / "profile_images"
+RECORD_FILE_DIR = PROJECT_ROOT / "record_files"
 PRODUCTION_HOSTS = {"chillcrm.app", "www.chillcrm.app"}
 APPLICATION_PROFILE_FIELDS = [
     "APP Number",
@@ -518,6 +519,7 @@ PROFILE_IMAGE_ALLOWED_CONTENT_TYPES = {
     "image/webp": "webp",
 }
 PROFILE_IMAGE_MAX_BYTES = 2_500_000
+RECORD_FILE_MAX_BYTES = 3_000_000
 
 
 def postgres_statement_timeout_ms() -> int:
@@ -1118,6 +1120,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             "/api/update_tags",
             "/api/update_addresses",
             "/api/upload_profile_image",
+            "/api/upload_record_file",
             "/api/remove_profile_image",
             "/api/add_note",
             "/api/update_note",
@@ -1187,6 +1190,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         "/api/export_document_files_package": "download_document_files",
         "/api/archive_file": "download_document_files",
         "/api/profile_image": "view_dashboard_reports",
+        "/api/record_file": "view_dashboard_reports",
         "/api/search": "view_dashboard_reports",
         "/api/cleanup": "view_dashboard_reports",
         "/api/cleanup_execution_preview": "view_dashboard_reports",
@@ -1205,6 +1209,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         "/api/update_tags": "edit_addresses_tags",
         "/api/update_addresses": "edit_addresses_tags",
         "/api/upload_profile_image": "create_edit_records",
+        "/api/upload_record_file": "create_edit_records",
         "/api/remove_profile_image": "create_edit_records",
         "/api/add_note": "notes_tasks_followups",
         "/api/update_note": "notes_tasks_followups",
@@ -1351,6 +1356,13 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             or os.environ.get("CHILLCRM_SUPABASE_PROFILE_IMAGE_BUCKET", "").strip()
             or os.environ.get("CHILLCRM_SUPABASE_STORAGE_BUCKET", "").strip()
             or "chillcrm-documents"
+        )
+
+    def record_file_storage_bucket(self) -> str:
+        return (
+            os.environ.get("CHILLCRM_RECORD_FILE_STORAGE_BUCKET", "").strip()
+            or os.environ.get("CHILLCRM_SUPABASE_RECORD_FILE_BUCKET", "").strip()
+            or self.profile_image_storage_bucket()
         )
 
     def storage_signed_url_ttl_seconds(self) -> int:
@@ -2617,7 +2629,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                 return
         except urllib.error.HTTPError as exc:
             detail = exc.read().decode("utf-8", errors="replace")[:240]
-            raise RuntimeError(f"Supabase profile image upload failed: HTTP {exc.code} {detail}") from exc
+            raise RuntimeError(f"Supabase storage upload failed: HTTP {exc.code} {detail}") from exc
 
     def active_profile_image_row(self, conn: Any, record_type: str, record_id: int) -> dict[str, Any] | None:
         if record_type != "person" or not self.profile_image_table_exists(conn):
@@ -2685,6 +2697,96 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         local_path = Path(local_file)
         path = (local_path if local_path.is_absolute() else PROJECT_ROOT / local_path).resolve()
         allowed_root = PROFILE_IMAGE_DIR.resolve()
+        if allowed_root != path and allowed_root not in path.parents:
+            self.send_text("Not found", 404)
+            return
+        self.send_file(path)
+
+    def public_record_file(self, row: dict[str, Any] | None) -> dict[str, Any] | None:
+        if not row:
+            return None
+        token = f"{row.get('id')}-{str(row.get('sha256') or '')[:12]}"
+        file_url = f"/api/record_file?id={urllib.parse.quote(str(row.get('id') or ''))}&v={urllib.parse.quote(token)}"
+        return {
+            "id": row.get("id"),
+            "source_id": row.get("id"),
+            "record_type": row.get("record_type"),
+            "record_id": row.get("record_id"),
+            "item_type": "uploaded_file",
+            "label": "Uploaded File",
+            "title": row.get("original_filename") or f"File #{row.get('id')}",
+            "body": "Attached in CHILLCRM",
+            "occurred_at": row.get("updated_at") or row.get("created_at"),
+            "created_at": row.get("created_at"),
+            "updated_at": row.get("updated_at"),
+            "file_url": file_url,
+            "url": file_url,
+            "content_type": row.get("content_type"),
+            "size_bytes": row.get("bytes"),
+            "size_label": self.size_label(row.get("bytes")),
+        }
+
+    def record_files_for(self, conn: Any, record_type: str, record_id: int) -> list[dict[str, Any]]:
+        if not self.record_file_table_exists(conn):
+            return []
+        rows = rows_to_dicts(
+            conn.execute(
+                """
+                SELECT id, record_type, record_id, storage_backend, storage_bucket, storage_key, local_file,
+                       original_filename, content_type, bytes, sha256, status, created_at, updated_at
+                FROM record_files
+                WHERE record_type = ? AND record_id = ? AND status = 'active'
+                ORDER BY updated_at DESC, id DESC
+                """,
+                (record_type, record_id),
+            ).fetchall()
+        )
+        return [self.public_record_file(row) for row in rows if row]
+
+    def send_record_file(self, params: dict[str, list[str]]) -> None:
+        file_id = self.optional_int(params.get("id", [""])[0] if params.get("id") else "")
+        if not file_id:
+            self.send_text("Not found", 404)
+            return
+        with self.db() as conn:
+            if not self.record_file_table_exists(conn):
+                self.send_text("Not found", 404)
+                return
+            row = row_to_dict(
+                conn.execute(
+                    """
+                    SELECT id, storage_backend, storage_bucket, storage_key, local_file
+                    FROM record_files
+                    WHERE id = ? AND status = 'active'
+                    LIMIT 1
+                    """,
+                    (file_id,),
+                ).fetchone()
+            )
+        if not row:
+            self.send_text("Not found", 404)
+            return
+        if self.hosted_postgres_adapter_enabled():
+            storage_bucket = str(row.get("storage_bucket") or "")
+            storage_key = str(row.get("storage_key") or "")
+            if not storage_bucket or not storage_key:
+                self.send_text("Not found", 404)
+                return
+            try:
+                self.send_redirect(self.signed_storage_url(storage_bucket, storage_key))
+            except RuntimeError as exc:
+                self.send_json(
+                    {"ok": False, "error": str(exc), "code": "record_file_signing_unavailable", "path": "/api/record_file"},
+                    503,
+                )
+            return
+        local_file = str(row.get("local_file") or "")
+        if not local_file:
+            self.send_text("Not found", 404)
+            return
+        local_path = Path(local_file)
+        path = (local_path if local_path.is_absolute() else PROJECT_ROOT / local_path).resolve()
+        allowed_root = RECORD_FILE_DIR.resolve()
         if allowed_root != path and allowed_root not in path.parents:
             self.send_text("Not found", 404)
             return
@@ -2792,6 +2894,8 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                     self.send_vcard(card["filename"], card["content"])
             elif path == "/api/profile_image":
                 self.send_profile_image(params)
+            elif path == "/api/record_file":
+                self.send_record_file(params)
             elif path == "/api/tasks":
                 self.send_json(self.tasks(params))
             elif path == "/api/activity":
@@ -2910,6 +3014,8 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                 self.send_json(self.update_addresses(payload, auth_user, action_key))
             elif path == "/api/upload_profile_image":
                 self.send_json(self.upload_profile_image(payload, auth_user, action_key))
+            elif path == "/api/upload_record_file":
+                self.send_json(self.upload_record_file(payload, auth_user, action_key))
             elif path == "/api/remove_profile_image":
                 self.send_json(self.remove_profile_image(payload, auth_user, action_key))
             elif path == "/api/add_note":
@@ -16469,6 +16575,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             "application_profile": self.application_profile_for(conn, "person", record_id),
             "custom_fields": self.custom_fields_for(conn, "person", record_id),
             "linked_resources": self.linked_resources_for(conn, "person", record_id),
+            "record_files": self.record_files_for(conn, "person", record_id),
             "archive_items": self.imported_archive_for(conn, "person", record_id),
             "review_flags": self.review_flags_for(conn, "person", record_id),
         }
@@ -16504,6 +16611,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             "address_fields_available": address_info["available"],
             "custom_fields": self.custom_fields_for(conn, "company", record_id),
             "linked_resources": self.linked_resources_for(conn, "company", record_id),
+            "record_files": self.record_files_for(conn, "company", record_id),
             "archive_items": self.imported_archive_for(conn, "company", record_id),
             "review_flags": self.review_flags_for(conn, "company", record_id),
         }
@@ -16533,6 +16641,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             "application_profile": self.application_profile_for(conn, "lead", record_id),
             "custom_fields": self.custom_fields_for(conn, "lead", record_id),
             "linked_resources": self.linked_resources_for(conn, "lead", record_id),
+            "record_files": self.record_files_for(conn, "lead", record_id),
             "archive_items": self.imported_archive_for(conn, "lead", record_id),
             "activity": self.activity_for(conn, "lead", record_id, 30),
             "review_flags": self.review_flags_for(conn, "lead", record_id),
@@ -16575,6 +16684,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             "address_note": address_info["note"],
             "custom_fields": self.custom_fields_for(conn, "deal", record_id),
             "linked_resources": self.linked_resources_for(conn, "deal", record_id),
+            "record_files": self.record_files_for(conn, "deal", record_id),
             "archive_items": self.imported_archive_for(conn, "deal", record_id),
             "review_flags": self.review_flags_for(conn, "deal", record_id),
         }
@@ -20290,6 +20400,72 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         ).fetchone()
         return row is not None
 
+    def ensure_record_file_schema(self, conn: Any) -> None:
+        if self.hosted_postgres_adapter_enabled():
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS record_files (
+                    id bigint GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+                    record_type text NOT NULL,
+                    record_id bigint NOT NULL,
+                    storage_backend text NOT NULL DEFAULT 'supabase',
+                    storage_bucket text,
+                    storage_key text,
+                    local_file text,
+                    original_filename text,
+                    content_type text NOT NULL,
+                    bytes bigint NOT NULL,
+                    sha256 text NOT NULL,
+                    status text NOT NULL DEFAULT 'active',
+                    app_user_id bigint REFERENCES app_users(id),
+                    actor_email text,
+                    created_at timestamptz NOT NULL DEFAULT now(),
+                    updated_at timestamptz NOT NULL DEFAULT now(),
+                    removed_at timestamptz
+                )
+                """
+            )
+        else:
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS record_files (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    record_type TEXT NOT NULL,
+                    record_id INTEGER NOT NULL,
+                    storage_backend TEXT NOT NULL DEFAULT 'local',
+                    storage_bucket TEXT,
+                    storage_key TEXT,
+                    local_file TEXT,
+                    original_filename TEXT,
+                    content_type TEXT NOT NULL,
+                    bytes INTEGER NOT NULL,
+                    sha256 TEXT NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'active',
+                    app_user_id INTEGER,
+                    actor_email TEXT,
+                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    removed_at TEXT
+                )
+                """
+            )
+        conn.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_record_files_record
+            ON record_files(record_type, record_id, updated_at DESC)
+            """
+        )
+
+    def record_file_table_exists(self, conn: Any) -> bool:
+        if self.hosted_postgres_adapter_enabled():
+            row = conn.execute("SELECT to_regclass('crm.record_files') IS NOT NULL AS table_exists").fetchone()
+            return bool(row and row["table_exists"])
+        row = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
+            ("record_files",),
+        ).fetchone()
+        return row is not None
+
     def normalize_profile_image_type(self, content_type: Any) -> str:
         normalized = str(content_type or "").split(";", 1)[0].strip().lower()
         if normalized == "image/jpg":
@@ -20345,6 +20521,47 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         safe = re.sub(r"[^A-Za-z0-9._ -]+", "_", filename).strip(" ._-")
         return safe[:180] or None
 
+    def normalize_record_file_type(self, content_type: Any, filename: Any = None) -> str:
+        normalized = str(content_type or "").split(";", 1)[0].strip().lower()
+        if not normalized and filename:
+            normalized = (mimetypes.guess_type(str(filename))[0] or "").strip().lower()
+        if not normalized:
+            normalized = "application/octet-stream"
+        return normalized[:120]
+
+    def decode_record_file_upload(self, payload: dict[str, Any]) -> tuple[bytes, str]:
+        filename = self.profile_image_original_filename(payload.get("filename")) or "attachment"
+        data_url = str(payload.get("file_data_url") or "").strip()
+        encoded = str(payload.get("file_base64") or "").strip()
+        if data_url:
+            match = re.match(r"^data:([^;,]+);base64,(.+)$", data_url, flags=re.IGNORECASE | re.DOTALL)
+            if not match:
+                raise ValueError("File upload was not a valid file payload.")
+            content_type = self.normalize_record_file_type(match.group(1), filename)
+            encoded = match.group(2).strip()
+        else:
+            content_type = self.normalize_record_file_type(payload.get("content_type"), filename)
+        if not encoded:
+            raise ValueError("Choose a file before uploading.")
+        try:
+            file_bytes = base64.b64decode(encoded, validate=True)
+        except Exception as exc:
+            raise ValueError("File upload was not valid base64.") from exc
+        if not file_bytes:
+            raise ValueError("Choose a file before uploading.")
+        if len(file_bytes) > RECORD_FILE_MAX_BYTES:
+            raise ValueError("File is too large. Choose a file under 3 MB for now.")
+        return file_bytes, content_type
+
+    def record_file_storage_key(self, record_type: str, record_id: int, digest: str, original_filename: str | None, content_type: str) -> str:
+        safe_name = self.profile_image_original_filename(original_filename) or "attachment"
+        suffix = Path(safe_name).suffix.strip().lower()
+        if not suffix:
+            guessed = mimetypes.guess_extension(content_type) or ".bin"
+            suffix = guessed if guessed.startswith(".") else f".{guessed}"
+            safe_name = f"{Path(safe_name).stem or 'attachment'}{suffix}"
+        return f"record-files/{record_type}/{record_id}/{digest[:24]}-{safe_name}"
+
     def profile_image_storage_key(self, record_id: int, digest: str, content_type: str) -> str:
         extension = PROFILE_IMAGE_ALLOWED_CONTENT_TYPES[content_type]
         return f"profile-images/people/{record_id}/{digest[:24]}.{extension}"
@@ -20360,6 +20577,21 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             "width": row.get("width"),
             "height": row.get("height"),
             "original_filename": row.get("original_filename"),
+            "storage_backend": row.get("storage_backend"),
+            "updated_at": row.get("updated_at") or row.get("created_at"),
+        }
+
+    def record_file_summary(self, row: dict[str, Any] | None) -> dict[str, Any] | None:
+        if not row:
+            return None
+        return {
+            "id": row.get("id"),
+            "record_type": row.get("record_type"),
+            "record_id": row.get("record_id"),
+            "original_filename": row.get("original_filename"),
+            "content_type": row.get("content_type"),
+            "bytes": row.get("bytes"),
+            "sha256": row.get("sha256"),
             "storage_backend": row.get("storage_backend"),
             "updated_at": row.get("updated_at") or row.get("created_at"),
         }
@@ -20490,6 +20722,94 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                 )
                 conn.commit()
         return {"ok": True, "profile_image": None, "detail": self.record_detail({"type": [record_type], "id": [str(record_id)]})}
+
+    def upload_record_file(
+        self,
+        payload: dict[str, Any],
+        actor_user: dict[str, Any] | None = None,
+        permission_action: str | None = "create_edit_records",
+    ) -> dict[str, Any]:
+        record_type = str(payload.get("type") or "").strip().lower()
+        record_id = self.optional_int(payload.get("id"))
+        if record_type not in {"person", "company", "lead", "deal"} or not record_id:
+            raise ValueError("Choose a supported record before uploading a file.")
+        file_bytes, content_type = self.decode_record_file_upload(payload)
+        digest = hashlib.sha256(file_bytes).hexdigest()
+        original_filename = self.profile_image_original_filename(payload.get("filename")) or "attachment"
+        storage_bucket = None
+        storage_key = None
+        local_file = None
+        storage_backend = "supabase" if self.hosted_postgres_adapter_enabled() else "local"
+        if self.hosted_postgres_adapter_enabled():
+            storage_bucket = self.record_file_storage_bucket()
+            storage_key = self.record_file_storage_key(record_type, record_id, digest, original_filename, content_type)
+            self.upload_supabase_storage_object(storage_bucket, storage_key, file_bytes, content_type)
+        else:
+            storage_key = self.record_file_storage_key(record_type, record_id, digest, original_filename, content_type)
+            path = (RECORD_FILE_DIR / record_type / str(record_id) / Path(storage_key).name).resolve()
+            allowed_root = RECORD_FILE_DIR.resolve()
+            if allowed_root != path and allowed_root not in path.parents:
+                raise ValueError("Invalid record file path.")
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(file_bytes)
+            try:
+                local_file = str(path.relative_to(PROJECT_ROOT))
+            except ValueError:
+                local_file = str(path)
+        with self.db() as conn:
+            self.ensure_record_file_schema(conn)
+            if conn.execute(f"SELECT 1 FROM {self.record_table_name(record_type)} WHERE id = ?", (record_id,)).fetchone() is None:
+                raise ValueError(f"{labelize(record_type)} not found.")
+            conn.execute(
+                """
+                INSERT INTO record_files (
+                    record_type, record_id, storage_backend, storage_bucket, storage_key, local_file,
+                    original_filename, content_type, bytes, sha256, status, app_user_id, actor_email
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)
+                """,
+                (
+                    record_type,
+                    record_id,
+                    storage_backend,
+                    storage_bucket,
+                    storage_key,
+                    local_file,
+                    original_filename,
+                    content_type,
+                    len(file_bytes),
+                    digest,
+                    actor_user.get("id") if actor_user else None,
+                    actor_user.get("email") if actor_user else None,
+                ),
+            )
+            current = row_to_dict(
+                conn.execute(
+                    """
+                    SELECT id, record_type, record_id, storage_backend, storage_bucket, storage_key, local_file,
+                           original_filename, content_type, bytes, sha256, status, created_at, updated_at
+                    FROM record_files
+                    WHERE record_type = ? AND record_id = ? AND sha256 = ?
+                    ORDER BY id DESC
+                    LIMIT 1
+                    """,
+                    (record_type, record_id, digest),
+                ).fetchone()
+            )
+            self.insert_audit_log(
+                conn,
+                action="upload_record_file",
+                record_type=record_type,
+                record_id=record_id,
+                field_name="record_file",
+                old_value=None,
+                new_value=self.record_file_summary(current),
+                note=f"{original_filename} attached to the record.",
+                actor_user=actor_user,
+                permission_action=permission_action,
+            )
+            conn.commit()
+        return {"ok": True, "file": self.public_record_file(current), "detail": self.record_detail({"type": [record_type], "id": [str(record_id)]})}
 
     def ensure_record_lifecycle_schema(self, conn: Any) -> None:
         conn.execute(

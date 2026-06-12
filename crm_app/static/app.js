@@ -384,6 +384,15 @@ function canvasToDataUrl(canvas, type, quality) {
   });
 }
 
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(new Error("Could not read that file."));
+    reader.readAsDataURL(file);
+  });
+}
+
 async function prepareProfileImageUpload(file) {
   if (!file || !String(file.type || "").startsWith("image/")) {
     throw new Error("Choose a JPEG, PNG, or WebP image.");
@@ -410,6 +419,24 @@ async function prepareProfileImageUpload(file) {
     image_data_url: imageDataUrl,
     width,
     height,
+  };
+}
+
+async function prepareRecordFileUpload(file) {
+  if (!file) {
+    throw new Error("Choose a file before uploading.");
+  }
+  if (!file.size) {
+    throw new Error("That file was empty.");
+  }
+  if (file.size > 3_000_000) {
+    throw new Error("Choose a file under 3 MB for now.");
+  }
+  return {
+    filename: file.name || "attachment",
+    content_type: String(file.type || "application/octet-stream").split(";", 1)[0].trim() || "application/octet-stream",
+    file_data_url: await readFileAsDataUrl(file),
+    bytes: file.size,
   };
 }
 
@@ -5182,6 +5209,7 @@ function renderDetail(detail) {
 
 function defaultDetailBody(detail) {
   const record = detail.record || {};
+  const fileItems = [...(detail.record_files || []), ...(detail.archive_items || [])];
   return `
     ${contactActions(detail)}
     ${editForm(detail)}
@@ -5203,7 +5231,7 @@ function defaultDetailBody(detail) {
     ${detail.people?.length ? linkSection("People", detail.people, "person") : ""}
     ${detail.deals?.length ? linkSection("Deals", detail.deals, "deal") : ""}
     ${linkedResources(detail.linked_resources || [])}
-    ${archiveItems(detail.archive_items || [])}
+    ${archiveItems(fileItems)}
     ${customFields(detail.custom_fields || [], detail.application_profile || [])}
     ${activitySection(detail.activity || [])}
     ${addNoteForm(detail)}
@@ -5215,6 +5243,7 @@ function defaultDetailBody(detail) {
 
 function personDetailBody(detail) {
   const record = detail.record || {};
+  const fileItems = [...(detail.record_files || []), ...(detail.archive_items || [])];
   const mainSections = [
     contactActions(detail, { title: "Contact" }),
     addressSection(detail, { title: "Addresses" }),
@@ -5232,7 +5261,7 @@ function personDetailBody(detail) {
   const sidebarSections = [
     tasksSection(detail.tasks || [], { title: "Task List" }),
     purchasesSection(detail.purchases || []),
-    archiveItems(detail.archive_items || [], { title: "Files", countLabel: "files" }),
+    archiveItems(fileItems, { title: "Files", countLabel: "files", uploadable: true, uploadRecordType: detail.type, uploadRecordId: detail.record?.source_id }),
     detailTags(detail, detail.tags || []),
     recordLifecycleSection(detail),
     detailQualityPanel(detail),
@@ -6203,6 +6232,7 @@ function wirePersonTagPicker(detail) {
 function wireDetailForms(detail) {
   document.querySelector(".detail-close-button")?.addEventListener("click", closeCurrentRecordDetail);
   wireProfileImageControls(detail);
+  wireRecordFileControls(detail);
   wirePersonTagPicker(detail);
 
   document.querySelectorAll(".contact-copy-button").forEach((button) => {
@@ -6449,6 +6479,30 @@ function wireProfileImageControls(detail) {
       });
     });
   }
+}
+
+function wireRecordFileControls(detail) {
+  if (!detail?.record?.source_id) return;
+  const input = document.querySelector("#recordFileInput");
+  const uploadButton = document.querySelector("#recordFileUploadButton");
+  if (!uploadButton || !input) return;
+  uploadButton.addEventListener("click", () => input.click());
+  input.addEventListener("change", async () => {
+    const file = input.files?.[0];
+    input.value = "";
+    if (!file) return;
+    await runDetailAction(uploadButton, { progress: "Uploading file", success: "File attached", failure: "File upload failed" }, async () => {
+      const prepared = await prepareRecordFileUpload(file);
+      const updated = await postJson("/api/upload_record_file", {
+        type: detail.type,
+        id: detail.record.source_id,
+        ...prepared,
+      });
+      renderDetail(updated.detail);
+      if (state.view === "dashboard") await renderDashboard();
+      await refreshCurrentListForDetail(updated.detail);
+    });
+  });
 }
 
 async function renderFollowup() {
@@ -8477,7 +8531,8 @@ function linkedResources(resources) {
 }
 
 function archiveItems(items, options = {}) {
-  if (!items.length) return "";
+  const canUpload = Boolean(options.uploadable && options.uploadRecordType && options.uploadRecordId);
+  if (!items.length && !canUpload) return "";
   const orderedItems = [...items].sort((a, b) => {
     const aTime = Date.parse(a.occurred_at || a.updated_at || a.created_at || "") || 0;
     const bTime = Date.parse(b.occurred_at || b.updated_at || b.created_at || "") || 0;
@@ -8490,26 +8545,35 @@ function archiveItems(items, options = {}) {
     <div class="detail-section archive-items">
       <div class="inline-header">
         <h3>${escapeHtml(sectionTitle)}</h3>
-        <span class="muted">${formatNumber(items.length)} ${escapeHtml(countLabel)} · newest first</span>
+        ${
+          canUpload
+            ? `<button class="text-button" id="recordFileUploadButton" type="button">Add File</button>
+               <input id="recordFileInput" type="file" hidden>`
+            : `<span class="muted">${formatNumber(items.length)} ${escapeHtml(countLabel)} · newest first</span>`
+        }
       </div>
-      <div class="archive-item-list">
-        ${orderedItems
-          .map((item) => {
-            const title = item.file_url
-              ? `<a href="${escapeHtml(item.file_url)}" target="_blank" rel="noreferrer">${escapeHtml(item.title || item.label)}</a>`
-              : item.url
-                ? `<a href="${escapeHtml(item.url)}" target="_blank" rel="noreferrer">${escapeHtml(item.title || item.label)}</a>`
-                : `<strong>${escapeHtml(item.title || item.label)}</strong>`;
-            return `
-              <div class="archive-item">
-                <span class="pill">${escapeHtml(item.label || archiveItemLabel(item.item_type))}</span>
-                ${title}
-                <small>${escapeHtml([formatDate(item.occurred_at), item.body, item.phone_number, item.size_label].filter(Boolean).join(" · "))}</small>
-              </div>
-            `;
-          })
-          .join("")}
-      </div>
+      ${
+        orderedItems.length
+          ? `<div class="archive-item-list">
+              ${orderedItems
+                .map((item) => {
+                  const title = item.file_url
+                    ? `<a href="${escapeHtml(item.file_url)}" target="_blank" rel="noreferrer">${escapeHtml(item.title || item.label)}</a>`
+                    : item.url
+                      ? `<a href="${escapeHtml(item.url)}" target="_blank" rel="noreferrer">${escapeHtml(item.title || item.label)}</a>`
+                      : `<strong>${escapeHtml(item.title || item.label)}</strong>`;
+                  return `
+                    <div class="archive-item">
+                      <span class="pill">${escapeHtml(item.label || archiveItemLabel(item.item_type))}</span>
+                      ${title}
+                      <small>${escapeHtml([formatDate(item.occurred_at), item.body, item.phone_number, item.size_label].filter(Boolean).join(" · "))}</small>
+                    </div>
+                  `;
+                })
+                .join("")}
+            </div>`
+          : `<div class="muted">No files uploaded yet.</div>`
+      }
     </div>
   `;
 }

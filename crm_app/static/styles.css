@@ -3487,6 +3487,22 @@ button {
 .archive-item-list {
   display: grid;
   gap: 8px;
+  align-content: start;
+  max-height: 244px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 6px;
+  scrollbar-gutter: stable;
+  scroll-snap-type: y proximity;
+}
+
+.archive-item-list::-webkit-scrollbar {
+  width: 8px;
+}
+
+.archive-item-list::-webkit-scrollbar-thumb {
+  background: rgba(90, 78, 56, 0.22);
+  border-radius: 999px;
 }
 
 .archive-item {
@@ -3495,19 +3511,29 @@ button {
   background: var(--surface);
   display: grid;
   gap: 5px;
+  min-height: 108px;
   padding: 10px;
+  scroll-snap-align: start;
 }
 
 .archive-item a,
 .archive-item strong {
   color: var(--text);
+  display: -webkit-box;
+  overflow: hidden;
   overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .archive-item small {
   color: var(--muted);
+  display: -webkit-box;
   line-height: 1.35;
+  overflow: hidden;
   overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
 }
 
 .address-card {

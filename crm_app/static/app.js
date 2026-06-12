@@ -8372,14 +8372,20 @@ function linkedResources(resources) {
 
 function archiveItems(items) {
   if (!items.length) return "";
+  const orderedItems = [...items].sort((a, b) => {
+    const aTime = Date.parse(a.occurred_at || a.updated_at || a.created_at || "") || 0;
+    const bTime = Date.parse(b.occurred_at || b.updated_at || b.created_at || "") || 0;
+    if (aTime !== bTime) return bTime - aTime;
+    return Number(b.source_id || b.id || 0) - Number(a.source_id || a.id || 0);
+  });
   return `
     <div class="detail-section archive-items">
       <div class="inline-header">
         <h3>Archive</h3>
-        <span class="muted">${formatNumber(items.length)} items</span>
+        <span class="muted">${formatNumber(items.length)} items · newest first</span>
       </div>
       <div class="archive-item-list">
-        ${items
+        ${orderedItems
           .map((item) => {
             const title = item.file_url
               ? `<a href="${escapeHtml(item.file_url)}" target="_blank" rel="noreferrer">${escapeHtml(item.title || item.label)}</a>`

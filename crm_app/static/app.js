@@ -429,6 +429,14 @@ function formatDate(value) {
   return date.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
 }
 
+function formatPhoneDisplay(value) {
+  const text = String(value ?? "").trim();
+  if (!text) return "";
+  const digits = text.replace(/\D/g, "");
+  if (digits.length !== 10) return text;
+  return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
+}
+
 async function fetchJson(url, options = {}) {
   const { timeoutMs, ...fetchOptions } = options;
   const controller = timeoutMs ? new AbortController() : null;
@@ -1972,7 +1980,7 @@ function archiveReviewGroupList(items) {
       ${items.slice(0, 6)
         .map((item) => `
           <button class="archive-review-mini-row work-queue-archive-number" type="button" data-phone="${escapeHtml(item.phone_number || "")}">
-            <strong>${escapeHtml(archiveItemLabel(item.item_type))} · ${escapeHtml(item.phone_number || "(blank)")}</strong>
+            <strong>${escapeHtml(archiveItemLabel(item.item_type))} · ${escapeHtml(formatPhoneDisplay(item.phone_number) || "(blank)")}</strong>
             <span>${formatNumber(item.count)} items · ${formatNumber(item.reviewed_count || 0)} reviewed</span>
           </button>
         `)
@@ -3389,7 +3397,7 @@ function recordTable(records, context) {
           .map((record) => {
             const detailType = record.type || record.kind || state.listType.slice(0, -1);
             const badge = record.kind || record.type || state.listType;
-            const third = record.match_context || record.email || record.stage_name || record.organization_name || record.phone || "";
+            const third = record.match_context || record.email || record.stage_name || record.organization_name || formatPhoneDisplay(record.phone) || "";
             return `
               <tr>
                 <td>
@@ -3431,6 +3439,7 @@ function ownerFilterControls(ownerOptions = []) {
 }
 
 function profileFilterControls(profileData) {
+  if (state.listType === "people") return "";
   if (!profileData.fields?.length) return "";
   const selectedField = profileData.fields.find((field) => field.field_name === state.listProfileField);
   return `
@@ -3635,10 +3644,11 @@ function listQualityFilterControls(qualityOptions = []) {
 
 function currentListSettings() {
   const sort = currentListSort();
-  const statusFilter = currentListStatusFilter();
+  const simplifiedPeopleFilters = state.listType === "people";
+  const statusFilter = simplifiedPeopleFilters ? { field: "", value: "" } : currentListStatusFilter();
   const dateFilter = currentListDateFilter();
-  const qualityIssue = currentListQualityIssue();
-  const provenance = currentListProvenanceFilter();
+  const qualityIssue = simplifiedPeopleFilters ? "" : currentListQualityIssue();
+  const provenance = simplifiedPeopleFilters ? "" : currentListProvenanceFilter();
   return {
     q: state.q,
     tag_id: state.listTagId,
@@ -3646,8 +3656,8 @@ function currentListSettings() {
     status_field: statusFilter.field,
     status_value: statusFilter.value,
     owner_user_id: ownerFilterSupported(state.listType) ? state.listOwnerUserId : "",
-    profile_field: state.listProfileField,
-    profile_value: state.listProfileValue,
+    profile_field: simplifiedPeopleFilters ? "" : state.listProfileField,
+    profile_value: simplifiedPeopleFilters ? "" : state.listProfileValue,
     quality_issue: qualityIssue,
     provenance,
     lifecycle: state.listType === "people" ? currentPeopleLifecycleFilter() : "",
@@ -3866,11 +3876,19 @@ async function renderList() {
   setStatus(`Loading ${listTitles[state.listType]}`);
   const focusState = captureInputFocus("listSearch") || captureInputFocus("listTagSearch");
   state.mobileDetailReturnLabel = listTitles[state.listType] || "List";
+  const simplifiedPeopleFilters = state.listType === "people";
+  if (simplifiedPeopleFilters) {
+    state.listProfileField = "";
+    state.listProfileValue = "";
+    state.listQualityIssues.people = "";
+    state.listProvenanceFilters.people = "";
+    state.listStatusFilters.people = { field: "", value: "" };
+  }
   const sort = currentListSort();
-  const statusFilter = currentListStatusFilter();
+  const statusFilter = simplifiedPeopleFilters ? { field: "", value: "" } : currentListStatusFilter();
   const dateFilter = currentListDateFilter();
-  const qualityIssue = currentListQualityIssue();
-  const provenance = currentListProvenanceFilter();
+  const qualityIssue = simplifiedPeopleFilters ? "" : currentListQualityIssue();
+  const provenance = simplifiedPeopleFilters ? "" : currentListProvenanceFilter();
   const lifecycle = state.listType === "people" ? currentPeopleLifecycleFilter() : "";
   const params = new URLSearchParams({
     type: state.listType,
@@ -3895,7 +3913,7 @@ async function renderList() {
   if (provenance) {
     params.set("provenance", provenance);
   }
-  if (profileFilterSupported(state.listType) && state.listProfileField && state.listProfileValue) {
+  if (!simplifiedPeopleFilters && profileFilterSupported(state.listType) && state.listProfileField && state.listProfileValue) {
     params.set("profile_field", state.listProfileField);
     params.set("profile_value", state.listProfileValue);
   }
@@ -3910,7 +3928,7 @@ async function renderList() {
     fetchJson(`/api/list?${params.toString()}`),
     fetchListTagSuggestions(tagQuery),
     state.listTagId ? fetchJson(`/api/tags?id=${encodeURIComponent(state.listTagId)}&page_size=10`).catch(() => null) : Promise.resolve(null),
-    profileFilterSupported(state.listType)
+    !simplifiedPeopleFilters && profileFilterSupported(state.listType)
       ? fetchJson(`/api/profile_filters?type=${encodeURIComponent(state.listType)}`)
       : Promise.resolve({ fields: [] }),
     fetchJson(`/api/saved_views?type=${encodeURIComponent(state.listType)}`),
@@ -3954,10 +3972,10 @@ async function renderList() {
         ${peopleLifecycleFilterControls(data)}
         ${tagSearchControl(tagSuggestions, selectedTag)}
         ${ownerFilterControls(data.owner_options || [])}
-        ${listProvenanceFilterControls(data.provenance_options || [])}
-        ${listQualityFilterControls(data.quality_options || [])}
-        ${listStatusFilterControls(data.status_options || [])}
-        ${profileFilterControls(profileData)}
+        ${simplifiedPeopleFilters ? "" : listProvenanceFilterControls(data.provenance_options || [])}
+        ${simplifiedPeopleFilters ? "" : listQualityFilterControls(data.quality_options || [])}
+        ${simplifiedPeopleFilters ? "" : listStatusFilterControls(data.status_options || [])}
+        ${simplifiedPeopleFilters ? "" : profileFilterControls(profileData)}
         ${listDateFilterControls(data.date_options || [])}
         ${listSortControls()}
       </div>
@@ -4344,7 +4362,7 @@ function listTable(records) {
             <tr ${listRowAttributes(type, record.source_id)}>
               <td><button class="record-button" data-type="${type}" data-id="${record.source_id}">${escapeHtml(record.name || "(blank)")}</button>${lifecyclePillForRecord(record)}</td>
               <td class="muted">${escapeHtml(record.email || "")}</td>
-              <td class="muted">${escapeHtml(record.phone || record.mobile || "")}</td>
+              <td class="muted">${escapeHtml(formatPhoneDisplay(record.phone || record.mobile || ""))}</td>
               <td>${record.status ? `<span class="pill">${escapeHtml(record.status)}</span>` : ""}</td>
               ${showOwner ? `<td class="muted">${escapeHtml(record.owner_name || "")}</td>` : ""}
               <td>${provenanceChips(record)}</td>
@@ -4804,7 +4822,7 @@ function archiveItemSnapshot(item) {
   const values = [
     ["Type", item.label || archiveItemLabel(item.item_type)],
     ["When", formatDate(item.occurred_at) || "Unknown"],
-    ["Phone", item.phone_number || "None"],
+    ["Phone", formatPhoneDisplay(item.phone_number) || "None"],
     ["Owner", item.user_name || "None"],
     ["Link", recordName],
   ];
@@ -5047,7 +5065,7 @@ function wireArchiveLinkForm(root, item) {
 }
 
 function archiveTargetResultButton(row) {
-  const detail = [labelize(row.type), `#${row.source_id}`, row.email, row.phone, row.match_context].filter(Boolean).join(" · ");
+  const detail = [labelize(row.type), `#${row.source_id}`, row.email, formatPhoneDisplay(row.phone), row.match_context].filter(Boolean).join(" · ");
   return `
     <button class="archive-target-button" type="button" data-type="${escapeHtml(row.type)}" data-id="${row.source_id}">
       <strong>${escapeHtml(row.name || `${labelize(row.type)} #${row.source_id}`)}</strong>
@@ -5148,7 +5166,7 @@ function renderDetail(detail) {
   state.currentArchiveItem = null;
   state.currentCleanupGroup = null;
   const record = detail.record;
-  const subtitle = [record.email, record.phone, record.mobile, record.stage_name].filter(Boolean).join(" · ");
+  const subtitle = [record.email, formatPhoneDisplay(record.phone), formatPhoneDisplay(record.mobile), record.stage_name].filter(Boolean).join(" · ");
   els.detail.innerHTML = `
     <div class="detail-content">
       ${detailHeader(record.name || "(blank)", subtitle || detail.type, detail)}
@@ -5343,7 +5361,7 @@ function recordFileFacts(detail) {
     if (text) facts.push({ label, value: text });
   };
   add("Email", record.email);
-  add("Phone", record.phone || record.mobile);
+  add("Phone", formatPhoneDisplay(record.phone || record.mobile));
   add("Website", record.website);
   add("Owner", detail.owner?.name || record.owner_name);
   add("Status", recordSnapshotStatus(detail));
@@ -5514,6 +5532,7 @@ function contactActions(detail, options = {}) {
       key,
       label: source.prefix ? `${source.prefix} ${label}` : label,
       value: text,
+      displayValue: ["phone", "mobile"].includes(key) ? formatPhoneDisplay(text) : text,
       href,
       actionLabel,
     });
@@ -5534,11 +5553,11 @@ function contactActions(detail, options = {}) {
         <div class="contact-action-row">
           <div>
             <strong>${escapeHtml(row.label)}</strong>
-            <span>${escapeHtml(row.value)}</span>
+            <span>${escapeHtml(row.displayValue || row.value)}</span>
           </div>
           <div class="contact-action-buttons">
             ${row.href ? `<a class="text-button action-link" href="${escapeHtml(row.href)}">${escapeHtml(row.actionLabel)}</a>` : ""}
-            <button class="text-button contact-copy-button" type="button" data-copy-label="${escapeHtml(row.label)}" data-copy-value="${escapeHtml(row.value)}">Copy</button>
+            <button class="text-button contact-copy-button" type="button" data-copy-label="${escapeHtml(row.label)}" data-copy-value="${escapeHtml(row.displayValue || row.value)}">Copy</button>
           </div>
         </div>
       `)
@@ -5590,7 +5609,7 @@ function contactCardStrip(sources) {
 
 function contactCardSummary(source) {
   const record = source.record || {};
-  return [record.name, record.mobile || record.phone, record.email].filter(Boolean).join(" · ") || labelize(source.type);
+  return [record.name, formatPhoneDisplay(record.mobile || record.phone), record.email].filter(Boolean).join(" · ") || labelize(source.type);
 }
 
 function contactCardButtonLabel(source) {
@@ -5793,7 +5812,7 @@ function renderCleanupGroupDetail(detail) {
                     </button>
                     ${(record.badges || []).map((badge) => `<span class="pill">${escapeHtml(badge)}</span>`).join("")}
                   </div>
-                  <div class="muted">${escapeHtml([record.email, record.phone || record.mobile, record.detail].filter(Boolean).join(" · "))}</div>
+                  <div class="muted">${escapeHtml([record.email, formatPhoneDisplay(record.phone || record.mobile), record.detail].filter(Boolean).join(" · "))}</div>
                   ${cleanupProfileSummary(record.profile_summary || [])}
                   ${cleanupRecordStats(record)}
                 </div>
@@ -6001,7 +6020,7 @@ function relationshipDatalist(detail, key, listId) {
 }
 
 function optionDisplayLabel(option) {
-  const detail = [option.email, option.phone].filter(Boolean).join(" · ");
+  const detail = [option.email, formatPhoneDisplay(option.phone)].filter(Boolean).join(" · ");
   if (option.pipeline_name) return `${option.pipeline_name} · ${option.label}`;
   return detail ? `${option.label} · ${detail}` : option.label;
 }
@@ -7675,7 +7694,7 @@ function archiveDecisionEvidencePanel(summary, activePreset) {
         summary.top_numbers?.length
           ? `<div class="archive-top-numbers">
               ${summary.top_numbers
-                .map((item) => `<span>${escapeHtml(archiveItemLabel(item.item_type))} · ${escapeHtml(item.phone_number || "(blank)")} · ${formatNumber(item.count)}</span>`)
+                .map((item) => `<span>${escapeHtml(archiveItemLabel(item.item_type))} · ${escapeHtml(formatPhoneDisplay(item.phone_number) || "(blank)")} · ${formatNumber(item.count)}</span>`)
                 .join("")}
             </div>`
           : ""
@@ -7715,7 +7734,7 @@ function archiveReviewQueuePanel(summary, activeReviewStatus) {
               ${topNumbers
                 .map((item) => `
                   <button class="archive-number-review-button" type="button" data-phone="${escapeHtml(item.phone_number || "")}">
-                    <strong>${escapeHtml(archiveItemLabel(item.item_type))} · ${escapeHtml(item.phone_number || "(blank)")}</strong>
+                    <strong>${escapeHtml(archiveItemLabel(item.item_type))} · ${escapeHtml(formatPhoneDisplay(item.phone_number) || "(blank)")}</strong>
                     <span>${formatNumber(item.count)} items · ${formatNumber(item.reviewed_count || 0)} reviewed · ${escapeHtml(labelize(item.classification || ""))}</span>
                     <small>${escapeHtml([formatDate(item.first_at), formatDate(item.last_at)].filter(Boolean).join(" to "))}</small>
                   </button>
@@ -7777,7 +7796,7 @@ function archiveReviewTriagePanel(triage, activeTriageLane = "") {
               ${topGroups.slice(0, 8)
                 .map((group) => `
                   <button class="archive-number-review-button" type="button" data-phone="${escapeHtml(group.phone_number || "")}" data-triage-lane="${escapeHtml(group.triage_lane || "")}">
-                    <strong>${escapeHtml(group.triage_lane_label || "")} · ${escapeHtml(group.phone_number || "(blank)")}</strong>
+                    <strong>${escapeHtml(group.triage_lane_label || "")} · ${escapeHtml(formatPhoneDisplay(group.phone_number) || "(blank)")}</strong>
                     <span>${formatNumber(group.count || 0)} items · ${escapeHtml(group.suggested_status_label || "")} · ${escapeHtml(labelize(group.classification || ""))}</span>
                     <small>${escapeHtml(group.reason || "")}</small>
                   </button>

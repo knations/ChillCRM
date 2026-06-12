@@ -16788,24 +16788,115 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             "updated_at": note.get("updated_at"),
         }
 
+    def related_person_purchase_record_ids(self, conn: sqlite3.Connection, record_id: int) -> list[int]:
+        pending = [int(record_id)]
+        ordered_ids: list[int] = []
+        seen_ids: set[int] = set()
+        while pending:
+            current_id = pending.pop(0)
+            if current_id in seen_ids:
+                continue
+            seen_ids.add(current_id)
+            ordered_ids.append(current_id)
+            merge_notes = rows_to_dicts(
+                conn.execute(
+                    """
+                    SELECT source_json
+                    FROM notes
+                    WHERE record_type = 'person'
+                      AND record_id = ?
+                    ORDER BY created_at DESC, id DESC
+                    """,
+                    (current_id,),
+                ).fetchall()
+            )
+            for note in merge_notes:
+                source = self.decoded_json_object(note.get("source_json"))
+                if source.get("local_source") != "duplicate_people_merge":
+                    continue
+                merged_ids = source.get("merged_person_ids")
+                if not isinstance(merged_ids, list):
+                    continue
+                for merged_id in merged_ids:
+                    value = self.optional_int(merged_id)
+                    if value and value not in seen_ids:
+                        pending.append(int(value))
+        return ordered_ids
+
     def related_purchases(self, conn: sqlite3.Connection, record_type: str, record_id: int) -> list[dict[str, Any]]:
-        notes = rows_to_dicts(
-            conn.execute(
-                """
-                SELECT id AS source_id, content, created_at, updated_at, source_json
-                FROM notes
-                WHERE record_type = ? AND record_id = ?
-                ORDER BY created_at DESC, id DESC
-                """,
-                (record_type, record_id),
-            ).fetchall()
-        )
+        if record_type == "person":
+            related_record_ids = self.related_person_purchase_record_ids(conn, record_id)
+            placeholders = ",".join("?" for _ in related_record_ids)
+            notes = rows_to_dicts(
+                conn.execute(
+                    f"""
+                    SELECT id AS source_id, record_id, content, created_at, updated_at, source_json
+                    FROM notes
+                    WHERE record_type = ?
+                      AND record_id IN ({placeholders})
+                    ORDER BY created_at DESC, id DESC
+                    """,
+                    [record_type, *related_record_ids],
+                ).fetchall()
+            )
+        else:
+            notes = rows_to_dicts(
+                conn.execute(
+                    """
+                    SELECT id AS source_id, record_id, content, created_at, updated_at, source_json
+                    FROM notes
+                    WHERE record_type = ? AND record_id = ?
+                    ORDER BY created_at DESC, id DESC
+                    """,
+                    (record_type, record_id),
+                ).fetchall()
+            )
         purchases: list[dict[str, Any]] = []
+        seen_keys: set[str] = set()
         for note in notes:
             purchase = self.purchase_summary_from_note(note)
             if purchase:
+                purchase_key = purchase.get("purchase_identity") or f"source:{purchase.get('source_id')}"
+                if purchase_key in seen_keys:
+                    continue
+                seen_keys.add(purchase_key)
                 purchases.append(purchase)
         return purchases
+
+    def preferred_person_by_normalized_email(self, conn: sqlite3.Connection, normalized_email: str) -> dict[str, Any] | None:
+        if self.record_lifecycle_table_exists(conn):
+            return row_to_dict(
+                conn.execute(
+                    """
+                    SELECT p.id, p.first_name, p.last_name, p.name, p.email, p.phone, p.mobile
+                    FROM people p
+                    WHERE p.normalized_email = ?
+                    ORDER BY CASE WHEN EXISTS (
+                                 SELECT 1
+                                 FROM local_record_lifecycle lrl
+                                 WHERE lrl.record_type = 'person'
+                                   AND lrl.record_id = p.id
+                                   AND lrl.lifecycle_status = 'inactive'
+                             ) THEN 1 ELSE 0 END,
+                             p.updated_at DESC,
+                             p.id DESC
+                    LIMIT 1
+                    """,
+                    (normalized_email,),
+                ).fetchone()
+            )
+        return row_to_dict(
+            conn.execute(
+                """
+                SELECT id, first_name, last_name, name, email, phone, mobile
+                FROM people
+                WHERE normalized_email = ?
+                ORDER BY updated_at DESC, id DESC
+                LIMIT 1
+                """,
+                (normalized_email,),
+            ).fetchone()
+        )
 
     def related_tasks(self, conn: sqlite3.Connection, record_type: str, record_id: int) -> list[dict[str, Any]]:
         return rows_to_dicts(
@@ -21549,18 +21640,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             raise ValueError("Purchase webhook requires a valid customer email.")
 
         with self.db() as conn:
-            existing = row_to_dict(
-                conn.execute(
-                    """
-                    SELECT id, first_name, last_name, name, email, phone, mobile
-                    FROM people
-                    WHERE normalized_email = ?
-                    ORDER BY updated_at DESC, id
-                    LIMIT 1
-                    """,
-                    (normalized_email,),
-                ).fetchone()
-            )
+            existing = self.preferred_person_by_normalized_email(conn, normalized_email)
             if existing:
                 duplicate_note_id = self.zapier_purchase_note_exists(conn, int(existing["id"]), summary["purchase_identity"])
                 if duplicate_note_id:
@@ -21577,18 +21657,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
 
         backup_path = self.create_backup(f"before_zapier_purchase_{summary['purchase_identity']}")
         with self.db() as conn:
-            person = row_to_dict(
-                conn.execute(
-                    """
-                    SELECT id, first_name, last_name, name, email, phone, mobile
-                    FROM people
-                    WHERE normalized_email = ?
-                    ORDER BY updated_at DESC, id
-                    LIMIT 1
-                    """,
-                    (normalized_email,),
-                ).fetchone()
-            )
+            person = self.preferred_person_by_normalized_email(conn, normalized_email)
             person_created = False
             field_updates: dict[str, str] = {}
             old_field_values: dict[str, Any] = {}

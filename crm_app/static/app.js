@@ -5153,39 +5153,95 @@ function renderDetail(detail) {
     <div class="detail-content">
       ${detailHeader(record.name || "(blank)", subtitle || detail.type, detail)}
       <div id="detailActionError" class="form-error" hidden></div>
-      ${contactActions(detail)}
-      ${editForm(detail)}
-      ${recordFileHero(detail)}
-      ${recordSnapshot(detail)}
-      ${recordLifecycleSection(detail)}
-      ${detailQualityPanel(detail)}
-      ${reviewFlagsSection(detail.review_flags || [])}
-      ${ownerSection(detail.owner)}
-      ${addressSection(detail)}
-      ${detail.type === "person" ? purchasesSection(detail.purchases || []) : ""}
-      ${detailTags(detail, detail.tags || [])}
-      ${applicationProfile(detail.application_profile || [])}
-      ${keyValues(record)}
-      ${detail.company ? linkSection("Company", [detail.company], "company") : ""}
-      ${detail.possible_person ? linkSection("Possible Match", [detail.possible_person], "person") : ""}
-      ${detail.contact ? linkSection("Contact", [detail.contact], "person") : ""}
-      ${detail.organization ? linkSection("Organization", [detail.organization], "company") : ""}
-      ${detail.people?.length ? linkSection("People", detail.people, "person") : ""}
-      ${detail.deals?.length ? linkSection("Deals", detail.deals, "deal") : ""}
-      ${linkedResources(detail.linked_resources || [])}
-      ${archiveItems(detail.archive_items || [])}
-      ${customFields(detail.custom_fields || [], detail.application_profile || [])}
-      ${activitySection(detail.activity || [])}
-      ${addNoteForm(detail)}
-      ${notesSection(detail.notes || [])}
-      ${addTaskForm(detail)}
-      ${tasksSection(detail.tasks || [])}
+      ${detail.type === "person" ? personDetailBody(detail) : defaultDetailBody(detail)}
     </div>
   `;
   resetDetailScroll();
   wireRecordButtons(els.detail);
   wireDetailForms(detail);
   syncActiveListRows();
+}
+
+function defaultDetailBody(detail) {
+  const record = detail.record || {};
+  return `
+    ${contactActions(detail)}
+    ${editForm(detail)}
+    ${recordFileHero(detail)}
+    ${recordSnapshot(detail)}
+    ${recordLifecycleSection(detail)}
+    ${detailQualityPanel(detail)}
+    ${reviewFlagsSection(detail.review_flags || [])}
+    ${ownerSection(detail.owner)}
+    ${addressSection(detail)}
+    ${detail.type === "person" ? purchasesSection(detail.purchases || []) : ""}
+    ${detailTags(detail, detail.tags || [])}
+    ${applicationProfile(detail.application_profile || [])}
+    ${keyValues(record)}
+    ${detail.company ? linkSection("Company", [detail.company], "company") : ""}
+    ${detail.possible_person ? linkSection("Possible Match", [detail.possible_person], "person") : ""}
+    ${detail.contact ? linkSection("Contact", [detail.contact], "person") : ""}
+    ${detail.organization ? linkSection("Organization", [detail.organization], "company") : ""}
+    ${detail.people?.length ? linkSection("People", detail.people, "person") : ""}
+    ${detail.deals?.length ? linkSection("Deals", detail.deals, "deal") : ""}
+    ${linkedResources(detail.linked_resources || [])}
+    ${archiveItems(detail.archive_items || [])}
+    ${customFields(detail.custom_fields || [], detail.application_profile || [])}
+    ${activitySection(detail.activity || [])}
+    ${addNoteForm(detail)}
+    ${notesSection(detail.notes || [])}
+    ${addTaskForm(detail)}
+    ${tasksSection(detail.tasks || [])}
+  `;
+}
+
+function personDetailBody(detail) {
+  const record = detail.record || {};
+  const overviewMain = recordFileHero(detail);
+  const overviewSide = recordSnapshot(detail);
+  return `
+    <div class="person-detail-shell">
+      ${
+        overviewMain || overviewSide
+          ? `<div class="person-detail-overview">
+              ${overviewMain ? `<div class="person-detail-overview-main">${overviewMain}</div>` : ""}
+              ${overviewSide ? `<div class="person-detail-overview-side">${overviewSide}</div>` : ""}
+            </div>`
+          : ""
+      }
+      <div class="person-detail-layout">
+        <div class="person-detail-main">
+          ${contactActions(detail)}
+          ${editForm(detail)}
+          ${addressSection(detail)}
+          ${applicationProfile(detail.application_profile || [])}
+          ${customFields(detail.custom_fields || [], detail.application_profile || [])}
+          ${keyValues(record)}
+          ${activitySection(detail.activity || [])}
+          ${addNoteForm(detail)}
+          ${notesSection(detail.notes || [])}
+          ${addTaskForm(detail)}
+          ${tasksSection(detail.tasks || [])}
+        </div>
+        <div class="person-detail-sidebar">
+          ${recordLifecycleSection(detail)}
+          ${detailQualityPanel(detail)}
+          ${reviewFlagsSection(detail.review_flags || [])}
+          ${detailTags(detail, detail.tags || [])}
+          ${purchasesSection(detail.purchases || [])}
+          ${archiveItems(detail.archive_items || [])}
+          ${linkedResources(detail.linked_resources || [])}
+          ${detail.company ? linkSection("Company", [detail.company], "company") : ""}
+          ${detail.possible_person ? linkSection("Possible Match", [detail.possible_person], "person") : ""}
+          ${detail.contact ? linkSection("Contact", [detail.contact], "person") : ""}
+          ${detail.organization ? linkSection("Organization", [detail.organization], "company") : ""}
+          ${detail.people?.length ? linkSection("People", detail.people, "person") : ""}
+          ${detail.deals?.length ? linkSection("Deals", detail.deals, "deal") : ""}
+          ${ownerSection(detail.owner)}
+        </div>
+      </div>
+    </div>
+  `;
 }
 
 function detailHeader(title, subtitle, detail = null, options = {}) {
@@ -5830,10 +5886,17 @@ function editForm(detail) {
   const record = detail.record;
   const fields = editableFields(detail.type);
   if (!fields.length) return "";
+  const sectionTitle =
+    {
+      person: "Profile",
+      company: "Company",
+      lead: "Lead",
+      deal: "Deal",
+    }[detail.type] || "Record";
   return `
     <div class="detail-section">
       <div class="inline-header">
-        <h3>Address</h3>
+        <h3>${sectionTitle}</h3>
         <button class="text-button" id="saveRecordButton" type="button">Save</button>
       </div>
       <form id="editRecordForm" class="edit-grid">

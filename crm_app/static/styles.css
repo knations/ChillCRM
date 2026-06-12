@@ -2250,6 +2250,61 @@ button {
   padding: 28px 32px 44px;
 }
 
+.person-detail-shell {
+  display: grid;
+  gap: 18px;
+}
+
+.person-detail-overview {
+  align-items: start;
+  display: grid;
+  gap: 14px;
+  grid-template-columns: minmax(0, 1.35fr) minmax(260px, 0.9fr);
+}
+
+.person-detail-overview-main,
+.person-detail-overview-side,
+.person-detail-main,
+.person-detail-sidebar {
+  min-width: 0;
+}
+
+.person-detail-overview-main .record-file-hero {
+  margin-bottom: 0;
+}
+
+.person-detail-overview-side {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 14px;
+}
+
+.person-detail-overview-side .record-snapshot {
+  border-top: 0;
+  gap: 8px;
+  padding: 0;
+}
+
+.person-detail-layout {
+  align-items: start;
+  display: grid;
+  gap: 28px;
+  grid-template-columns: minmax(0, 1.45fr) minmax(300px, 0.85fr);
+}
+
+.person-detail-main > .detail-section:first-child,
+.person-detail-sidebar > .detail-section:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.person-detail-sidebar {
+  align-self: start;
+  position: sticky;
+  top: 104px;
+}
+
 .detail-masthead {
   background: rgba(255, 255, 255, 0.96);
   border-bottom: 1px solid var(--line);
@@ -4472,6 +4527,16 @@ button {
     grid-template-columns: 1fr;
   }
 
+  .person-detail-overview,
+  .person-detail-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .person-detail-sidebar {
+    position: static;
+    top: auto;
+  }
+
   .detail-panel .contact-action-row {
     grid-template-columns: 1fr;
   }
@@ -4534,6 +4599,10 @@ button {
   .detail-panel .edit-grid,
   .detail-panel .address-fields {
     grid-template-columns: 1fr 1fr;
+  }
+
+  .person-detail-overview-side {
+    padding: 12px;
   }
 
   .detail-panel .contact-action-row {
@@ -5298,6 +5367,38 @@ button {
   .detail-panel .contact-card-strip,
   .detail-panel .contact-action-row {
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  }
+
+  .app-shell.mobile-detail-open .person-detail-shell {
+    gap: 14px;
+  }
+
+  .app-shell.mobile-detail-open .detail-heading-layout.has-profile-image {
+    display: grid;
+    gap: 12px;
+    grid-template-columns: 1fr;
+  }
+
+  .app-shell.mobile-detail-open .person-profile-image-control {
+    justify-items: start;
+    width: auto;
+  }
+
+  .app-shell.mobile-detail-open .person-profile-image-frame {
+    font-size: 34px;
+    height: 120px;
+    width: 120px;
+  }
+
+  .app-shell.mobile-detail-open .detail-title-row {
+    align-items: start;
+  }
+
+  .app-shell.mobile-detail-open .person-detail-overview-side {
+    padding: 0;
+    background: transparent;
+    border: 0;
+    border-radius: 0;
   }
 
   .app-shell.mobile-detail-open .record-snapshot {

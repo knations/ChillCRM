@@ -20736,18 +20736,17 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         file_bytes, content_type = self.decode_record_file_upload(payload)
         digest = hashlib.sha256(file_bytes).hexdigest()
         original_filename = self.profile_image_original_filename(payload.get("filename")) or "attachment"
+        timestamp = now_iso()
         storage_bucket = None
-        storage_key = None
-        local_file = None
-        storage_backend = "supabase" if self.hosted_postgres_adapter_enabled() else "local"
+        storage_key = self.record_file_storage_key(record_type, record_id, digest, original_filename, content_type)
+        local_file: str | None = None
         if self.hosted_postgres_adapter_enabled():
             storage_bucket = self.record_file_storage_bucket()
-            storage_key = self.record_file_storage_key(record_type, record_id, digest, original_filename, content_type)
             self.upload_supabase_storage_object(storage_bucket, storage_key, file_bytes, content_type)
+            local_file = f"raw_api_exports/local_uploads/{record_type}/{record_id}/{Path(storage_key).name}"
         else:
-            storage_key = self.record_file_storage_key(record_type, record_id, digest, original_filename, content_type)
-            path = (RECORD_FILE_DIR / record_type / str(record_id) / Path(storage_key).name).resolve()
-            allowed_root = RECORD_FILE_DIR.resolve()
+            path = (PROJECT_ROOT / "raw_api_exports" / "local_uploads" / record_type / str(record_id) / Path(storage_key).name).resolve()
+            allowed_root = (PROJECT_ROOT / "raw_api_exports").resolve()
             if allowed_root != path and allowed_root not in path.parents:
                 raise ValueError("Invalid record file path.")
             path.parent.mkdir(parents=True, exist_ok=True)
@@ -20756,44 +20755,71 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                 local_file = str(path.relative_to(PROJECT_ROOT))
             except ValueError:
                 local_file = str(path)
+        source_payload = {
+            "local_source": "record_file_upload",
+            "uploaded_in": "chillcrm",
+            "filename": original_filename,
+            "content_type": content_type,
+            "bytes": len(file_bytes),
+            "sha256": digest,
+            "storage_key": storage_key,
+            "storage_bucket": storage_bucket,
+        }
         with self.db() as conn:
-            self.ensure_record_file_schema(conn)
             if conn.execute(f"SELECT 1 FROM {self.record_table_name(record_type)} WHERE id = ?", (record_id,)).fetchone() is None:
                 raise ValueError(f"{labelize(record_type)} not found.")
+            archive_item_id = self.next_hosted_primary_key(conn, "imported_archive_items")
+            id_column = "id, " if archive_item_id is not None else ""
+            id_placeholder = "?, " if archive_item_id is not None else ""
             conn.execute(
-                """
-                INSERT INTO record_files (
-                    record_type, record_id, storage_backend, storage_bucket, storage_key, local_file,
-                    original_filename, content_type, bytes, sha256, status, app_user_id, actor_email
+                f"""
+                INSERT INTO imported_archive_items (
+                    {id_column}item_type, source_collection, zendesk_record_id, record_type, record_id,
+                    original_resource_type, title, body, occurred_at, created_at, updated_at,
+                    content_type, size_bytes, local_file, status, source_json
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)
+                VALUES ({id_placeholder}?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
+                    *((archive_item_id,) if archive_item_id is not None else ()),
+                    "document",
+                    "chillcrm_record_uploads",
+                    None,
                     record_type,
                     record_id,
-                    storage_backend,
-                    storage_bucket,
-                    storage_key,
-                    local_file,
+                    "local_upload",
                     original_filename,
+                    "Uploaded in CHILLCRM",
+                    timestamp,
+                    timestamp,
+                    timestamp,
                     content_type,
                     len(file_bytes),
-                    digest,
-                    actor_user.get("id") if actor_user else None,
-                    actor_user.get("email") if actor_user else None,
+                    local_file,
+                    "uploaded",
+                    json.dumps(source_payload, ensure_ascii=False, sort_keys=True),
                 ),
             )
-            current = row_to_dict(
+            if archive_item_id is None:
+                archive_item_id = int(conn.execute("SELECT last_insert_rowid()").fetchone()[0])
+            if self.hosted_postgres_adapter_enabled():
                 conn.execute(
                     """
-                    SELECT id, record_type, record_id, storage_backend, storage_bucket, storage_key, local_file,
-                           original_filename, content_type, bytes, sha256, status, created_at, updated_at
-                    FROM record_files
-                    WHERE record_type = ? AND record_id = ? AND sha256 = ?
-                    ORDER BY id DESC
+                    INSERT INTO remote_file_objects (
+                        archive_item_id, storage_bucket, storage_key, original_local_file, bytes, content_type
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    (archive_item_id, storage_bucket, storage_key, local_file, len(file_bytes), content_type),
+                )
+            current = row_to_dict(
+                conn.execute(
+                    f"""
+                    {self.archive_select_sql()}
+                    WHERE ai.id = ?
                     LIMIT 1
                     """,
-                    (record_type, record_id, digest),
+                    (archive_item_id,),
                 ).fetchone()
             )
             self.insert_audit_log(
@@ -20801,15 +20827,15 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                 action="upload_record_file",
                 record_type=record_type,
                 record_id=record_id,
-                field_name="record_file",
+                field_name="archive_item",
                 old_value=None,
-                new_value=self.record_file_summary(current),
-                note=f"{original_filename} attached to the record.",
+                new_value=self.format_archive_item(current) if current else None,
+                note=f"{original_filename} attached to the record archive.",
                 actor_user=actor_user,
                 permission_action=permission_action,
             )
             conn.commit()
-        return {"ok": True, "file": self.public_record_file(current), "detail": self.record_detail({"type": [record_type], "id": [str(record_id)]})}
+        return {"ok": True, "file": self.format_archive_item(current) if current else None, "detail": self.record_detail({"type": [record_type], "id": [str(record_id)]})}
 
     def ensure_record_lifecycle_schema(self, conn: Any) -> None:
         conn.execute(
@@ -22087,6 +22113,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             "companies",
             "leads",
             "deals",
+            "imported_archive_items",
             "tags",
             "tag_assignments",
             "notes",

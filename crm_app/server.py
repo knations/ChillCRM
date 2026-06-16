@@ -1123,7 +1123,9 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             "/api/upload_record_file",
             "/api/remove_profile_image",
             "/api/add_note",
+            "/api/add_call_log",
             "/api/update_note",
+            "/api/update_call_log",
             "/api/add_task",
             "/api/update_task",
             "/api/copy_imported_task_to_local",
@@ -1212,7 +1214,9 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         "/api/upload_record_file": "create_edit_records",
         "/api/remove_profile_image": "create_edit_records",
         "/api/add_note": "notes_tasks_followups",
+        "/api/add_call_log": "notes_tasks_followups",
         "/api/update_note": "notes_tasks_followups",
+        "/api/update_call_log": "notes_tasks_followups",
         "/api/add_task": "notes_tasks_followups",
         "/api/update_task": "notes_tasks_followups",
         "/api/copy_imported_task_to_local": "notes_tasks_followups",
@@ -3020,8 +3024,12 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                 self.send_json(self.remove_profile_image(payload, auth_user, action_key))
             elif path == "/api/add_note":
                 self.send_json(self.add_note(payload, auth_user, action_key))
+            elif path == "/api/add_call_log":
+                self.send_json(self.add_call_log(payload, auth_user, action_key))
             elif path == "/api/update_note":
                 self.send_json(self.update_note(payload, auth_user, action_key))
+            elif path == "/api/update_call_log":
+                self.send_json(self.update_call_log(payload, auth_user, action_key))
             elif path == "/api/add_task":
                 self.send_json(self.add_task(payload, auth_user, action_key))
             elif path == "/api/update_task":
@@ -7975,6 +7983,20 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
     def activity_for(self, conn: sqlite3.Connection, record_type: str, record_id: int, limit: int) -> list[dict[str, Any]]:
         items: list[dict[str, Any]] = []
         items.extend(
+            self.call_log_activity_item(row, record_type, record_id)
+            for row in rows_to_dicts(
+                conn.execute(
+                    """
+                    SELECT id AS source_id, content, note_type, created_at, updated_at, source_json
+                    FROM notes
+                    WHERE record_type = ? AND record_id = ?
+                      AND coalesce(note_type, '') = 'call_log'
+                    """,
+                    (record_type, record_id),
+                ).fetchall()
+            )
+        )
+        items.extend(
             {
                 "activity_type": "note",
                 "record_type": record_type,
@@ -7988,6 +8010,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                 SELECT content, created_at
                 FROM notes
                 WHERE record_type = ? AND record_id = ?
+                  AND coalesce(note_type, '') != 'call_log'
                 """,
                 (record_type, record_id),
             ).fetchall()
@@ -8046,6 +8069,20 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                 ).fetchall()
             )
         return sorted(items, key=lambda item: item.get("occurred_at") or "", reverse=True)[:limit]
+
+    def call_log_activity_item(self, row: dict[str, Any], record_type: str, record_id: int) -> dict[str, Any]:
+        call = self.call_log_from_note(row)
+        direction_label = call.get("direction_label")
+        prefix = f"{direction_label} call" if direction_label else "Call"
+        summary = call.get("summary") or call.get("notes") or "Conversation logged"
+        return {
+            "activity_type": "call_log",
+            "record_type": record_type,
+            "record_id": record_id,
+            "record_name": None,
+            "summary": f"{prefix}: {summary}",
+            "occurred_at": call.get("occurred_at"),
+        }
 
     def related_record_activity(
         self, conn: sqlite3.Connection, record_type: str, record_id: int, limit: int
@@ -16566,6 +16603,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             "company": company,
             "deals": self.related_deals(conn, deal_clause, tuple(deal_values)),
             "purchases": self.related_purchases(conn, "person", record_id),
+            "call_logs": self.related_call_logs(conn, "person", record_id),
             "notes": self.related_notes(conn, "person", record_id),
             "tasks": self.related_tasks(conn, "person", record_id),
             "activity": self.activity_for(conn, "person", record_id, 30),
@@ -16812,11 +16850,118 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                        CASE WHEN zendesk_note_id IS NULL THEN 1 ELSE 0 END AS editable
                 FROM notes
                 WHERE record_type = ? AND record_id = ?
+                  AND coalesce(note_type, '') != 'call_log'
                 ORDER BY created_at DESC
                 """,
                 (record_type, record_id),
             ).fetchall()
         )
+
+    def normalize_call_log_direction(self, value: Any) -> str:
+        normalized = str(value or "").strip().lower().replace(" ", "_")
+        if normalized in {"outbound", "inbound", "voicemail", "other"}:
+            return normalized
+        return ""
+
+    def call_log_direction_label(self, value: Any) -> str:
+        return {
+            "outbound": "Outbound",
+            "inbound": "Inbound",
+            "voicemail": "Voicemail",
+            "other": "Other",
+        }.get(self.normalize_call_log_direction(value), "")
+
+    def normalize_call_log_at(self, value: Any, *, strict: bool = True) -> str | None:
+        text = self.clean_optional(value)
+        if not text:
+            return None
+        candidate = text.replace(" ", "T")
+        if candidate.endswith("Z"):
+            candidate = f"{candidate[:-1]}+00:00"
+        try:
+            timestamp = datetime.fromisoformat(candidate)
+        except ValueError:
+            if strict:
+                raise ValueError("Enter a valid call date and time.")
+            return text
+        return timestamp.replace(second=0, microsecond=0).isoformat(timespec="minutes")
+
+    def call_log_sort_key(self, value: Any) -> str:
+        text = self.clean_optional(value)
+        if not text:
+            return ""
+        candidate = text.replace(" ", "T")
+        if candidate.endswith("Z"):
+            candidate = f"{candidate[:-1]}+00:00"
+        try:
+            timestamp = datetime.fromisoformat(candidate)
+        except ValueError:
+            return text
+        if timestamp.tzinfo is None:
+            timestamp = timestamp.replace(tzinfo=timezone.utc)
+        else:
+            timestamp = timestamp.astimezone(timezone.utc)
+        return timestamp.isoformat(timespec="seconds")
+
+    def call_log_content(self, summary: str, notes: str, direction: str, call_at: str | None = None) -> str:
+        lines: list[str] = []
+        direction_label = self.call_log_direction_label(direction)
+        if summary:
+            lines.append(summary)
+        if call_at:
+            lines.append(f"When: {call_at.replace('T', ' ')}")
+        if direction_label:
+            lines.append(f"Direction: {direction_label}")
+        if notes:
+            if lines:
+                lines.append("")
+            lines.append(notes)
+        return "\n".join(lines).strip()
+
+    def call_log_from_note(self, note: dict[str, Any]) -> dict[str, Any]:
+        source = self.decoded_json_object(note.get("source_json"))
+        summary = self.clean_optional(source.get("summary")) or ""
+        notes = self.clean_optional(source.get("notes")) or ""
+        direction = self.normalize_call_log_direction(source.get("direction"))
+        call_at = self.normalize_call_log_at(source.get("call_at"), strict=False)
+        content = str(note.get("content") or "").strip()
+        if not summary and content:
+            summary = content.splitlines()[0].strip()
+        if not notes and content:
+            notes = content
+        occurred_at = call_at or note.get("created_at")
+        return {
+            "source_id": note.get("source_id") or note.get("id"),
+            "summary": summary,
+            "notes": notes,
+            "direction": direction,
+            "direction_label": self.call_log_direction_label(direction),
+            "call_at": call_at,
+            "occurred_at": occurred_at,
+            "created_at": note.get("created_at"),
+            "updated_at": note.get("updated_at"),
+            "editable": bool(note.get("editable")),
+        }
+
+    def related_call_logs(self, conn: sqlite3.Connection, record_type: str, record_id: int) -> list[dict[str, Any]]:
+        if record_type != "person":
+            return []
+        rows = rows_to_dicts(
+            conn.execute(
+                """
+                SELECT id AS source_id, content, note_type AS type, is_important,
+                       created_at, updated_at, source_json,
+                       CASE WHEN zendesk_note_id IS NULL THEN 1 ELSE 0 END AS editable
+                FROM notes
+                WHERE record_type = ? AND record_id = ?
+                  AND coalesce(note_type, '') = 'call_log'
+                ORDER BY created_at DESC, id DESC
+                """,
+                (record_type, record_id),
+            ).fetchall()
+        )
+        calls = [self.call_log_from_note(row) for row in rows]
+        return sorted(calls, key=lambda call: self.call_log_sort_key(call.get("occurred_at")), reverse=True)
 
     def decoded_json_object(self, raw: Any) -> dict[str, Any]:
         if isinstance(raw, dict):
@@ -22373,6 +22518,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         content: str,
         timestamp: str,
         source_payload: dict[str, Any] | None = None,
+        note_type: str = "local",
     ) -> int:
         note_id = self.next_hosted_primary_key(conn, "notes")
         id_column = "id, " if note_id is not None else ""
@@ -22392,7 +22538,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                 record_id,
                 None,
                 content,
-                "local",
+                note_type,
                 0,
                 timestamp,
                 timestamp,
@@ -22424,6 +22570,55 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                 field_name="note",
                 old_value=None,
                 new_value=content,
+                note=f"Backup: {backup_path.name}; note_id={note_id}",
+                actor_user=actor_user,
+                permission_action=permission_action,
+            )
+            conn.commit()
+        return {"ok": True, "backup": str(backup_path), "detail": self.record_detail({"type": [record_type], "id": [str(record_id)]})}
+
+    def add_call_log(self, payload: dict[str, Any], actor_user: dict[str, Any] | None = None, permission_action: str | None = "notes_tasks_followups") -> dict[str, Any]:
+        record_type = str(payload.get("type", "")).lower()
+        record_id = int(payload.get("id", 0))
+        summary = str(payload.get("summary", "")).strip()
+        notes = str(payload.get("notes", "")).strip()
+        direction = self.normalize_call_log_direction(payload.get("direction"))
+        call_at = self.normalize_call_log_at(payload.get("call_at"))
+        if record_type != "person":
+            raise ValueError("Call logs are currently supported for People only.")
+        if not summary and not notes:
+            raise ValueError("Add a call summary or conversation notes.")
+        if not self.record_exists(record_type, record_id):
+            raise ValueError(f"{record_type} {record_id} not found.")
+
+        backup_path = self.create_backup(f"before_call_log_{record_type}_{record_id}")
+        timestamp = now_iso()
+        source_payload = {
+            "local_source": "call_log",
+            "summary": summary,
+            "notes": notes,
+            "direction": direction,
+            "call_at": call_at,
+        }
+        content = self.call_log_content(summary, notes, direction, call_at)
+        with self.db() as conn:
+            note_id = self.insert_local_note_row(
+                conn,
+                record_type,
+                record_id,
+                content,
+                timestamp,
+                source_payload=source_payload,
+                note_type="call_log",
+            )
+            self.insert_audit_log(
+                conn,
+                action="add_call_log",
+                record_type=record_type,
+                record_id=record_id,
+                field_name="call_log",
+                old_value=None,
+                new_value=summary or notes,
                 note=f"Backup: {backup_path.name}; note_id={note_id}",
                 actor_user=actor_user,
                 permission_action=permission_action,
@@ -22468,6 +22663,73 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                 record_type=note["record_type"],
                 record_id=note["record_id"],
                 field_name="note",
+                old_value=note["content"],
+                new_value=content,
+                note=f"Backup: {backup_path.name}; note_id={note_id}",
+                actor_user=actor_user,
+                permission_action=permission_action,
+            )
+            conn.commit()
+            record_type = note["record_type"]
+            record_id = note["record_id"]
+        return {"ok": True, "backup": str(backup_path), "detail": self.record_detail({"type": [record_type], "id": [str(record_id)]})}
+
+    def update_call_log(self, payload: dict[str, Any], actor_user: dict[str, Any] | None = None, permission_action: str | None = "notes_tasks_followups") -> dict[str, Any]:
+        note_id = int(payload.get("id", 0))
+        summary = str(payload.get("summary", "")).strip()
+        notes = str(payload.get("notes", "")).strip()
+        direction = self.normalize_call_log_direction(payload.get("direction"))
+        call_at = self.normalize_call_log_at(payload.get("call_at"))
+        if not note_id:
+            raise ValueError("Call log id is required.")
+        if not summary and not notes:
+            raise ValueError("Add a call summary or conversation notes.")
+        with self.db() as conn:
+            note = conn.execute("SELECT * FROM notes WHERE id = ?", (note_id,)).fetchone()
+            if not note:
+                raise ValueError(f"Call log {note_id} not found.")
+            if note["zendesk_note_id"] is not None or str(note["note_type"] or "") != "call_log":
+                raise ValueError("Only local call logs can be updated here.")
+            source = self.decoded_json_object(note["source_json"])
+            old_summary = self.clean_optional(source.get("summary")) or ""
+            old_notes = self.clean_optional(source.get("notes")) or ""
+            old_direction = self.normalize_call_log_direction(source.get("direction"))
+            old_call_at = self.normalize_call_log_at(source.get("call_at"), strict=False)
+            if old_summary == summary and old_notes == notes and old_direction == direction and old_call_at == call_at:
+                return {
+                    "ok": True,
+                    "backup": None,
+                    "detail": self.record_detail({"type": [note["record_type"]], "id": [str(note["record_id"])]}),
+                }
+            record_type = note["record_type"]
+            record_id = note["record_id"]
+
+        backup_path = self.create_backup(f"before_call_log_update_{note_id}")
+        timestamp = now_iso()
+        source_payload = {
+            "local_source": "call_log",
+            "summary": summary,
+            "notes": notes,
+            "direction": direction,
+            "call_at": call_at,
+        }
+        content = self.call_log_content(summary, notes, direction, call_at)
+        with self.db() as conn:
+            note = conn.execute("SELECT * FROM notes WHERE id = ?", (note_id,)).fetchone()
+            if not note:
+                raise ValueError(f"Call log {note_id} not found.")
+            if note["zendesk_note_id"] is not None or str(note["note_type"] or "") != "call_log":
+                raise ValueError("Only local call logs can be updated here.")
+            conn.execute(
+                "UPDATE notes SET content = ?, updated_at = ?, source_json = ? WHERE id = ?",
+                (content, timestamp, json.dumps(source_payload, ensure_ascii=False), note_id),
+            )
+            self.insert_audit_log(
+                conn,
+                action="update_call_log",
+                record_type=note["record_type"],
+                record_id=note["record_id"],
+                field_name="call_log",
                 old_value=note["content"],
                 new_value=content,
                 note=f"Backup: {backup_path.name}; note_id={note_id}",

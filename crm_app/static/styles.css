@@ -2825,6 +2825,48 @@ button {
   gap: 10px;
 }
 
+.call-log-form,
+.call-log-head {
+  display: grid;
+  gap: 10px;
+}
+
+.call-log-meta-row {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.call-log-form input,
+.call-log-form select,
+.call-log-meta-row input,
+.call-log-meta-row select,
+.call-log-head input,
+.call-log-head select {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  padding: 9px 10px;
+  outline: 0;
+}
+
+.call-log-form input:focus,
+.call-log-form select:focus,
+.call-log-meta-row input:focus,
+.call-log-meta-row select:focus,
+.call-log-head input:focus,
+.call-log-head select:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.call-log-card {
+  display: grid;
+  gap: 10px;
+}
+
 .task-form input {
   width: 100%;
   border: 1px solid var(--line);

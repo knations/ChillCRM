@@ -456,6 +456,31 @@ function formatDate(value) {
   return date.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
 }
 
+function formatDateTime(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+function dateTimeInputValue(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value).replace(" ", "T").slice(0, 16);
+  const localValue = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+  return localValue.toISOString().slice(0, 16);
+}
+
+function nowDateTimeInputValue() {
+  return dateTimeInputValue(new Date().toISOString());
+}
+
 function formatPhoneDisplay(value) {
   const text = String(value ?? "").trim();
   if (!text) return "";
@@ -5247,6 +5272,8 @@ function personDetailBody(detail) {
   const mainSections = [
     contactActions(detail, { title: "Contact" }),
     addressSection(detail, { title: "Addresses" }),
+    addCallLogForm(detail),
+    callLogsSection(detail.call_logs || []),
     addNoteForm(detail),
     notesSection(detail.notes || []),
     addTaskForm(detail),
@@ -6118,6 +6145,32 @@ function addNoteForm(detail) {
   `;
 }
 
+function addCallLogForm(detail) {
+  if (detail.type !== "person") return "";
+  return `
+    <div class="detail-section">
+      <div class="inline-header">
+        <h3>Log Call</h3>
+        <button class="text-button" id="addCallLogButton">Save Call</button>
+      </div>
+      <form id="callLogForm" class="call-log-form">
+        <input name="summary" class="call-log-summary-input" type="text" placeholder="Call summary">
+        <div class="call-log-meta-row">
+          <select name="direction" class="call-log-direction-select">
+            <option value="">General</option>
+            <option value="outbound">Outbound</option>
+            <option value="inbound">Inbound</option>
+            <option value="voicemail">Voicemail</option>
+            <option value="other">Other</option>
+          </select>
+          <input name="call_at" class="call-log-time-input" type="datetime-local" value="${escapeHtml(nowDateTimeInputValue())}">
+        </div>
+        <textarea name="notes" class="note-input" rows="5" placeholder="Conversation notes"></textarea>
+      </form>
+    </div>
+  `;
+}
+
 function addTaskForm(detail) {
   if (!["person", "company", "lead", "deal"].includes(detail.type)) return "";
   return `
@@ -6130,6 +6183,39 @@ function addTaskForm(detail) {
         <textarea name="content" class="note-input" rows="3"></textarea>
         <input name="due_date" type="date">
       </form>
+    </div>
+  `;
+}
+
+function callLogsSection(callLogs) {
+  if (!callLogs.length) return "";
+  return `
+    <div class="detail-section">
+      <h3>Calls</h3>
+      ${callLogs
+        .map((call) => `
+          <div class="note call-log-card">
+            <div class="call-log-head">
+              <input class="call-log-edit-summary" type="text" value="${escapeHtml(call.summary || "")}" placeholder="Call summary">
+              <div class="call-log-meta-row">
+                <select class="call-log-edit-direction">
+                  <option value="" ${!call.direction ? "selected" : ""}>General</option>
+                  <option value="outbound" ${call.direction === "outbound" ? "selected" : ""}>Outbound</option>
+                  <option value="inbound" ${call.direction === "inbound" ? "selected" : ""}>Inbound</option>
+                  <option value="voicemail" ${call.direction === "voicemail" ? "selected" : ""}>Voicemail</option>
+                  <option value="other" ${call.direction === "other" ? "selected" : ""}>Other</option>
+                </select>
+                <input class="call-log-edit-at" type="datetime-local" value="${escapeHtml(dateTimeInputValue(call.call_at || call.created_at))}">
+              </div>
+            </div>
+            <textarea class="call-log-edit-notes note-input compact-input" rows="5" placeholder="Conversation notes">${escapeHtml(call.notes || "")}</textarea>
+            <div class="task-line">
+              <div class="muted">${formatDateTime(call.call_at || call.created_at)}${call.updated_at && call.updated_at !== call.created_at ? ` · Updated ${formatDateTime(call.updated_at)}` : ""}${call.direction_label ? ` · ${escapeHtml(call.direction_label)}` : ""}</div>
+              ${call.editable ? `<button class="text-button save-call-log-button" data-id="${call.source_id}">Save</button>` : `<span class="pill">Imported</span>`}
+            </div>
+          </div>
+        `)
+        .join("")}
     </div>
   `;
 }
@@ -6365,6 +6451,30 @@ function wireDetailForms(detail) {
     });
   }
 
+  const callLogButton = document.querySelector("#addCallLogButton");
+  if (callLogButton) {
+    callLogButton.addEventListener("click", async () => {
+      const form = document.querySelector("#callLogForm");
+      const formData = new FormData(form);
+      const summary = String(formData.get("summary") || "").trim();
+      const direction = String(formData.get("direction") || "").trim();
+      const callAt = String(formData.get("call_at") || "").trim();
+      const notes = String(formData.get("notes") || "").trim();
+      if (!summary && !notes) return;
+      await runDetailAction(callLogButton, { progress: "Saving call", success: "Call saved", failure: "Call save failed" }, async () => {
+        const updated = await postJson("/api/add_call_log", {
+          type: detail.type,
+          id: detail.record.source_id,
+          summary,
+          direction,
+          call_at: callAt,
+          notes,
+        });
+        renderDetail(updated.detail);
+      });
+    });
+  }
+
   document.querySelectorAll(".save-note-button").forEach((button) => {
     button.addEventListener("click", async () => {
       const note = button.closest(".note");
@@ -6375,6 +6485,29 @@ function wireDetailForms(detail) {
         const updated = await postJson("/api/update_note", {
           id: Number(button.dataset.id),
           content,
+        });
+        renderDetail(updated.detail);
+        if (state.view === "dashboard") renderDashboard();
+        if (state.view === "activity") renderActivity();
+      });
+    });
+  });
+
+  document.querySelectorAll(".save-call-log-button").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const card = button.closest(".call-log-card");
+      const summary = card?.querySelector(".call-log-edit-summary")?.value.trim() || "";
+      const direction = card?.querySelector(".call-log-edit-direction")?.value.trim() || "";
+      const callAt = card?.querySelector(".call-log-edit-at")?.value.trim() || "";
+      const notes = card?.querySelector(".call-log-edit-notes")?.value.trim() || "";
+      if (!summary && !notes) return;
+      await runDetailAction(button, { progress: "Saving call", success: "Call saved", failure: "Call save failed" }, async () => {
+        const updated = await postJson("/api/update_call_log", {
+          id: Number(button.dataset.id),
+          summary,
+          direction,
+          call_at: callAt,
+          notes,
         });
         renderDetail(updated.detail);
         if (state.view === "dashboard") renderDashboard();

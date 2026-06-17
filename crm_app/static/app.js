@@ -6148,14 +6148,12 @@ function addNoteForm(detail) {
 function addCallLogForm(detail) {
   if (detail.type !== "person") return "";
   const hasSavedCalls = Boolean((detail.call_logs || []).length);
-  const title = hasSavedCalls ? "Log Another Call" : "Log Call";
   const buttonLabel = hasSavedCalls ? "Add Call" : "Save Call";
   const summaryPlaceholder = hasSavedCalls ? "New call summary" : "Call summary";
   const notesPlaceholder = hasSavedCalls ? "New conversation notes" : "Conversation notes";
   return `
     <div class="detail-section">
-      <div class="inline-header">
-        <h3>${title}</h3>
+      <div class="inline-header call-log-actions">
         <button class="text-button" id="addCallLogButton">${buttonLabel}</button>
       </div>
       <form id="callLogForm" class="call-log-form">

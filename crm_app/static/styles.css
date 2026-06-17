@@ -2741,6 +2741,10 @@ button {
   margin: 0;
 }
 
+.call-log-actions {
+  justify-content: flex-end;
+}
+
 .tag-section-actions {
   display: inline-flex;
   flex-wrap: wrap;

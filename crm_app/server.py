@@ -7980,6 +7980,34 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             return f"{value / (1024 * 1024):.1f} MB"
         return f"{round(value / 1024):,} KB"
 
+    def activity_sort_key(self, value: Any) -> str:
+        if value is None:
+            return ""
+        if isinstance(value, datetime):
+            timestamp = value
+            if timestamp.tzinfo is None:
+                timestamp = timestamp.replace(tzinfo=timezone.utc)
+            else:
+                timestamp = timestamp.astimezone(timezone.utc)
+            return timestamp.isoformat(timespec="seconds")
+        if isinstance(value, date):
+            return value.isoformat()
+        text = str(value).strip()
+        if not text:
+            return ""
+        candidate = text.replace(" ", "T")
+        if candidate.endswith("Z"):
+            candidate = f"{candidate[:-1]}+00:00"
+        try:
+            timestamp = datetime.fromisoformat(candidate)
+        except ValueError:
+            return text
+        if timestamp.tzinfo is None:
+            timestamp = timestamp.replace(tzinfo=timezone.utc)
+        else:
+            timestamp = timestamp.astimezone(timezone.utc)
+        return timestamp.isoformat(timespec="seconds")
+
     def activity_for(self, conn: sqlite3.Connection, record_type: str, record_id: int, limit: int) -> list[dict[str, Any]]:
         items: list[dict[str, Any]] = []
         items.extend(
@@ -8068,7 +8096,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                     (record_id,),
                 ).fetchall()
             )
-        return sorted(items, key=lambda item: item.get("occurred_at") or "", reverse=True)[:limit]
+        return sorted(items, key=lambda item: self.activity_sort_key(item.get("occurred_at")), reverse=True)[:limit]
 
     def call_log_activity_item(self, row: dict[str, Any], record_type: str, record_id: int) -> dict[str, Any]:
         call = self.call_log_from_note(row)
@@ -8275,7 +8303,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             ).fetchall()
         )
         items.extend(self.archive_activity_global(conn, limit))
-        return sorted(items, key=lambda item: item.get("occurred_at") or "", reverse=True)[:limit]
+        return sorted(items, key=lambda item: self.activity_sort_key(item.get("occurred_at")), reverse=True)[:limit]
 
     def archive_activity_for(self, conn: sqlite3.Connection, record_type: str, record_id: int, limit: int) -> list[dict[str, Any]]:
         rows = rows_to_dicts(
@@ -16872,6 +16900,8 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         }.get(self.normalize_call_log_direction(value), "")
 
     def normalize_call_log_at(self, value: Any, *, strict: bool = True) -> str | None:
+        if isinstance(value, datetime):
+            return value.replace(second=0, microsecond=0).isoformat(timespec="minutes")
         text = self.clean_optional(value)
         if not text:
             return None

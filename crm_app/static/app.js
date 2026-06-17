@@ -6147,14 +6147,19 @@ function addNoteForm(detail) {
 
 function addCallLogForm(detail) {
   if (detail.type !== "person") return "";
+  const hasSavedCalls = Boolean((detail.call_logs || []).length);
+  const title = hasSavedCalls ? "Log Another Call" : "Log Call";
+  const buttonLabel = hasSavedCalls ? "Add Call" : "Save Call";
+  const summaryPlaceholder = hasSavedCalls ? "New call summary" : "Call summary";
+  const notesPlaceholder = hasSavedCalls ? "New conversation notes" : "Conversation notes";
   return `
     <div class="detail-section">
       <div class="inline-header">
-        <h3>Log Call</h3>
-        <button class="text-button" id="addCallLogButton">Save Call</button>
+        <h3>${title}</h3>
+        <button class="text-button" id="addCallLogButton">${buttonLabel}</button>
       </div>
       <form id="callLogForm" class="call-log-form">
-        <input name="summary" class="call-log-summary-input" type="text" placeholder="Call summary">
+        <input name="summary" class="call-log-summary-input" type="text" placeholder="${summaryPlaceholder}">
         <div class="call-log-meta-row">
           <select name="direction" class="call-log-direction-select">
             <option value="">General</option>
@@ -6165,10 +6170,21 @@ function addCallLogForm(detail) {
           </select>
           <input name="call_at" class="call-log-time-input" type="datetime-local" value="${escapeHtml(nowDateTimeInputValue())}">
         </div>
-        <textarea name="notes" class="note-input" rows="5" placeholder="Conversation notes"></textarea>
+        <textarea name="notes" class="note-input" rows="5" placeholder="${notesPlaceholder}"></textarea>
       </form>
     </div>
   `;
+}
+
+function focusNextCallLogEntry() {
+  requestAnimationFrame(() => {
+    const form = document.querySelector("#callLogForm");
+    if (!form) return;
+    const timeInput = form.querySelector("[name='call_at']");
+    if (timeInput) timeInput.value = nowDateTimeInputValue();
+    form.scrollIntoView({ block: "start", behavior: "smooth" });
+    form.querySelector("[name='summary']")?.focus({ preventScroll: true });
+  });
 }
 
 function addTaskForm(detail) {
@@ -6471,6 +6487,7 @@ function wireDetailForms(detail) {
           notes,
         });
         renderDetail(updated.detail);
+        focusNextCallLogEntry();
       });
     });
   }

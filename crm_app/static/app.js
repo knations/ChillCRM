@@ -5272,17 +5272,16 @@ function personDetailBody(detail) {
   const mainSections = [
     contactActions(detail, { title: "Contact" }),
     addressSection(detail, { title: "Addresses" }),
-    personTimelineSection(detail.timeline || []),
     addCallLogForm(detail),
     callLogsSection(detail.call_logs || []),
     addNoteForm(detail),
     notesSection(detail.notes || []),
     addTaskForm(detail),
     editForm(detail),
-    activitySection(detail.activity || []),
     applicationProfile(detail.application_profile || []),
     customFields(detail.custom_fields || [], detail.application_profile || []),
     keyValues(record),
+    personTimelineSection(detail.timeline || []),
   ]
     .filter(Boolean)
     .join("");

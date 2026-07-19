@@ -269,6 +269,10 @@ def main() -> int:
     assert "personTimelineSection(detail.timeline || [])" in app_js
     assert "function personTimelineSection(events)" in app_js
     assert "person_timeline(" in server_py
+    person_detail_body_start = app_js.index("function personDetailBody(detail)")
+    person_detail_main_sections = app_js[person_detail_body_start : app_js.index("const sidebarSections", person_detail_body_start)]
+    assert "activitySection(detail.activity || [])" not in person_detail_main_sections
+    assert person_detail_main_sections.index("keyValues(record)") < person_detail_main_sections.index("personTimelineSection(detail.timeline || [])")
     assert "<h3>Contact Actions</h3>" not in app_js
     assert "<h3>Edit</h3>" not in app_js
     assert app_js.index('${contactActions(detail)}') < app_js.index('${editForm(detail)}') < app_js.index('${recordFileHero(detail)}')

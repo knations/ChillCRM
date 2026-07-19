@@ -2273,16 +2273,28 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         supplied = str(self.headers.get("X-Twilio-Signature", "") if hasattr(self.headers, "get") else "").strip()
         if not token or not supplied:
             return False
-        url = self.request_absolute_url()
-        material = url
+        body_material = ""
         if getattr(self, "command", "").upper() != "GET":
-            material += "".join(
+            body_material = "".join(
                 f"{key}{payload[key]}"
                 for key in sorted(payload)
                 if payload.get(key) is not None
             )
-        digest = base64.b64encode(hmac.new(token.encode("utf-8"), material.encode("utf-8"), hashlib.sha1).digest()).decode("ascii")
-        return hmac.compare_digest(digest, supplied)
+        candidate_urls = []
+        for base_url in [
+            self.request_absolute_url(),
+            f"{self.app_base_url_for_request()}{self.path}",
+            f"https://chillcrm.app{self.path}",
+            f"https://www.chillcrm.app{self.path}",
+        ]:
+            if base_url and base_url not in candidate_urls:
+                candidate_urls.append(base_url)
+        for url in candidate_urls:
+            material = url + body_material
+            digest = base64.b64encode(hmac.new(token.encode("utf-8"), material.encode("utf-8"), hashlib.sha1).digest()).decode("ascii")
+            if hmac.compare_digest(digest, supplied):
+                return True
+        return False
 
     def twilio_webhook_authorization_error(self, payload: dict[str, Any]) -> tuple[dict[str, Any], int] | None:
         if self.twilio_auth_token():

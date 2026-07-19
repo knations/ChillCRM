@@ -2307,7 +2307,7 @@ def main() -> int:
         )
         assert addressed["ok"] is True
         assert addressed["detail"]["addresses"][0]["city"] == "Columbus Verification"
-        assert addressed["detail"]["addresses"][0]["source"] == "local"
+        assert "source" not in addressed["detail"]["addresses"][0]
         address_search = handler.search({"q": ["Suite Verification"]})["results"]
         assert any(row["type"] == "person" and row["source_id"] == 2 for row in address_search)
         imported_address_search = handler.search({"q": ["Chicago"]})["results"]

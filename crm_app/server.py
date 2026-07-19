@@ -16347,7 +16347,6 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                                 "state": address["state"],
                                 "postal_code": address["postal_code"],
                                 "country": address["country"],
-                                "source": address["source"],
                             }
                         )
         return rows
@@ -16845,7 +16844,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                 deals,
             ),
             "tags": tags,
-            "addresses": address_info["addresses"],
+            "addresses": self.public_addresses(address_info["addresses"]),
             "address_fields_available": address_info["available"],
             "application_profile": self.application_profile_for(conn, "person", record_id),
             "custom_fields": self.custom_fields_for(conn, "person", record_id),
@@ -16882,7 +16881,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             "tasks": self.related_tasks(conn, "company", record_id),
             "activity": self.activity_for(conn, "company", record_id, 30),
             "tags": self.tags_for(conn, "company", record_id),
-            "addresses": address_info["addresses"],
+            "addresses": self.public_addresses(address_info["addresses"]),
             "address_fields_available": address_info["available"],
             "custom_fields": self.custom_fields_for(conn, "company", record_id),
             "linked_resources": self.linked_resources_for(conn, "company", record_id),
@@ -16911,7 +16910,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             "owner": self.owner_for(conn, record.get("owner_user_id")),
             "possible_person": possible_person,
             "tags": self.tags_for(conn, "lead", record_id),
-            "addresses": address_info["addresses"],
+            "addresses": self.public_addresses(address_info["addresses"]),
             "address_fields_available": address_info["available"],
             "application_profile": self.application_profile_for(conn, "lead", record_id),
             "custom_fields": self.custom_fields_for(conn, "lead", record_id),
@@ -16953,7 +16952,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             "tasks": self.related_tasks(conn, "deal", record_id),
             "activity": self.activity_for(conn, "deal", record_id, 30),
             "tags": self.tags_for(conn, "deal", record_id),
-            "addresses": address_info["addresses"],
+            "addresses": self.public_addresses(address_info["addresses"]),
             "address_fields_available": bool(address_info["addresses"]),
             "address_editable": False,
             "address_note": address_info["note"],
@@ -17685,7 +17684,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             local = row_to_dict(
                 conn.execute(
                     """
-                    SELECT address_key, label, line1, line2, city, state, postal_code, country, source
+                    SELECT address_key, label, line1, line2, city, state, postal_code, country
                     FROM local_addresses
                     WHERE record_type = ? AND record_id = ? AND address_key = ?
                     """,
@@ -17698,11 +17697,14 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                 value = data.get(key) if isinstance(data.get(key), dict) else {}
                 block = self.clean_address(label, value)
                 block["address_key"] = key
-                block["source"] = "zendesk"
                 block["has_local"] = False
             block["has_values"] = any(block[field] for field in ["line1", "line2", "city", "state", "postal_code", "country"])
             addresses.append(block)
         return {"available": True, "addresses": addresses}
+
+    def public_addresses(self, addresses: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        private_keys = {"has_local", "has_values", "source"}
+        return [{key: value for key, value in address.items() if key not in private_keys} for address in addresses]
 
     def deal_addresses(self, conn: sqlite3.Connection, record: dict[str, Any]) -> dict[str, Any]:
         addresses: list[dict[str, Any]] = []
@@ -17738,7 +17740,6 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             "state": row.get("state"),
             "postal_code": row.get("postal_code"),
             "country": row.get("country"),
-            "source": row.get("source") or "local",
             "has_local": True,
         }
         block["has_values"] = any(block[field] for field in ["line1", "line2", "city", "state", "postal_code", "country"])

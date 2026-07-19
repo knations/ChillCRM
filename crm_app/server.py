@@ -16806,6 +16806,16 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             deal_clause = "(d.person_id = ? OR d.company_id = ?)"
             deal_values.append(record["company_id"])
         address_info = self.addresses_for_record(conn, "person", record, include_secondary=True)
+        deals = self.related_deals(conn, deal_clause, tuple(deal_values))
+        purchases = self.related_purchases(conn, "person", record_id)
+        call_logs = self.related_call_logs(conn, "person", record_id)
+        notes = self.related_notes(conn, "person", record_id)
+        tasks = self.related_tasks(conn, "person", record_id)
+        activity = self.activity_for(conn, "person", record_id, 30)
+        tags = self.tags_for(conn, "person", record_id)
+        linked_resources = self.linked_resources_for(conn, "person", record_id)
+        record_files = self.record_files_for(conn, "person", record_id)
+        archive_items = self.imported_archive_for(conn, "person", record_id)
         return {
             "type": "person",
             "record": self.clean_record_with_quality("people", {**record, "kind": "person", "source_id": record_id}),
@@ -16815,20 +16825,33 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             "edit_options": self.edit_options(conn, "person"),
             "owner": self.owner_for(conn, record.get("owner_user_id")),
             "company": company,
-            "deals": self.related_deals(conn, deal_clause, tuple(deal_values)),
-            "purchases": self.related_purchases(conn, "person", record_id),
-            "call_logs": self.related_call_logs(conn, "person", record_id),
-            "notes": self.related_notes(conn, "person", record_id),
-            "tasks": self.related_tasks(conn, "person", record_id),
-            "activity": self.activity_for(conn, "person", record_id, 30),
-            "tags": self.tags_for(conn, "person", record_id),
+            "deals": deals,
+            "purchases": purchases,
+            "call_logs": call_logs,
+            "notes": notes,
+            "tasks": tasks,
+            "activity": activity,
+            "timeline": self.person_timeline(
+                record,
+                purchases,
+                call_logs,
+                notes,
+                tasks,
+                activity,
+                tags,
+                linked_resources,
+                record_files,
+                archive_items,
+                deals,
+            ),
+            "tags": tags,
             "addresses": address_info["addresses"],
             "address_fields_available": address_info["available"],
             "application_profile": self.application_profile_for(conn, "person", record_id),
             "custom_fields": self.custom_fields_for(conn, "person", record_id),
-            "linked_resources": self.linked_resources_for(conn, "person", record_id),
-            "record_files": self.record_files_for(conn, "person", record_id),
-            "archive_items": self.imported_archive_for(conn, "person", record_id),
+            "linked_resources": linked_resources,
+            "record_files": record_files,
+            "archive_items": archive_items,
             "review_flags": self.review_flags_for(conn, "person", record_id),
         }
 
@@ -17379,7 +17402,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         return rows_to_dicts(
             conn.execute(
                 """
-                SELECT id AS source_id, zendesk_task_id, content, completed, due_date, remind_at, updated_at,
+                SELECT id AS source_id, zendesk_task_id, content, completed, completed_at, due_date, remind_at, created_at, updated_at,
                        CASE WHEN zendesk_task_id IS NULL THEN 'local' ELSE 'imported' END AS task_source,
                        CASE WHEN zendesk_task_id IS NULL THEN 'Local' ELSE 'Imported' END AS task_source_label
                 FROM tasks
@@ -17389,6 +17412,249 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                 (record_type, record_id),
             ).fetchall()
         )
+
+    def timeline_event(
+        self,
+        event_type: str,
+        title: Any,
+        occurred_at: Any,
+        *,
+        body: Any = "",
+        meta: list[Any] | None = None,
+        url: Any = "",
+        record_type: Any = "",
+        record_id: Any = None,
+        source_id: Any = None,
+    ) -> dict[str, Any]:
+        cleaned_meta: list[str] = []
+        for item in meta or []:
+            if item is None or item is False:
+                continue
+            value = self.clean_optional(item)
+            if value:
+                cleaned_meta.append(value)
+        return {
+            "event_type": event_type,
+            "label": labelize(event_type),
+            "title": self.clean_optional(title) or labelize(event_type),
+            "body": self.clean_optional(body) or "",
+            "occurred_at": self.clean_optional(occurred_at) or "",
+            "meta": cleaned_meta,
+            "url": self.clean_optional(url) or "",
+            "record_type": self.clean_optional(record_type) or "",
+            "record_id": record_id,
+            "source_id": source_id,
+        }
+
+    def person_timeline(
+        self,
+        record: dict[str, Any],
+        purchases: list[dict[str, Any]],
+        call_logs: list[dict[str, Any]],
+        notes: list[dict[str, Any]],
+        tasks: list[dict[str, Any]],
+        activity: list[dict[str, Any]],
+        tags: list[str],
+        linked_resources: list[dict[str, Any]],
+        record_files: list[dict[str, Any]],
+        archive_items: list[dict[str, Any]],
+        deals: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        events: list[dict[str, Any]] = []
+        seen: set[str] = set()
+
+        def add(event: dict[str, Any], key: str) -> None:
+            if key in seen:
+                return
+            seen.add(key)
+            events.append(event)
+
+        for purchase in purchases:
+            add(
+                self.timeline_event(
+                    "purchase",
+                    purchase.get("product_name") or "Purchase",
+                    purchase.get("purchase_date") or purchase.get("created_at"),
+                    body=purchase.get("price_label") or "",
+                    meta=[
+                        purchase.get("cart_source") or "Purchase",
+                        purchase.get("order_id") and f"Order {purchase.get('order_id')}",
+                        purchase.get("transaction_id") and f"Txn {purchase.get('transaction_id')}",
+                    ],
+                    source_id=purchase.get("source_id"),
+                ),
+                f"purchase:{purchase.get('purchase_identity') or purchase.get('source_id')}",
+            )
+
+        for call in call_logs:
+            add(
+                self.timeline_event(
+                    "call",
+                    call.get("summary") or "Call logged",
+                    call.get("occurred_at") or call.get("call_at") or call.get("created_at"),
+                    body=call.get("notes") or "",
+                    meta=[
+                        call.get("direction_label") or "Call",
+                        call.get("provider"),
+                        call.get("duration_seconds") is not None and f"{call.get('duration_seconds')} seconds",
+                    ],
+                    url=call.get("recording_url"),
+                    source_id=call.get("source_id"),
+                ),
+                f"call:{call.get('source_id')}",
+            )
+
+        for note in notes:
+            content = self.clean_optional(note.get("content")) or ""
+            first_line = next((line.strip() for line in content.splitlines() if line.strip()), "")
+            add(
+                self.timeline_event(
+                    "note",
+                    first_line or "Note",
+                    note.get("created_at"),
+                    body=content,
+                    meta=[
+                        note.get("is_important") and "Important",
+                        "Local" if note.get("editable") else "Imported",
+                    ],
+                    source_id=note.get("source_id"),
+                ),
+                f"note:{note.get('source_id')}",
+            )
+
+        for task in tasks:
+            event_type = "task_completed" if task.get("completed") else "task"
+            due_date = self.clean_optional(task.get("due_date"))
+            add(
+                self.timeline_event(
+                    event_type,
+                    task.get("content") or "Task",
+                    task.get("completed_at") or task.get("due_date") or task.get("updated_at") or task.get("created_at"),
+                    meta=[
+                        "Completed" if task.get("completed") else "Open",
+                        task.get("task_source_label"),
+                        due_date and f"Due {due_date}",
+                    ],
+                    source_id=task.get("source_id"),
+                ),
+                f"task:{task.get('source_id')}:{event_type}",
+            )
+
+        for file_item in record_files:
+            add(
+                self.timeline_event(
+                    "file",
+                    file_item.get("title") or "File",
+                    file_item.get("occurred_at") or file_item.get("updated_at") or file_item.get("created_at"),
+                    meta=[file_item.get("size_label"), file_item.get("content_type")],
+                    url=file_item.get("file_url") or file_item.get("url"),
+                    source_id=file_item.get("source_id") or file_item.get("id"),
+                ),
+                f"file:{file_item.get('source_id') or file_item.get('id')}",
+            )
+
+        for item in archive_items:
+            archive_type = f"archive_{item.get('item_type') or 'item'}"
+            add(
+                self.timeline_event(
+                    archive_type,
+                    item.get("title") or item.get("label") or "Archive item",
+                    item.get("occurred_at") or item.get("updated_at") or item.get("created_at"),
+                    body=item.get("body") or "",
+                    meta=[
+                        item.get("label"),
+                        item.get("direction"),
+                        item.get("duration_seconds") and f"{item.get('duration_seconds')} seconds",
+                        item.get("size_label"),
+                    ],
+                    url=item.get("file_url") or item.get("url"),
+                    record_type="archive_item",
+                    record_id=item.get("id"),
+                    source_id=item.get("id"),
+                ),
+                f"archive:{item.get('id')}",
+            )
+
+        for deal in deals:
+            add(
+                self.timeline_event(
+                    "deal",
+                    deal.get("name") or "Deal",
+                    deal.get("updated_at"),
+                    meta=[
+                        deal.get("stage_name") or "No stage",
+                        deal.get("value") is not None and " ".join(str(part) for part in [deal.get("value"), deal.get("currency")] if part),
+                    ],
+                    record_type="deal",
+                    record_id=deal.get("source_id"),
+                    source_id=deal.get("source_id"),
+                ),
+                f"deal:{deal.get('source_id')}",
+            )
+
+        for resource in linked_resources:
+            add(
+                self.timeline_event(
+                    "link",
+                    resource.get("kind") or "Linked resource",
+                    resource.get("created_at") or resource.get("updated_at"),
+                    body=resource.get("context") or "",
+                    meta=[resource.get("source_label")],
+                    url=resource.get("url"),
+                ),
+                f"link:{resource.get('url')}:{resource.get('source_label')}",
+            )
+
+        for item in activity:
+            event_type = str(item.get("activity_type") or "activity")
+            activity_record_type = str(item.get("record_type") or "")
+            activity_record_id = item.get("record_id")
+            current_person_activity = activity_record_type == "person" and str(activity_record_id or "") == str(record.get("id") or "")
+            if event_type == "call_log" and current_person_activity:
+                continue
+            if event_type in {"note", "task", "task_completed"} and current_person_activity:
+                continue
+            if event_type == "deal":
+                continue
+            add(
+                self.timeline_event(
+                    event_type,
+                    item.get("summary") or labelize(event_type),
+                    item.get("occurred_at"),
+                    meta=[
+                        activity_record_type and labelize(activity_record_type),
+                        item.get("actor_email"),
+                    ],
+                    record_type=activity_record_type,
+                    record_id=activity_record_id,
+                ),
+                f"activity:{event_type}:{activity_record_type}:{activity_record_id}:{item.get('occurred_at')}:{item.get('summary')}",
+            )
+
+        if tags:
+            add(
+                self.timeline_event(
+                    "tags",
+                    "Current tags",
+                    record.get("updated_at") or record.get("created_at"),
+                    body=", ".join(tags),
+                    meta=[f"{len(tags)} tags"],
+                ),
+                "tags:current",
+            )
+
+        if record.get("created_at"):
+            add(
+                self.timeline_event(
+                    "created",
+                    "Person created",
+                    record.get("created_at"),
+                    meta=["Imported from Zendesk" if record.get("zendesk_contact_id") else "Local record"],
+                ),
+                "record:created",
+            )
+
+        return sorted(events, key=lambda item: self.activity_sort_key(item.get("occurred_at")), reverse=True)[:80]
 
     def clean_record(self, record: dict[str, Any]) -> dict[str, Any]:
         cleaned = dict(record)

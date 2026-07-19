@@ -2309,6 +2309,133 @@ button {
   top: 104px;
 }
 
+.person-timeline-section {
+  background: color-mix(in srgb, var(--surface) 92%, #eef4f1);
+  border-color: color-mix(in srgb, var(--line) 76%, #8ca89b);
+}
+
+.person-timeline {
+  display: grid;
+  gap: 0;
+  margin-top: 4px;
+}
+
+.person-timeline-event {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 16px minmax(0, 1fr);
+  position: relative;
+}
+
+.person-timeline-event:not(:last-child) {
+  padding-bottom: 12px;
+}
+
+.person-timeline-event:not(:last-child)::before {
+  background: var(--line);
+  bottom: 0;
+  content: "";
+  left: 5px;
+  position: absolute;
+  top: 16px;
+  width: 1px;
+}
+
+.person-timeline-marker {
+  background: var(--accent);
+  border: 2px solid var(--surface);
+  border-radius: 999px;
+  box-shadow: 0 0 0 1px var(--line);
+  height: 11px;
+  margin-top: 16px;
+  position: relative;
+  width: 11px;
+  z-index: 1;
+}
+
+.person-timeline-card {
+  background: rgba(255, 255, 255, 0.86);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 12px;
+}
+
+.person-timeline-card strong {
+  overflow-wrap: anywhere;
+}
+
+.person-timeline-card p {
+  color: var(--muted);
+  display: -webkit-box;
+  line-height: 1.45;
+  margin: 0;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+}
+
+.person-timeline-head,
+.person-timeline-foot {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.person-timeline-head {
+  justify-content: space-between;
+}
+
+.timeline-type-pill,
+.person-timeline-foot span {
+  background: var(--chip);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.2;
+  padding: 5px 8px;
+}
+
+.timeline-type-pill {
+  color: var(--text);
+  font-weight: 700;
+}
+
+.person-timeline-foot a,
+.person-timeline-foot .text-button {
+  font-size: 13px;
+  line-height: 1.2;
+  padding: 5px 0;
+}
+
+.timeline-event-purchase .person-timeline-marker {
+  background: #aa7b19;
+}
+
+.timeline-event-call .person-timeline-marker,
+.timeline-event-archive_call .person-timeline-marker {
+  background: #2f7f68;
+}
+
+.timeline-event-file .person-timeline-marker,
+.timeline-event-archive_document .person-timeline-marker {
+  background: #58799f;
+}
+
+.timeline-event-task .person-timeline-marker,
+.timeline-event-task_completed .person-timeline-marker {
+  background: #7866a8;
+}
+
+.timeline-overflow-note {
+  margin: 12px 0 0;
+}
+
 .detail-masthead {
   background: rgba(255, 255, 255, 0.96);
   border-bottom: 1px solid var(--line);

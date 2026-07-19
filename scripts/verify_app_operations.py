@@ -265,7 +265,10 @@ def main() -> int:
     assert "contact-card-strip" in app_js
     assert ".contact-card-strip" in styles_css
     assert ".contact-card-button" in styles_css
-    assert "<h3>Actions</h3>" in app_js
+    assert 'contactActions(detail, { title: "Contact" })' in app_js
+    assert "personTimelineSection(detail.timeline || [])" in app_js
+    assert "function personTimelineSection(events)" in app_js
+    assert "person_timeline(" in server_py
     assert "<h3>Contact Actions</h3>" not in app_js
     assert "<h3>Edit</h3>" not in app_js
     assert app_js.index('${contactActions(detail)}') < app_js.index('${editForm(detail)}') < app_js.index('${recordFileHero(detail)}')

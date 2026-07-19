@@ -5272,6 +5272,7 @@ function personDetailBody(detail) {
   const mainSections = [
     contactActions(detail, { title: "Contact" }),
     addressSection(detail, { title: "Addresses" }),
+    personTimelineSection(detail.timeline || []),
     addCallLogForm(detail),
     callLogsSection(detail.call_logs || []),
     addNoteForm(detail),
@@ -5323,6 +5324,70 @@ function personDetailBody(detail) {
       </div>
     </div>
   `;
+}
+
+function personTimelineSection(events) {
+  if (!events.length) return "";
+  const visibleEvents = events.slice(0, 50);
+  return `
+    <div class="detail-section person-timeline-section">
+      <div class="inline-header">
+        <h3>Timeline</h3>
+        <span class="muted">${formatNumber(events.length)} events</span>
+      </div>
+      <div class="person-timeline">
+        ${visibleEvents.map(personTimelineEvent).join("")}
+      </div>
+      ${events.length > visibleEvents.length ? `<p class="muted timeline-overflow-note">Showing latest ${formatNumber(visibleEvents.length)} events.</p>` : ""}
+    </div>
+  `;
+}
+
+function personTimelineEvent(event) {
+  const type = event.event_type || "activity";
+  const label = event.label || labelize(type);
+  const meta = Array.isArray(event.meta) ? event.meta.filter(Boolean) : [];
+  const title = event.title || label;
+  const body = event.body && event.body !== title ? event.body : "";
+  const action = timelineRecordAction(event);
+  return `
+    <div class="person-timeline-event ${timelineEventClass(type)}">
+      <div class="person-timeline-marker" aria-hidden="true"></div>
+      <div class="person-timeline-card">
+        <div class="person-timeline-head">
+          <span class="timeline-type-pill">${escapeHtml(label)}</span>
+          <span class="muted">${escapeHtml(formatDateTime(event.occurred_at || ""))}</span>
+        </div>
+        <strong>${escapeHtml(title)}</strong>
+        ${body ? `<p>${escapeHtml(body)}</p>` : ""}
+        ${
+          meta.length || event.url || action
+            ? `<div class="person-timeline-foot">
+                ${meta.map((item) => `<span>${escapeHtml(item)}</span>`).join("")}
+                ${event.url ? `<a href="${escapeHtml(event.url)}" target="_blank" rel="noreferrer">${type === "call" ? "Recording" : "Open"}</a>` : ""}
+                ${action}
+              </div>`
+            : ""
+        }
+      </div>
+    </div>
+  `;
+}
+
+function timelineRecordAction(event) {
+  const recordType = event.record_type || "";
+  const recordId = event.record_id || "";
+  if (recordType === "archive_item" && recordId) {
+    return `<button class="text-button archive-detail-button" type="button" data-id="${escapeHtml(recordId)}">Inspect</button>`;
+  }
+  if (!recordId || !detailTypeSupported(recordType)) return "";
+  if (state.currentDetail?.type === recordType && String(state.currentDetail?.record?.source_id || "") === String(recordId)) return "";
+  return `<button class="text-button record-button" type="button" data-type="${escapeHtml(recordType)}" data-id="${escapeHtml(recordId)}">Open ${escapeHtml(labelize(recordType))}</button>`;
+}
+
+function timelineEventClass(type) {
+  const normalized = String(type || "activity").replace(/[^a-z0-9_-]+/gi, "-").toLowerCase();
+  return `timeline-event-${normalized}`;
 }
 
 function detailHeader(title, subtitle, detail = null, options = {}) {
@@ -6347,6 +6412,7 @@ function wireDetailForms(detail) {
   wireProfileImageControls(detail);
   wireRecordFileControls(detail);
   wirePersonTagPicker(detail);
+  wireArchiveButtons(els.detail);
 
   document.querySelectorAll(".contact-copy-button").forEach((button) => {
     button.addEventListener("click", async () => {

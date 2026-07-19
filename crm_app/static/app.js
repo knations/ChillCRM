@@ -8584,7 +8584,6 @@ function addressBlock(address, editable) {
     <div class="address-card" data-address-key="${escapeHtml(address.address_key || "address")}">
       <div class="address-card-header">
         <strong>${escapeHtml(address.label || "Address")}</strong>
-        <span class="muted">${escapeHtml(address.source === "local" ? "Local" : "Zendesk")}</span>
       </div>
       <div class="address-fields">
         ${rows

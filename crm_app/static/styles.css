@@ -2871,6 +2871,18 @@ button {
   gap: 10px;
 }
 
+.call-recording-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.call-recording-line a {
+  color: var(--accent);
+  font-weight: 700;
+}
+
 .task-form input {
   width: 100%;
   border: 1px solid var(--line);

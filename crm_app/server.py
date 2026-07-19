@@ -1137,6 +1137,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             "/api/merge_duplicate_people",
             "/api/save_project_decision",
             "/api/webhooks/zapier_purchase",
+            "/api/webhooks/twilio_recording",
             "/api/save_view",
             "/api/delete_view",
             "/api/backup",
@@ -1165,6 +1166,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         "change_own_password": frozenset({"owner", "admin", "staff", "read_only", "migration_operator"}),
         "hosted_cutover": frozenset({"owner", "migration_operator"}),
         "inbound_purchase_webhook": frozenset({"owner", "admin"}),
+        "inbound_call_recording_webhook": frozenset({"owner", "admin"}),
     }
     get_permission_actions = {
         "/api/summary": "view_dashboard_reports",
@@ -1228,6 +1230,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         "/api/merge_duplicate_people": "merge_duplicate_people",
         "/api/save_project_decision": "save_project_decision",
         "/api/webhooks/zapier_purchase": "inbound_purchase_webhook",
+        "/api/webhooks/twilio_recording": "inbound_call_recording_webhook",
         "/api/save_view": "search_filter_save_views",
         "/api/delete_view": "search_filter_save_views",
         "/api/backup": "manual_backup",
@@ -2141,7 +2144,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
     def should_require_auth_for_get(self, path: str) -> bool:
         if not self.auth_required_enabled():
             return False
-        if path in {"/", "/api/auth/status", "/health", "/api/health"}:
+        if path in {"/", "/api/auth/status", "/health", "/api/health", "/api/twilio/voice"}:
             return False
         if path.startswith("/static/"):
             return False
@@ -2150,7 +2153,14 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
     def should_require_auth_for_post(self, path: str) -> bool:
         if not self.auth_required_enabled():
             return False
-        return path not in {"/api/auth/login", "/api/auth/logout", "/api/auth/owner_password_recovery", "/api/webhooks/zapier_purchase"}
+        return path not in {
+            "/api/auth/login",
+            "/api/auth/logout",
+            "/api/auth/owner_password_recovery",
+            "/api/webhooks/zapier_purchase",
+            "/api/webhooks/twilio_recording",
+            "/api/twilio/voice",
+        }
 
     def zapier_purchase_webhook_secret(self) -> str:
         return os.environ.get("CHILLCRM_ZAPIER_WEBHOOK_SECRET", "").strip() or os.environ.get("ZAPIER_WEBHOOK_SECRET", "").strip()
@@ -2198,6 +2208,116 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                 403,
             )
         return None
+
+    def twilio_auth_token(self) -> str:
+        return os.environ.get("CHILLCRM_TWILIO_AUTH_TOKEN", "").strip() or os.environ.get("TWILIO_AUTH_TOKEN", "").strip()
+
+    def twilio_webhook_secret(self) -> str:
+        return os.environ.get("CHILLCRM_TWILIO_WEBHOOK_SECRET", "").strip()
+
+    def twilio_forward_to_phone(self) -> str:
+        return os.environ.get("CHILLCRM_TWILIO_FORWARD_TO", "").strip()
+
+    def twilio_owned_phone_keys(self) -> set[str]:
+        values = [
+            os.environ.get("CHILLCRM_TWILIO_PHONE_NUMBER", ""),
+            os.environ.get("CHILLCRM_TWILIO_OWNED_NUMBERS", ""),
+        ]
+        keys: set[str] = set()
+        for raw in values:
+            for value in str(raw or "").replace(";", ",").split(","):
+                key = self.normalize_phone_key(value)
+                if key:
+                    keys.add(key)
+        return keys
+
+    def request_absolute_url(self) -> str:
+        host = (
+            self.headers.get("X-Forwarded-Host")
+            or self.headers.get("Host")
+            or os.environ.get("APP_BASE_URL", "").replace("https://", "").replace("http://", "").split("/")[0]
+            or "localhost"
+        )
+        proto = self.headers.get("X-Forwarded-Proto")
+        if not proto:
+            proto = "https" if str(host).split(":")[0] in PRODUCTION_HOSTS or os.environ.get("VERCEL") else "http"
+        return f"{proto}://{host}{self.path}"
+
+    def app_base_url_for_request(self) -> str:
+        configured = os.environ.get("APP_BASE_URL", "").strip().rstrip("/")
+        if configured:
+            return configured
+        host = self.headers.get("X-Forwarded-Host") or self.headers.get("Host") or "localhost"
+        proto = self.headers.get("X-Forwarded-Proto") or ("https" if str(host).split(":")[0] in PRODUCTION_HOSTS or os.environ.get("VERCEL") else "http")
+        return f"{proto}://{host}".rstrip("/")
+
+    def twilio_supplied_webhook_secret(self, payload: dict[str, Any]) -> str:
+        headers = getattr(self, "headers", {})
+        for header_name in ["X-CHILLCRM-WEBHOOK-SECRET", "X-TWILIO-WEBHOOK-SECRET"]:
+            value = str(headers.get(header_name, "") if hasattr(headers, "get") else "").strip()
+            if value:
+                return value
+        params = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+        for key in ["secret", "twilio_secret", "webhook_secret"]:
+            value = self.clean_optional(params.get(key, [""])[0] if params.get(key) else "")
+            if value:
+                return value
+        for key in ["secret", "twilio_secret", "webhook_secret"]:
+            value = self.clean_optional(payload.get(key))
+            if value:
+                return value
+        return ""
+
+    def twilio_signature_valid(self, payload: dict[str, Any]) -> bool:
+        token = self.twilio_auth_token()
+        supplied = str(self.headers.get("X-Twilio-Signature", "") if hasattr(self.headers, "get") else "").strip()
+        if not token or not supplied:
+            return False
+        url = self.request_absolute_url()
+        material = url
+        if getattr(self, "command", "").upper() != "GET":
+            material += "".join(
+                f"{key}{payload[key]}"
+                for key in sorted(payload)
+                if payload.get(key) is not None
+            )
+        digest = base64.b64encode(hmac.new(token.encode("utf-8"), material.encode("utf-8"), hashlib.sha1).digest()).decode("ascii")
+        return hmac.compare_digest(digest, supplied)
+
+    def twilio_webhook_authorization_error(self, payload: dict[str, Any]) -> tuple[dict[str, Any], int] | None:
+        if self.twilio_auth_token():
+            if self.twilio_signature_valid(payload):
+                return None
+            return (
+                {
+                    "ok": False,
+                    "error": "Twilio webhook signature is invalid.",
+                    "code": "twilio_signature_invalid",
+                },
+                403,
+            )
+        expected = self.twilio_webhook_secret()
+        if expected:
+            supplied = self.twilio_supplied_webhook_secret(payload)
+            if supplied and hmac.compare_digest(supplied, expected):
+                return None
+            return (
+                {
+                    "ok": False,
+                    "error": "Twilio webhook secret is invalid or missing.",
+                    "code": "twilio_webhook_secret_invalid",
+                },
+                403,
+            )
+        return (
+            {
+                "ok": False,
+                "error": "Twilio webhook authentication is not configured.",
+                "code": "twilio_webhook_auth_not_configured",
+                "required_env": "CHILLCRM_TWILIO_AUTH_TOKEN",
+            },
+            503,
+        )
 
     def send_auth_required(self, path: str) -> None:
         self.send_json(
@@ -2505,6 +2625,9 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(encoded)))
         self.end_headers()
         self.wfile.write(encoded)
+
+    def send_xml(self, text: str, status: int = 200) -> None:
+        self.send_text(text, status=status, content_type="application/xml")
 
     def send_csv(self, filename: str, rows: list[dict[str, Any]]) -> None:
         encoded = self.csv_bytes(rows)
@@ -2867,6 +2990,13 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             auth_user = self.current_auth_user()
             if path == "/api/auth/status":
                 self.send_json(self.auth_status_payload())
+            elif path == "/api/twilio/voice":
+                authorization_error = self.twilio_webhook_authorization_error({key: values[0] if values else "" for key, values in params.items()})
+                if authorization_error:
+                    payload, status = authorization_error
+                    self.send_json(payload, status)
+                else:
+                    self.send_twilio_voice_response({key: values[0] if values else "" for key, values in params.items()})
             elif self.should_require_auth_for_get(path) and not auth_user:
                 self.send_auth_required(path)
             elif self.should_require_auth_for_get(path) and not self.user_can_perform(auth_user, self.permission_action_for_get(path)):
@@ -2993,6 +3123,24 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             if self.should_block_local_write(path):
                 self.send_local_write_frozen(path)
                 return
+            if path == "/api/twilio/voice":
+                payload = self.read_webhook_body()
+                authorization_error = self.twilio_webhook_authorization_error(payload)
+                if authorization_error:
+                    error_payload, status = authorization_error
+                    self.send_json(error_payload, status)
+                    return
+                self.send_twilio_voice_response(payload)
+                return
+            if path == "/api/webhooks/twilio_recording":
+                payload = self.read_webhook_body()
+                authorization_error = self.twilio_webhook_authorization_error(payload)
+                if authorization_error:
+                    error_payload, status = authorization_error
+                    self.send_json(error_payload, status)
+                    return
+                self.send_json(self.twilio_recording_webhook(payload))
+                return
             if path == "/api/webhooks/zapier_purchase":
                 authorization_error = self.zapier_purchase_webhook_authorization_error()
                 if authorization_error:
@@ -3077,15 +3225,41 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         except Exception as exc:
             self.send_json({"error": str(exc)}, 500)
 
-    def read_json_body(self) -> dict[str, Any]:
+    def read_body_text(self) -> str:
         length = int(self.headers.get("Content-Length", "0"))
         if length <= 0:
+            return ""
+        return self.rfile.read(length).decode("utf-8")
+
+    def read_json_body(self) -> dict[str, Any]:
+        raw = self.read_body_text()
+        if not raw:
             return {}
-        raw = self.rfile.read(length).decode("utf-8")
         payload = json.loads(raw)
         if not isinstance(payload, dict):
             raise ValueError("Expected a JSON object.")
         return payload
+
+    def read_webhook_body(self) -> dict[str, Any]:
+        raw = self.read_body_text()
+        if not raw:
+            return {}
+        content_type = str(self.headers.get("Content-Type", "")).lower()
+        if "json" in content_type:
+            payload = json.loads(raw)
+            if not isinstance(payload, dict):
+                raise ValueError("Expected a JSON object.")
+            return {str(key): value for key, value in payload.items()}
+        parsed = urllib.parse.parse_qs(raw, keep_blank_values=True)
+        if parsed:
+            return {str(key): values[-1] if values else "" for key, values in parsed.items()}
+        try:
+            payload = json.loads(raw)
+        except json.JSONDecodeError:
+            return {}
+        if not isinstance(payload, dict):
+            raise ValueError("Expected a JSON object.")
+        return {str(key): value for key, value in payload.items()}
 
     def saved_views(self, params: dict[str, list[str]]) -> dict[str, Any]:
         list_type = (params.get("type", ["people"])[0] or "people").lower()
@@ -16970,6 +17144,12 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             "occurred_at": occurred_at,
             "created_at": note.get("created_at"),
             "updated_at": note.get("updated_at"),
+            "provider": self.clean_optional(source.get("provider")) or "",
+            "external_phone": self.clean_optional(source.get("external_phone")) or "",
+            "duration_seconds": source.get("duration_seconds"),
+            "recording_url": self.clean_optional(source.get("recording_playback_url")) or self.clean_optional(source.get("recording_url")) or "",
+            "recording_sid": self.clean_optional(source.get("recording_sid")) or "",
+            "call_sid": self.clean_optional(source.get("call_sid")) or "",
             "editable": bool(note.get("editable")),
         }
 
@@ -22268,6 +22448,337 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             "detail": self.record_detail({"type": ["person"], "id": [str(person_id)]}),
         }
 
+    def twilio_webhook_actor(self) -> dict[str, Any]:
+        return {"id": None, "email": "twilio-recording-webhook@chillcrm.local", "roles": ["webhook"]}
+
+    def webhook_payload_value(self, payload: dict[str, Any], *keys: str) -> str:
+        if not isinstance(payload, dict):
+            return ""
+        lower_lookup = {str(key).lower(): value for key, value in payload.items()}
+        query_params = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+        for key in keys:
+            for candidate in [key, key.lower(), key.upper()]:
+                if candidate in payload:
+                    value = self.clean_optional(payload.get(candidate))
+                    if value:
+                        return value
+                if candidate in query_params:
+                    value = self.clean_optional(query_params.get(candidate, [""])[0])
+                    if value:
+                        return value
+            value = self.clean_optional(lower_lookup.get(key.lower()))
+            if value:
+                return value
+        return ""
+
+    def twilio_normalize_direction(self, value: Any) -> str:
+        text = str(value or "").strip().lower()
+        if text.startswith("inbound"):
+            return "inbound"
+        if text.startswith("outbound"):
+            return "outbound"
+        return ""
+
+    def twilio_e164_phone(self, value: Any) -> str:
+        text = str(value or "").strip()
+        if not text:
+            return ""
+        digits = re.sub(r"\D", "", text)
+        if len(digits) == 10:
+            return f"+1{digits}"
+        if len(digits) == 11 and digits.startswith("1"):
+            return f"+{digits}"
+        return text
+
+    def twilio_external_phone(self, payload: dict[str, Any]) -> str:
+        from_number = self.webhook_payload_value(payload, "From", "Caller", "from")
+        to_number = self.webhook_payload_value(payload, "To", "Called", "to")
+        direction = self.twilio_normalize_direction(self.webhook_payload_value(payload, "Direction", "direction"))
+        if direction == "outbound":
+            return to_number or from_number
+        if direction == "inbound":
+            return from_number or to_number
+
+        owned_keys = self.twilio_owned_phone_keys()
+        from_key = self.normalize_phone_key(from_number)
+        to_key = self.normalize_phone_key(to_number)
+        if from_key and from_key in owned_keys:
+            return to_number or from_number
+        if to_key and to_key in owned_keys:
+            return from_number or to_number
+        return from_number or to_number
+
+    def twilio_person_match_by_phone(self, conn: Any, phone_number: str) -> dict[str, Any]:
+        phone_key = self.normalize_phone_key(phone_number)
+        if not phone_key:
+            return {"status": "no_phone", "person": None, "matches": [], "phone_key": None}
+        if self.record_lifecycle_table_exists(conn):
+            rows = rows_to_dicts(
+                conn.execute(
+                    """
+                    SELECT p.id, p.name, p.email, p.phone, p.mobile, p.updated_at,
+                           coalesce(lrl.lifecycle_status, 'active') AS lifecycle_status
+                    FROM people p
+                    LEFT JOIN local_record_lifecycle lrl
+                      ON lrl.record_type = 'person'
+                     AND lrl.record_id = p.id
+                    WHERE coalesce(trim(p.phone), '') != ''
+                       OR coalesce(trim(p.mobile), '') != ''
+                    ORDER BY p.updated_at DESC, p.id DESC
+                    """
+                ).fetchall()
+            )
+        else:
+            rows = rows_to_dicts(
+                conn.execute(
+                    """
+                    SELECT id, name, email, phone, mobile, updated_at, 'active' AS lifecycle_status
+                    FROM people
+                    WHERE coalesce(trim(phone), '') != ''
+                       OR coalesce(trim(mobile), '') != ''
+                    ORDER BY updated_at DESC, id DESC
+                    """
+                ).fetchall()
+            )
+        matches: list[dict[str, Any]] = []
+        for row in rows:
+            matched_fields = []
+            for field in ["phone", "mobile"]:
+                if self.normalize_phone_key(row.get(field)) == phone_key:
+                    matched_fields.append(field)
+            if matched_fields:
+                match = dict(row)
+                match["matched_fields"] = matched_fields
+                matches.append(match)
+        active_matches = [match for match in matches if str(match.get("lifecycle_status") or "active").lower() != "inactive"]
+        if len(active_matches) == 1:
+            return {"status": "unique", "person": active_matches[0], "matches": active_matches, "phone_key": phone_key}
+        if len(active_matches) > 1:
+            return {"status": "ambiguous", "person": None, "matches": active_matches, "phone_key": phone_key}
+        if matches:
+            return {"status": "inactive_only", "person": None, "matches": matches, "phone_key": phone_key}
+        return {"status": "no_match", "person": None, "matches": [], "phone_key": phone_key}
+
+    def twilio_recording_note_exists(self, conn: Any, recording_sid: str, call_sid: str) -> dict[str, Any] | None:
+        if not recording_sid and not call_sid:
+            return None
+        rows = rows_to_dicts(
+            conn.execute(
+                """
+                SELECT id AS source_id, record_id, source_json
+                FROM notes
+                WHERE record_type = 'person'
+                  AND coalesce(note_type, '') = 'call_log'
+                ORDER BY id DESC
+                LIMIT 2000
+                """
+            ).fetchall()
+        )
+        for row in rows:
+            source = self.decoded_json_object(row.get("source_json"))
+            if source.get("local_source") != "twilio_recording_webhook":
+                continue
+            if recording_sid and self.clean_optional(source.get("recording_sid")) == recording_sid:
+                return row
+            if call_sid and self.clean_optional(source.get("call_sid")) == call_sid:
+                return row
+        return None
+
+    def twilio_recording_summary(self, payload: dict[str, Any]) -> dict[str, Any]:
+        recording_status = self.webhook_payload_value(payload, "RecordingStatus", "recording_status") or "completed"
+        recording_url = self.webhook_payload_value(payload, "RecordingUrl", "recording_url")
+        recording_sid = self.webhook_payload_value(payload, "RecordingSid", "recording_sid")
+        call_sid = self.webhook_payload_value(payload, "CallSid", "call_sid")
+        account_sid = self.webhook_payload_value(payload, "AccountSid", "account_sid")
+        direction = self.twilio_normalize_direction(self.webhook_payload_value(payload, "Direction", "direction"))
+        external_phone = self.twilio_external_phone(payload)
+        from_number = self.webhook_payload_value(payload, "From", "Caller", "from")
+        to_number = self.webhook_payload_value(payload, "To", "Called", "to")
+        duration = self.webhook_payload_value(payload, "RecordingDuration", "CallDuration", "Duration", "duration")
+        call_at = (
+            self.webhook_payload_value(payload, "RecordingStartTime", "Timestamp", "CallTimestamp", "call_at")
+            or now_iso()
+        )
+        call_at = self.normalize_call_log_at(call_at, strict=False) or now_iso()
+        recording_playback_url = f"{recording_url}.mp3" if recording_url and not re.search(r"\.(mp3|wav)$", recording_url, re.IGNORECASE) else recording_url
+        return {
+            "recording_status": recording_status,
+            "recording_url": recording_url,
+            "recording_playback_url": recording_playback_url,
+            "recording_sid": recording_sid,
+            "call_sid": call_sid,
+            "account_sid": account_sid,
+            "direction": direction,
+            "external_phone": external_phone,
+            "from_number": from_number,
+            "to_number": to_number,
+            "duration_seconds": int(duration) if str(duration or "").strip().isdigit() else None,
+            "call_at": call_at,
+            "received_at": now_iso(),
+        }
+
+    def twilio_recording_note_content(self, summary: dict[str, Any]) -> tuple[str, str]:
+        direction_label = self.call_log_direction_label(summary.get("direction"))
+        summary_text = f"Recorded {direction_label.lower()} call" if direction_label else "Recorded call"
+        notes: list[str] = []
+        if summary.get("external_phone"):
+            notes.append(f"Phone: {summary['external_phone']}")
+        if summary.get("duration_seconds") is not None:
+            notes.append(f"Duration: {summary['duration_seconds']} seconds")
+        if summary.get("recording_playback_url"):
+            notes.append(f"Recording: {summary['recording_playback_url']}")
+        if summary.get("call_sid"):
+            notes.append(f"Twilio Call SID: {summary['call_sid']}")
+        if summary.get("recording_sid"):
+            notes.append(f"Twilio Recording SID: {summary['recording_sid']}")
+        return summary_text, "\n".join(notes)
+
+    def twilio_recording_source_payload(self, payload: dict[str, Any], summary: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "local_source": "twilio_recording_webhook",
+            "provider": "Twilio",
+            "summary": self.twilio_recording_note_content(summary)[0],
+            "notes": self.twilio_recording_note_content(summary)[1],
+            "direction": summary.get("direction") or "",
+            "call_at": summary.get("call_at"),
+            "external_phone": summary.get("external_phone"),
+            "from_number": summary.get("from_number"),
+            "to_number": summary.get("to_number"),
+            "duration_seconds": summary.get("duration_seconds"),
+            "recording_status": summary.get("recording_status"),
+            "recording_url": summary.get("recording_url"),
+            "recording_playback_url": summary.get("recording_playback_url"),
+            "recording_sid": summary.get("recording_sid"),
+            "call_sid": summary.get("call_sid"),
+            "account_sid": summary.get("account_sid"),
+            "received_at": summary.get("received_at"),
+            "payload": self.redact_webhook_payload(payload),
+        }
+
+    def twilio_recording_webhook(self, payload: dict[str, Any]) -> dict[str, Any]:
+        if not isinstance(payload, dict):
+            raise ValueError("Expected a Twilio webhook payload.")
+        summary = self.twilio_recording_summary(payload)
+        if str(summary.get("recording_status") or "").lower() not in {"completed", "complete"}:
+            return {"ok": True, "linked": False, "ignored": True, "reason": "recording_not_completed", "recording_status": summary.get("recording_status")}
+        if not summary.get("recording_playback_url"):
+            return {"ok": True, "linked": False, "ignored": True, "reason": "recording_url_missing"}
+
+        with self.db() as conn:
+            duplicate = self.twilio_recording_note_exists(conn, summary.get("recording_sid") or "", summary.get("call_sid") or "")
+            if duplicate:
+                return {
+                    "ok": True,
+                    "linked": True,
+                    "duplicate": True,
+                    "person_id": int(duplicate["record_id"]),
+                    "note_id": int(duplicate["source_id"]),
+                }
+            match = self.twilio_person_match_by_phone(conn, summary.get("external_phone") or "")
+            if match["status"] != "unique":
+                return {
+                    "ok": True,
+                    "linked": False,
+                    "duplicate": False,
+                    "match_status": match["status"],
+                    "phone_key": match.get("phone_key"),
+                    "match_count": len(match.get("matches") or []),
+                    "reason": "unique_active_person_phone_match_required",
+                }
+            person_id = int(match["person"]["id"])
+
+        backup_path = self.create_backup(f"before_twilio_recording_{summary.get('recording_sid') or summary.get('call_sid') or 'call'}")
+        summary_text, notes = self.twilio_recording_note_content(summary)
+        content = self.call_log_content(summary_text, notes, summary.get("direction") or "", summary.get("call_at"))
+        source_payload = self.twilio_recording_source_payload(payload, summary)
+        actor_user = self.twilio_webhook_actor()
+        with self.db() as conn:
+            duplicate = self.twilio_recording_note_exists(conn, summary.get("recording_sid") or "", summary.get("call_sid") or "")
+            if duplicate:
+                return {
+                    "ok": True,
+                    "linked": True,
+                    "duplicate": True,
+                    "person_id": int(duplicate["record_id"]),
+                    "note_id": int(duplicate["source_id"]),
+                }
+            note_id = self.insert_local_note_row(
+                conn,
+                "person",
+                person_id,
+                content,
+                now_iso(),
+                source_payload=source_payload,
+                note_type="call_log",
+            )
+            self.insert_audit_log(
+                conn,
+                action="twilio_recording_webhook",
+                record_type="person",
+                record_id=person_id,
+                field_name="call_recording",
+                old_value=None,
+                new_value={
+                    "summary": summary_text,
+                    "recording_sid": summary.get("recording_sid"),
+                    "call_sid": summary.get("call_sid"),
+                    "external_phone": summary.get("external_phone"),
+                    "duration_seconds": summary.get("duration_seconds"),
+                    "note_id": note_id,
+                },
+                note=f"Backup: {backup_path.name}; note_id={note_id}; recording_sid={summary.get('recording_sid') or ''}",
+                actor_user=actor_user,
+                permission_action="inbound_call_recording_webhook",
+            )
+            conn.commit()
+        return {
+            "ok": True,
+            "linked": True,
+            "duplicate": False,
+            "person_id": person_id,
+            "note_id": note_id,
+            "backup": str(backup_path),
+            "recording_sid": summary.get("recording_sid"),
+            "call_sid": summary.get("call_sid"),
+            "detail": self.record_detail({"type": ["person"], "id": [str(person_id)]}),
+        }
+
+    def xml_escape(self, value: Any) -> str:
+        return (
+            str(value or "")
+            .replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
+            .replace('"', "&quot;")
+            .replace("'", "&apos;")
+        )
+
+    def send_twilio_voice_response(self, payload: dict[str, Any]) -> None:
+        forward_to = self.twilio_e164_phone(self.twilio_forward_to_phone())
+        if not forward_to:
+            self.send_xml('<?xml version="1.0" encoding="UTF-8"?><Response><Say>Call forwarding is not configured.</Say><Hangup /></Response>')
+            return
+        callback_params = {
+            "from": self.webhook_payload_value(payload, "From", "Caller", "from"),
+            "to": self.webhook_payload_value(payload, "To", "Called", "to"),
+            "direction": self.webhook_payload_value(payload, "Direction", "direction") or "inbound",
+            "call_sid": self.webhook_payload_value(payload, "CallSid", "call_sid"),
+        }
+        callback_query = urllib.parse.urlencode({key: value for key, value in callback_params.items() if value})
+        callback_url = f"{self.app_base_url_for_request()}/api/webhooks/twilio_recording"
+        if callback_query:
+            callback_url = f"{callback_url}?{callback_query}"
+        response = (
+            '<?xml version="1.0" encoding="UTF-8"?>'
+            "<Response>"
+            f'<Dial record="record-from-answer-dual" recordingStatusCallback="{self.xml_escape(callback_url)}" '
+            'recordingStatusCallbackMethod="POST" recordingStatusCallbackEvent="completed absent">'
+            f"<Number>{self.xml_escape(forward_to)}</Number>"
+            "</Dial>"
+            "</Response>"
+        )
+        self.send_xml(response)
+
     def validate_create_fields(self, record_type: str, fields: dict[str, Any]) -> None:
         if record_type in {"company", "deal"}:
             if not self.clean_optional(fields.get("name")):
@@ -22736,13 +23247,15 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
 
         backup_path = self.create_backup(f"before_call_log_update_{note_id}")
         timestamp = now_iso()
-        source_payload = {
-            "local_source": "call_log",
+        source_payload = source
+        if not source_payload.get("local_source"):
+            source_payload["local_source"] = "call_log"
+        source_payload.update({
             "summary": summary,
             "notes": notes,
             "direction": direction,
             "call_at": call_at,
-        }
+        })
         content = self.call_log_content(summary, notes, direction, call_at)
         with self.db() as conn:
             note = conn.execute("SELECT * FROM notes WHERE id = ?", (note_id,)).fetchone()

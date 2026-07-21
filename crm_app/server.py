@@ -17672,7 +17672,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             {"key": "objections", "label": "Objections", "kind": "textarea"},
             {"key": "proposal_status", "label": "Proposal Status", "kind": "select", "options": "Not started|Drafted|Sent|Viewed|Negotiating|Accepted|Declined|Expired"},
             {"key": "proposal_link", "label": "Proposal Link", "kind": "url"},
-            {"key": "upgrade_to", "label": "Upgrade To", "kind": "select", "options": "The FORUM Mastermind|Sovereign League|CHILLIONAIRE FULL ACCESS|CHILLIONAIRE MONTHLY ACCESS|Family Mastermind|Family Mastermind Event Upgrade|BMSE Event|Big Money Small Events|The Federation|Custom"},
+            {"key": "upgrade_to", "label": "Upgrade To", "kind": "select", "options": "FAMILY MASTERMIND|FAMILY MASTERMIND RENEWAL|OTHER"},
             {"key": "won_lost_reason", "label": "Won/Lost Reason", "kind": "textarea"},
             {"key": "handoff_next_step", "label": "Handoff Next Step", "kind": "textarea"},
         ]
@@ -17766,7 +17766,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             "local_task": local_next_task,
             "missing": not bool(local_next_task) and not (won and bool(upgrade_to)),
             "upgrade_to": upgrade_to,
-            "upgrade_options": ["The FORUM Mastermind", "Sovereign League", "CHILLIONAIRE FULL ACCESS", "CHILLIONAIRE MONTHLY ACCESS", "Family Mastermind", "Family Mastermind Event Upgrade", "BMSE Event", "Big Money Small Events", "The Federation", "Custom"],
+            "upgrade_options": ["FAMILY MASTERMIND", "FAMILY MASTERMIND RENEWAL", "OTHER"],
             "imported_open_count": int(imported_open_count or 0),
         }
 

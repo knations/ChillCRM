@@ -1712,10 +1712,10 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             ).fetchall()
         )
         user["roles"] = [role["role_key"] for role in roles]
-        try:
+        if self.passkey_table_exists(conn):
             passkey_row = conn.execute("SELECT count(*) AS count FROM app_passkeys WHERE app_user_id = ?", (user_id,)).fetchone()
             user["passkey_count"] = int(passkey_row["count"] if passkey_row else 0)
-        except Exception:
+        else:
             user["passkey_count"] = 0
         return user
 
@@ -2207,6 +2207,13 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
     def ensure_passkey_schema(self, conn: Any) -> None:
         for statement in self.passkey_schema_statements():
             conn.execute(statement)
+
+    def passkey_table_exists(self, conn: Any) -> bool:
+        if self.hosted_postgres_adapter_enabled():
+            row = conn.execute("SELECT to_regclass('crm.app_passkeys') AS table_name").fetchone()
+            return bool(row and row["table_name"])
+        row = conn.execute("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'app_passkeys'").fetchone()
+        return bool(row)
 
     def passkey_challenge_token(self, kind: str, payload: dict[str, Any]) -> str:
         if not self.session_secret():

@@ -927,6 +927,7 @@ def translate_sqlite_sql_for_postgres(sql: str) -> str:
         flags=re.IGNORECASE,
     )
     translated = re.sub(r"\bdate\s*\(\s*'now'\s*,\s*'\+7 days'\s*\)", "(CURRENT_DATE + INTERVAL '7 days')::date", translated, flags=re.IGNORECASE)
+    translated = re.sub(r"\bdate\s*\(\s*'now'\s*,\s*'-14 days'\s*\)", "(CURRENT_DATE - INTERVAL '14 days')::date", translated, flags=re.IGNORECASE)
     translated = re.sub(r"\bdate\s*\(\s*'now'\s*\)", "CURRENT_DATE", translated, flags=re.IGNORECASE)
     translated = re.sub(r"\bdate\s*\(\s*([A-Za-z_][A-Za-z0-9_.]*)\s*\)", r"CAST(\1 AS date)", translated, flags=re.IGNORECASE)
     translated = re.sub(r"\bdatetime\s*\(\s*'now'\s*\)", "CURRENT_TIMESTAMP", translated, flags=re.IGNORECASE)
@@ -17639,6 +17640,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             "organization": organization,
             "notes": self.related_notes(conn, "deal", record_id),
             "tasks": self.related_tasks(conn, "deal", record_id),
+            "next_action": self.deal_next_action(conn, record_id, record),
             "activity": self.activity_for(conn, "deal", record_id, 30),
             "tags": self.tags_for(conn, "deal", record_id),
             "addresses": self.public_addresses(address_info["addresses"]),
@@ -17650,6 +17652,58 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             "record_files": self.record_files_for(conn, "deal", record_id),
             "archive_items": self.imported_archive_for(conn, "deal", record_id),
             "review_flags": self.review_flags_for(conn, "deal", record_id),
+        }
+
+    def deal_next_action(self, conn: sqlite3.Connection, record_id: int, record: dict[str, Any]) -> dict[str, Any]:
+        stage_category = str(record.get("stage_category") or "").strip()
+        active = stage_category in {"incoming", "in_progress"}
+        local_next_task = row_to_dict(
+            conn.execute(
+                """
+                SELECT id AS source_id, content, due_date, remind_at, created_at, updated_at
+                FROM tasks
+                WHERE record_type = 'deal'
+                  AND record_id = ?
+                  AND completed = 0
+                  AND zendesk_task_id IS NULL
+                ORDER BY CASE WHEN due_date IS NULL THEN 1 ELSE 0 END, date(due_date) ASC, updated_at DESC, id DESC
+                LIMIT 1
+                """,
+                (record_id,),
+            ).fetchone()
+        )
+        imported_open_count = conn.execute(
+            """
+            SELECT count(*)
+            FROM tasks
+            WHERE record_type = 'deal'
+              AND record_id = ?
+              AND completed = 0
+              AND zendesk_task_id IS NOT NULL
+            """,
+            (record_id,),
+        ).fetchone()[0]
+        if local_next_task:
+            status = "ready"
+            title = "Next Action Set"
+            message = local_next_task.get("content") or "Local next action is set."
+        elif active:
+            status = "attention"
+            title = "Next Action Needed"
+            message = "This active deal needs a local follow-up, call, proposal, meeting, review, close, or handoff task."
+        else:
+            status = "waiting"
+            title = "No Active Next Action Required"
+            message = "Next actions are required for incoming and in-progress deals."
+        return {
+            "status": status,
+            "title": title,
+            "message": message,
+            "active": active,
+            "stage_category": stage_category,
+            "local_task": local_next_task,
+            "missing": active and not bool(local_next_task),
+            "imported_open_count": int(imported_open_count or 0),
         }
 
     def edit_options(self, conn: sqlite3.Connection, record_type: str) -> dict[str, list[dict[str, Any]]]:

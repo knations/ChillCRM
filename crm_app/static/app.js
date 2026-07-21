@@ -5480,6 +5480,7 @@ function defaultDetailBody(detail) {
   const fileItems = [...(detail.record_files || []), ...(detail.archive_items || [])];
   return `
     ${contactActions(detail)}
+    ${dealNextActionPanel(detail)}
     ${editForm(detail)}
     ${recordFileHero(detail)}
     ${recordSnapshot(detail)}
@@ -5506,6 +5507,28 @@ function defaultDetailBody(detail) {
     ${notesSection(detail.notes || [])}
     ${addTaskForm(detail)}
     ${tasksSection(detail.tasks || [])}
+  `;
+}
+
+function dealNextActionPanel(detail) {
+  if (detail.type !== "deal") return "";
+  const next = detail.next_action || {};
+  const tone = next.status === "ready" ? "green" : next.status === "attention" ? "coral" : "gold";
+  const task = next.local_task || {};
+  const taskMeta = [task.due_date ? `Due ${formatDate(task.due_date)}` : "", next.imported_open_count ? `${formatNumber(next.imported_open_count)} imported open reminder${Number(next.imported_open_count) === 1 ? "" : "s"}` : ""]
+    .filter(Boolean)
+    .join(" · ");
+  return `
+    <div class="detail-section deal-next-action-panel ${escapeHtml(next.status || "")}">
+      <div class="inline-header">
+        <div>
+          <h3>${escapeHtml(next.title || "Next Action")}</h3>
+          <p>${escapeHtml(next.message || "")}</p>
+          ${taskMeta ? `<p class="muted">${escapeHtml(taskMeta)}</p>` : ""}
+        </div>
+        <button type="button" class="text-button focus-next-action-task">${next.missing ? "Add Next Action" : "Update Tasks"}</button>
+      </div>
+    </div>
   `;
 }
 
@@ -6494,14 +6517,15 @@ function focusNextCallLogEntry() {
 
 function addTaskForm(detail) {
   if (!["person", "company", "lead", "deal"].includes(detail.type)) return "";
+  const nextActionMissing = detail.type === "deal" && detail.next_action?.missing;
   return `
-    <div class="detail-section">
+    <div class="detail-section ${nextActionMissing ? "next-action-task-form" : ""}">
       <div class="inline-header">
-        <h3>Add Task</h3>
+        <h3>${nextActionMissing ? "Add Next Action" : "Add Task"}</h3>
         <button class="text-button" id="addTaskButton">Add</button>
       </div>
       <form id="taskForm" class="task-form">
-        <textarea name="content" class="note-input" rows="3"></textarea>
+        <textarea name="content" class="note-input" rows="3" placeholder="${nextActionMissing ? "Example: Follow up with proposal, call to review objections, send payment link..." : ""}"></textarea>
         <input name="due_date" type="date">
       </form>
     </div>

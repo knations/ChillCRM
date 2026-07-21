@@ -772,7 +772,8 @@ button {
   margin-top: 6px;
 }
 
-.deal-upgrade-action-form {
+.deal-upgrade-action-form,
+.deal-follow-up-action-form {
   align-items: end;
   display: grid;
   gap: 12px;
@@ -780,12 +781,14 @@ button {
   margin-top: 16px;
 }
 
-.deal-upgrade-action-form label {
+.deal-upgrade-action-form label,
+.deal-follow-up-action-form label {
   display: grid;
   gap: 7px;
 }
 
-.deal-upgrade-action-form span {
+.deal-upgrade-action-form span,
+.deal-follow-up-action-form span {
   color: var(--muted);
   font-size: 12px;
   font-weight: 800;
@@ -793,7 +796,8 @@ button {
   text-transform: uppercase;
 }
 
-.deal-upgrade-action-form select {
+.deal-upgrade-action-form select,
+.deal-follow-up-action-form input {
   border: 1px solid var(--line);
   border-radius: 8px;
   color: var(--text);
@@ -5320,11 +5324,13 @@ button {
     font-size: 24px;
   }
 
-  .app-shell.mobile-detail-open .deal-upgrade-action-form {
+  .app-shell.mobile-detail-open .deal-upgrade-action-form,
+  .app-shell.mobile-detail-open .deal-follow-up-action-form {
     grid-template-columns: 1fr;
   }
 
-  .app-shell.mobile-detail-open .deal-upgrade-action-form .text-button {
+  .app-shell.mobile-detail-open .deal-upgrade-action-form .text-button,
+  .app-shell.mobile-detail-open .deal-follow-up-action-form .text-button {
     justify-self: stretch;
   }
 

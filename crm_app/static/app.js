@@ -1568,6 +1568,10 @@ function salesCommandCenterPanel(center) {
       <div class="sales-command-grid">
         ${salesCommandList("Overdue Follow-Ups", center.overdue_tasks || [], "task")}
         ${salesCommandList("Due Today", center.due_today_tasks || [], "task")}
+        ${salesCommandList("Overdue Deal Follow-Ups", center.overdue_deal_followups || [], "record")}
+        ${salesCommandList("Deals Due Today", center.due_today_deal_followups || [], "record")}
+        ${salesCommandList("Upcoming Deals", center.upcoming_deal_followups || [], "record")}
+        ${salesCommandList("Won Needs Upgrade", center.won_missing_upgrade_deals || [], "record")}
         ${salesCommandList("Deals Missing Next Action", center.missing_next_action_deals || [], "record")}
         ${salesCommandList("Stale Active Deals", center.stale_deals || [], "record")}
         ${salesCommandList("Hot Deals", center.hot_deals || [], "record")}
@@ -5642,7 +5646,7 @@ function dealSalesProfileSection(detail, section = "qualification") {
     },
     proposal: {
       title: "Proposal / Handoff",
-      keys: new Set(["proposal_status", "proposal_link", "upgrade_to", "won_lost_reason", "handoff_next_step"]),
+      keys: new Set(["proposal_status", "proposal_link", "upgrade_to", "next_follow_up_date", "won_lost_reason", "handoff_next_step"]),
     },
   };
   const group = fieldGroups[section] || fieldGroups.qualification;
@@ -5689,6 +5693,14 @@ function dealSalesProfileControl(field) {
       </label>
     `;
   }
+  if (field.kind === "date") {
+    return `
+      <label>
+        <span>${label}</span>
+        <input name="${name}" type="date" value="${escapeHtml(value)}">
+      </label>
+    `;
+  }
   return `
     <label>
       <span>${label}</span>
@@ -5705,6 +5717,15 @@ function dealNextActionPanel(detail) {
     .filter(Boolean)
     .join(" · ");
   const upgradeOptions = Array.isArray(next.upgrade_options) ? next.upgrade_options : [];
+  const followUpControl = `
+    <form class="deal-follow-up-action-form">
+      <label>
+        <span>Next Follow-Up Date</span>
+        <input name="next_follow_up_date" type="date" value="${escapeHtml(next.next_follow_up_date || "")}">
+      </label>
+      <button type="button" class="text-button saveDealFollowUpButton">${next.next_follow_up_date ? "Update Date" : "Save Date"}</button>
+    </form>
+  `;
   const upgradeControl =
     next.kind === "upgrade_to"
       ? `
@@ -5730,6 +5751,7 @@ function dealNextActionPanel(detail) {
         </div>
         ${next.kind === "upgrade_to" ? "" : `<button type="button" class="text-button focus-next-action-task">${next.missing ? "Add Next Action" : "Update Tasks"}</button>`}
       </div>
+      ${followUpControl}
       ${upgradeControl}
     </div>
   `;
@@ -6967,6 +6989,31 @@ function wireDetailForms(detail) {
           const updated = await postJson("/api/update_deal_sales_profile", {
             id: detail.record.source_id,
             fields: { upgrade_to: upgradeTo },
+          });
+          renderDetail(updated.detail);
+          if (state.view === "dashboard") await renderDashboard();
+          await refreshCurrentListForDetail(updated.detail);
+        }
+      );
+    });
+  });
+
+  document.querySelectorAll(".saveDealFollowUpButton").forEach((dealFollowUpButton) => {
+    dealFollowUpButton.addEventListener("click", async () => {
+      const form = dealFollowUpButton.closest(".deal-next-action-panel")?.querySelector(".deal-follow-up-action-form");
+      if (!form) return;
+      const nextFollowUpDate = String(new FormData(form).get("next_follow_up_date") || "").trim();
+      if (!nextFollowUpDate) {
+        showDetailActionError("Choose a next follow-up date before saving.");
+        return;
+      }
+      await runDetailAction(
+        dealFollowUpButton,
+        { progress: "Saving follow-up date", success: "Follow-up date saved", failure: "Follow-up date save failed" },
+        async () => {
+          const updated = await postJson("/api/update_deal_sales_profile", {
+            id: detail.record.source_id,
+            fields: { next_follow_up_date: nextFollowUpDate },
           });
           renderDetail(updated.detail);
           if (state.view === "dashboard") await renderDashboard();

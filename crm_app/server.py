@@ -23,7 +23,7 @@ import urllib.error
 import urllib.request
 import webbrowser
 import zipfile
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -4515,6 +4515,11 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         }
 
     def sales_command_center(self) -> dict[str, Any]:
+        today_text = date.today().isoformat()
+        upcoming_text = (date.today() + timedelta(days=7)).isoformat()
+        sales_field_names = self.deal_sales_profile_field_names()
+        follow_up_field_name = sales_field_names.get("next_follow_up_date", "CHILLCRM Sales - Next Follow-Up Date")
+        upgrade_field_name = sales_field_names.get("upgrade_to", "CHILLCRM Sales - Upgrade To")
         with self.db() as conn:
             overdue_task_count = conn.execute(
                 "SELECT count(*) FROM tasks WHERE completed = 0 AND due_date IS NOT NULL AND date(due_date) < date('now')"
@@ -4595,6 +4600,164 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             new_lead_count = conn.execute(
                 "SELECT count(*) FROM leads WHERE coalesce(status, '') = 'New'"
             ).fetchone()[0]
+            overdue_deal_followup_count = conn.execute(
+                """
+                SELECT count(*)
+                FROM deals d
+                JOIN custom_field_values cf
+                  ON cf.record_type = 'deal'
+                 AND cf.record_id = d.id
+                 AND cf.field_name = ?
+                WHERE nullif(trim(cf.field_value), '') IS NOT NULL
+                  AND cf.field_value < ?
+                """,
+                (follow_up_field_name, today_text),
+            ).fetchone()[0]
+            due_today_deal_followup_count = conn.execute(
+                """
+                SELECT count(*)
+                FROM deals d
+                JOIN custom_field_values cf
+                  ON cf.record_type = 'deal'
+                 AND cf.record_id = d.id
+                 AND cf.field_name = ?
+                WHERE nullif(trim(cf.field_value), '') IS NOT NULL
+                  AND cf.field_value = ?
+                """,
+                (follow_up_field_name, today_text),
+            ).fetchone()[0]
+            upcoming_deal_followup_count = conn.execute(
+                """
+                SELECT count(*)
+                FROM deals d
+                JOIN custom_field_values cf
+                  ON cf.record_type = 'deal'
+                 AND cf.record_id = d.id
+                 AND cf.field_name = ?
+                WHERE nullif(trim(cf.field_value), '') IS NOT NULL
+                  AND cf.field_value > ?
+                  AND cf.field_value <= ?
+                """,
+                (follow_up_field_name, today_text, upcoming_text),
+            ).fetchone()[0]
+            missing_deal_followup_count = conn.execute(
+                """
+                SELECT count(*)
+                FROM deals d
+                LEFT JOIN stages s ON s.id = d.stage_id
+                WHERE coalesce(s.category, '') NOT IN ('lost', 'unqualified')
+                  AND NOT EXISTS (
+                    SELECT 1
+                    FROM custom_field_values cf
+                    WHERE cf.record_type = 'deal'
+                      AND cf.record_id = d.id
+                      AND cf.field_name = ?
+                      AND nullif(trim(cf.field_value), '') IS NOT NULL
+                  )
+                """,
+                (follow_up_field_name,),
+            ).fetchone()[0]
+            won_missing_upgrade_count = conn.execute(
+                """
+                SELECT count(*)
+                FROM deals d
+                LEFT JOIN stages s ON s.id = d.stage_id
+                WHERE coalesce(s.category, '') = 'won'
+                  AND NOT EXISTS (
+                    SELECT 1
+                    FROM custom_field_values cf
+                    WHERE cf.record_type = 'deal'
+                      AND cf.record_id = d.id
+                      AND cf.field_name = ?
+                      AND nullif(trim(cf.field_value), '') IS NOT NULL
+                  )
+                """,
+                (upgrade_field_name,),
+            ).fetchone()[0]
+            overdue_deal_followups = rows_to_dicts(
+                conn.execute(
+                    """
+                    SELECT 'deal' AS type, d.id AS source_id, 'deal' AS kind, d.name,
+                           NULL AS email, d.updated_at, s.name AS stage_name, d.value, d.currency,
+                           'Follow-up ' || cf.field_value AS match_context
+                    FROM deals d
+                    LEFT JOIN stages s ON s.id = d.stage_id
+                    JOIN custom_field_values cf
+                      ON cf.record_type = 'deal'
+                     AND cf.record_id = d.id
+                     AND cf.field_name = ?
+                    WHERE nullif(trim(cf.field_value), '') IS NOT NULL
+                      AND cf.field_value < ?
+                    ORDER BY cf.field_value ASC, coalesce(d.value, 0) DESC, d.name COLLATE NOCASE
+                    LIMIT 6
+                    """,
+                    (follow_up_field_name, today_text),
+                ).fetchall()
+            )
+            due_today_deal_followups = rows_to_dicts(
+                conn.execute(
+                    """
+                    SELECT 'deal' AS type, d.id AS source_id, 'deal' AS kind, d.name,
+                           NULL AS email, d.updated_at, s.name AS stage_name, d.value, d.currency,
+                           'Follow-up today' AS match_context
+                    FROM deals d
+                    LEFT JOIN stages s ON s.id = d.stage_id
+                    JOIN custom_field_values cf
+                      ON cf.record_type = 'deal'
+                     AND cf.record_id = d.id
+                     AND cf.field_name = ?
+                    WHERE nullif(trim(cf.field_value), '') IS NOT NULL
+                      AND cf.field_value = ?
+                    ORDER BY coalesce(d.value, 0) DESC, d.name COLLATE NOCASE
+                    LIMIT 6
+                    """,
+                    (follow_up_field_name, today_text),
+                ).fetchall()
+            )
+            upcoming_deal_followups = rows_to_dicts(
+                conn.execute(
+                    """
+                    SELECT 'deal' AS type, d.id AS source_id, 'deal' AS kind, d.name,
+                           NULL AS email, d.updated_at, s.name AS stage_name, d.value, d.currency,
+                           'Follow-up ' || cf.field_value AS match_context
+                    FROM deals d
+                    LEFT JOIN stages s ON s.id = d.stage_id
+                    JOIN custom_field_values cf
+                      ON cf.record_type = 'deal'
+                     AND cf.record_id = d.id
+                     AND cf.field_name = ?
+                    WHERE nullif(trim(cf.field_value), '') IS NOT NULL
+                      AND cf.field_value > ?
+                      AND cf.field_value <= ?
+                    ORDER BY cf.field_value ASC, coalesce(d.value, 0) DESC, d.name COLLATE NOCASE
+                    LIMIT 6
+                    """,
+                    (follow_up_field_name, today_text, upcoming_text),
+                ).fetchall()
+            )
+            won_missing_upgrade_deals = rows_to_dicts(
+                conn.execute(
+                    """
+                    SELECT 'deal' AS type, d.id AS source_id, 'deal' AS kind, d.name,
+                           NULL AS email, d.updated_at, s.name AS stage_name, d.value, d.currency,
+                           'Choose upgrade path' AS match_context
+                    FROM deals d
+                    LEFT JOIN stages s ON s.id = d.stage_id
+                    WHERE coalesce(s.category, '') = 'won'
+                      AND NOT EXISTS (
+                        SELECT 1
+                        FROM custom_field_values cf
+                        WHERE cf.record_type = 'deal'
+                          AND cf.record_id = d.id
+                          AND cf.field_name = ?
+                          AND nullif(trim(cf.field_value), '') IS NOT NULL
+                      )
+                    ORDER BY coalesce(d.value, 0) DESC, d.updated_at DESC, d.name COLLATE NOCASE
+                    LIMIT 6
+                    """,
+                    (upgrade_field_name,),
+                ).fetchall()
+            )
             missing_next_action_deals = rows_to_dicts(
                 conn.execute(
                     """
@@ -4665,6 +4828,10 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             int(missing_next_action_count or 0)
             + int(stale_deal_count or 0)
             + int(overdue_task_count or 0)
+            + int(overdue_deal_followup_count or 0)
+            + int(due_today_deal_followup_count or 0)
+            + int(missing_deal_followup_count or 0)
+            + int(won_missing_upgrade_count or 0)
         )
         return {
             "title": "Today Cockpit",
@@ -4673,7 +4840,9 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             "metrics": [
                 {"label": "Overdue", "value": int(overdue_task_count or 0)},
                 {"label": "Due Today", "value": int(due_today_task_count or 0)},
-                {"label": "No Next Action", "value": int(missing_next_action_count or 0)},
+                {"label": "Deal Follow-Ups", "value": int(overdue_deal_followup_count or 0) + int(due_today_deal_followup_count or 0)},
+                {"label": "No Deal Date", "value": int(missing_deal_followup_count or 0)},
+                {"label": "Won Needs Upgrade", "value": int(won_missing_upgrade_count or 0)},
                 {"label": "Stale Deals", "value": int(stale_deal_count or 0)},
                 {"label": "Hot Deals", "value": int(hot_deal_count or 0)},
                 {"label": "New Leads", "value": int(new_lead_count or 0)},
@@ -4681,6 +4850,17 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             "active_deal_count": int(active_deal_count or 0),
             "overdue_tasks": overdue_tasks,
             "due_today_tasks": due_today_tasks,
+            "overdue_deal_followups": overdue_deal_followups,
+            "due_today_deal_followups": due_today_deal_followups,
+            "upcoming_deal_followups": upcoming_deal_followups,
+            "won_missing_upgrade_deals": won_missing_upgrade_deals,
+            "deal_followup_counts": {
+                "overdue": int(overdue_deal_followup_count or 0),
+                "due_today": int(due_today_deal_followup_count or 0),
+                "upcoming": int(upcoming_deal_followup_count or 0),
+                "missing": int(missing_deal_followup_count or 0),
+                "won_missing_upgrade": int(won_missing_upgrade_count or 0),
+            },
             "missing_next_action_deals": missing_next_action_deals,
             "stale_deals": stale_deals,
             "hot_deals": hot_deals,
@@ -17673,6 +17853,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             {"key": "proposal_status", "label": "Proposal Status", "kind": "select", "options": "Not started|Drafted|Sent|Viewed|Negotiating|Accepted|Declined|Expired"},
             {"key": "proposal_link", "label": "Proposal Link", "kind": "url"},
             {"key": "upgrade_to", "label": "Upgrade To", "kind": "select", "options": "FAMILY MASTERMIND|FAMILY MASTERMIND RENEWAL|OTHER"},
+            {"key": "next_follow_up_date", "label": "Next Follow-Up Date", "kind": "date"},
             {"key": "won_lost_reason", "label": "Won/Lost Reason", "kind": "textarea"},
             {"key": "handoff_next_step", "label": "Handoff Next Step", "kind": "textarea"},
         ]
@@ -17731,7 +17912,9 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             """,
                 (record_id,),
             ).fetchone()[0]
-        upgrade_field_name = self.deal_sales_profile_field_names().get("upgrade_to", "CHILLCRM Sales - Upgrade To")
+        sales_field_names = self.deal_sales_profile_field_names()
+        upgrade_field_name = sales_field_names.get("upgrade_to", "CHILLCRM Sales - Upgrade To")
+        next_follow_up_field_name = sales_field_names.get("next_follow_up_date", "CHILLCRM Sales - Next Follow-Up Date")
         upgrade_row = conn.execute(
             """
             SELECT field_value
@@ -17749,18 +17932,69 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             "OTHER": "Other",
         }
         upgrade_label = upgrade_labels.get(str(upgrade_to or "").strip().upper(), upgrade_to)
+        next_follow_up_row = conn.execute(
+            """
+            SELECT field_value
+            FROM custom_field_values
+            WHERE record_type = 'deal' AND record_id = ? AND field_name = ?
+            ORDER BY id
+            LIMIT 1
+            """,
+            (record_id, next_follow_up_field_name),
+        ).fetchone()
+        next_follow_up_date = self.clean_optional(next_follow_up_row["field_value"] if next_follow_up_row else None)
+        follow_up_missing = not bool(next_follow_up_date)
+        follow_up_overdue = False
+        follow_up_today = False
+        if next_follow_up_date:
+            today_text = date.today().isoformat()
+            follow_up_overdue = next_follow_up_date < today_text
+            follow_up_today = next_follow_up_date == today_text
         if local_next_task:
-            status = "ready"
-            title = "Next Action Set"
-            message = local_next_task.get("content") or "Local next action is set."
+            task_message = local_next_task.get("content") or "Local next action is set."
+            if follow_up_missing:
+                status = "attention"
+                title = "Next Follow-Up Date Needed"
+                message = f"Set the dated follow-up for this deal. Task: {task_message}"
+            elif follow_up_overdue:
+                status = "attention"
+                title = "Follow-Up Overdue"
+                message = f"Follow-up was due {next_follow_up_date}. Task: {task_message}"
+            elif follow_up_today:
+                status = "attention"
+                title = "Follow Up Today"
+                message = task_message
+            else:
+                status = "ready"
+                title = "Next Action Set"
+                message = f"{task_message} Next follow-up: {next_follow_up_date}."
         elif won:
-            status = "ready" if upgrade_to else "attention"
+            status = "attention" if not upgrade_to or follow_up_missing or follow_up_overdue or follow_up_today else "ready"
             title = f"Upgrade to {upgrade_label}" if upgrade_to else "Upgrade To Needed"
-            message = f"Upgrade target: {upgrade_label}" if upgrade_to else "Choose the upgrade path for this won deal."
+            if not upgrade_to:
+                message = "Choose the upgrade path for this won deal."
+            elif follow_up_missing:
+                message = "Set the next follow-up date for this won deal."
+            elif follow_up_overdue:
+                message = f"Follow-up was due {next_follow_up_date}."
+            elif follow_up_today:
+                message = "Follow-up is due today."
+            else:
+                message = f"Upgrade target: {upgrade_label}. Next follow-up: {next_follow_up_date}."
         else:
-            status = "attention"
-            title = "Next Action Needed"
-            message = "Every deal needs a follow-up, call, proposal, meeting, review, close, handoff, or upgrade action."
+            status = "attention" if follow_up_missing or follow_up_overdue or follow_up_today else "ready"
+            if follow_up_missing:
+                title = "Next Follow-Up Date Needed"
+                message = "Every deal needs a dated follow-up, call, proposal, meeting, review, close, handoff, or upgrade action."
+            elif follow_up_overdue:
+                title = "Follow-Up Overdue"
+                message = f"Follow-up was due {next_follow_up_date}."
+            elif follow_up_today:
+                title = "Follow Up Today"
+                message = "Follow-up is due today."
+            else:
+                title = "Next Follow-Up Scheduled"
+                message = f"Next follow-up: {next_follow_up_date}."
         return {
             "status": status,
             "title": title,
@@ -17770,9 +18004,13 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             "kind": "upgrade_to" if won and not local_next_task else "task",
             "stage_category": stage_category,
             "local_task": local_next_task,
-            "missing": not bool(local_next_task) and not (won and bool(upgrade_to)),
+            "missing": follow_up_missing or (won and not bool(upgrade_to)),
             "upgrade_to": upgrade_to,
             "upgrade_options": ["FAMILY MASTERMIND", "FAMILY MASTERMIND RENEWAL", "OTHER"],
+            "next_follow_up_date": next_follow_up_date,
+            "follow_up_missing": follow_up_missing,
+            "follow_up_overdue": follow_up_overdue,
+            "follow_up_today": follow_up_today,
             "imported_open_count": int(imported_open_count or 0),
         }
 

@@ -4537,6 +4537,7 @@ async function renderList() {
     renderList();
   });
   wireRecordButtons(els.list);
+  wireRecordRows(els.list);
   wireSortHeaderButtons(els.list);
   setStatus("Ready");
 }
@@ -4684,8 +4685,14 @@ function provenanceChips(record) {
 }
 
 function listRowAttributes(recordType, sourceId) {
-  if (!recordIsCurrentDetail(recordType, sourceId)) return "";
-  return `class="active-record-row" aria-current="true"`;
+  const attrs = [
+    `data-record-type="${escapeHtml(recordType)}"`,
+    `data-record-id="${escapeHtml(sourceId)}"`,
+  ];
+  if (recordIsCurrentDetail(recordType, sourceId)) {
+    attrs.push(`class="active-record-row"`, `aria-current="true"`);
+  }
+  return attrs.join(" ");
 }
 
 function recordIsCurrentDetail(recordType, sourceId) {
@@ -4760,6 +4767,15 @@ function cleanupProfileSummary(items) {
 function wireRecordButtons(root) {
   root.querySelectorAll(".record-button").forEach((button) => {
     button.addEventListener("click", () => showDetail(button.dataset.type, button.dataset.id));
+  });
+}
+
+function wireRecordRows(root) {
+  root.querySelectorAll("tr[data-record-type][data-record-id]").forEach((row) => {
+    row.addEventListener("click", (event) => {
+      if (event.target.closest("button, a, input, select, textarea, label")) return;
+      showDetail(row.dataset.recordType, row.dataset.recordId);
+    });
   });
 }
 

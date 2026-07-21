@@ -1308,6 +1308,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             "/api/rename_tag",
             "/api/delete_tag",
             "/api/update_tags",
+            "/api/update_deal_sales_profile",
             "/api/update_addresses",
             "/api/upload_profile_image",
             "/api/upload_record_file",
@@ -1401,6 +1402,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         "/api/rename_tag": "edit_addresses_tags",
         "/api/delete_tag": "edit_addresses_tags",
         "/api/update_tags": "edit_addresses_tags",
+        "/api/update_deal_sales_profile": "create_edit_records",
         "/api/update_addresses": "edit_addresses_tags",
         "/api/upload_profile_image": "create_edit_records",
         "/api/upload_record_file": "create_edit_records",
@@ -3669,6 +3671,8 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                 self.send_json(self.delete_tag(payload, auth_user, action_key))
             elif path == "/api/update_tags":
                 self.send_json(self.update_tags(payload, auth_user, action_key))
+            elif path == "/api/update_deal_sales_profile":
+                self.send_json(self.update_deal_sales_profile(payload, auth_user, action_key))
             elif path == "/api/update_addresses":
                 self.send_json(self.update_addresses(payload, auth_user, action_key))
             elif path == "/api/upload_profile_image":
@@ -17630,6 +17634,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                 ).fetchone()
             )
         address_info = self.deal_addresses(conn, record)
+        custom_fields = self.custom_fields_for(conn, "deal", record_id)
         return {
             "type": "deal",
             "record": self.clean_record_with_quality("deals", {**record, "kind": "deal", "source_id": record_id}),
@@ -17641,17 +17646,59 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             "notes": self.related_notes(conn, "deal", record_id),
             "tasks": self.related_tasks(conn, "deal", record_id),
             "next_action": self.deal_next_action(conn, record_id, record),
+            "deal_sales_profile": self.deal_sales_profile(custom_fields),
             "activity": self.activity_for(conn, "deal", record_id, 30),
             "tags": self.tags_for(conn, "deal", record_id),
             "addresses": self.public_addresses(address_info["addresses"]),
             "address_fields_available": bool(address_info["addresses"]),
             "address_editable": False,
             "address_note": address_info["note"],
-            "custom_fields": self.custom_fields_for(conn, "deal", record_id),
+            "custom_fields": custom_fields,
             "linked_resources": self.linked_resources_for(conn, "deal", record_id),
             "record_files": self.record_files_for(conn, "deal", record_id),
             "archive_items": self.imported_archive_for(conn, "deal", record_id),
             "review_flags": self.review_flags_for(conn, "deal", record_id),
+        }
+
+    def deal_sales_profile_fields(self) -> list[dict[str, str]]:
+        return [
+            {"key": "need", "label": "Need", "kind": "textarea"},
+            {"key": "budget", "label": "Budget", "kind": "text"},
+            {"key": "authority", "label": "Authority", "kind": "text"},
+            {"key": "timeline", "label": "Timeline", "kind": "text"},
+            {"key": "service_interest", "label": "Service Interest", "kind": "text"},
+            {"key": "urgency", "label": "Urgency", "kind": "select", "options": "Low|Medium|High|Critical"},
+            {"key": "fit_score", "label": "Fit Score", "kind": "select", "options": "1|2|3|4|5"},
+            {"key": "objections", "label": "Objections", "kind": "textarea"},
+            {"key": "proposal_status", "label": "Proposal Status", "kind": "select", "options": "Not started|Drafted|Sent|Viewed|Negotiating|Accepted|Declined|Expired"},
+            {"key": "proposal_link", "label": "Proposal Link", "kind": "url"},
+            {"key": "won_lost_reason", "label": "Won/Lost Reason", "kind": "textarea"},
+            {"key": "handoff_next_step", "label": "Handoff Next Step", "kind": "textarea"},
+        ]
+
+    def deal_sales_profile_field_names(self) -> dict[str, str]:
+        return {field["key"]: f"CHILLCRM Sales - {field['label']}" for field in self.deal_sales_profile_fields()}
+
+    def deal_sales_profile(self, custom_fields: list[dict[str, Any]]) -> dict[str, Any]:
+        field_names = self.deal_sales_profile_field_names()
+        values_by_name: dict[str, str] = {}
+        for row in custom_fields:
+            name = str(row.get("field_name") or "")
+            if name not in values_by_name:
+                values_by_name[name] = str(row.get("field_value") or "")
+        fields = []
+        filled = 0
+        for field in self.deal_sales_profile_fields():
+            storage_name = field_names[field["key"]]
+            value = values_by_name.get(storage_name, "")
+            if value.strip():
+                filled += 1
+            fields.append({**field, "field_name": storage_name, "value": value})
+        return {
+            "title": "Deal Sales Profile",
+            "fields": fields,
+            "filled": filled,
+            "total": len(fields),
         }
 
     def deal_next_action(self, conn: sqlite3.Connection, record_id: int, record: dict[str, Any]) -> dict[str, Any]:
@@ -22459,6 +22506,83 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             return 1 if value else 0
         return 1 if str(value or "").strip().lower() in {"1", "true", "yes", "on"} else 0
 
+    def update_deal_sales_profile(self, payload: dict[str, Any], actor_user: dict[str, Any] | None = None, permission_action: str | None = "create_edit_records") -> dict[str, Any]:
+        record_id = int(payload.get("id", 0))
+        fields = payload.get("fields")
+        if not record_id:
+            raise ValueError("Deal id is required.")
+        if not isinstance(fields, dict):
+            raise ValueError("fields must be an object.")
+        field_names = self.deal_sales_profile_field_names()
+        allowed = set(field_names)
+        cleaned = {
+            key: self.clean_optional(value)
+            for key, value in fields.items()
+            if key in allowed
+        }
+        if not cleaned:
+            raise ValueError("No sales profile fields provided.")
+
+        backup_path = self.create_backup(f"before_deal_sales_profile_{record_id}")
+        timestamp = now_iso()
+        with self.db() as conn:
+            if not conn.execute("SELECT 1 FROM deals WHERE id = ?", (record_id,)).fetchone():
+                raise ValueError(f"Deal {record_id} not found.")
+            for key, value in cleaned.items():
+                field_name = field_names[key]
+                existing_rows = rows_to_dicts(
+                    conn.execute(
+                        """
+                        SELECT id, field_value
+                        FROM custom_field_values
+                        WHERE record_type = 'deal' AND record_id = ? AND field_name = ?
+                        ORDER BY id
+                        """,
+                        (record_id, field_name),
+                    ).fetchall()
+                )
+                old_value = existing_rows[0].get("field_value") if existing_rows else None
+                if self.clean_optional(old_value) == value and len(existing_rows) <= 1:
+                    continue
+                if value is None:
+                    conn.execute(
+                        "DELETE FROM custom_field_values WHERE record_type = 'deal' AND record_id = ? AND field_name = ?",
+                        (record_id, field_name),
+                    )
+                elif existing_rows:
+                    conn.execute(
+                        "UPDATE custom_field_values SET field_value = ? WHERE id = ?",
+                        (value, existing_rows[0]["id"]),
+                    )
+                    for duplicate in existing_rows[1:]:
+                        conn.execute("DELETE FROM custom_field_values WHERE id = ?", (duplicate["id"],))
+                else:
+                    hosted_id = self.next_hosted_primary_key(conn, "custom_field_values")
+                    id_column = "id, " if hosted_id is not None else ""
+                    id_placeholder = "?, " if hosted_id is not None else ""
+                    conn.execute(
+                        f"""
+                        INSERT INTO custom_field_values ({id_column}record_type, record_id, field_name, field_value)
+                        VALUES ({id_placeholder}?, ?, ?, ?)
+                        """,
+                        (*((hosted_id,) if hosted_id is not None else ()), "deal", record_id, field_name, value),
+                    )
+                self.insert_audit_log(
+                    conn,
+                    action="update_deal_sales_profile",
+                    record_type="deal",
+                    record_id=record_id,
+                    field_name=field_name,
+                    old_value=old_value,
+                    new_value=value,
+                    note=f"Backup: {backup_path.name}; saved_at={timestamp}",
+                    actor_user=actor_user,
+                    permission_action=permission_action,
+                )
+            conn.execute("UPDATE deals SET updated_at = ? WHERE id = ?", (timestamp, record_id))
+            conn.commit()
+        return {"ok": True, "backup": str(backup_path), "detail": self.record_detail({"type": ["deal"], "id": [str(record_id)]})}
+
     def update_tags(self, payload: dict[str, Any], actor_user: dict[str, Any] | None = None, permission_action: str | None = "edit_addresses_tags") -> dict[str, Any]:
         record_type = str(payload.get("type", "")).lower()
         record_id = int(payload.get("id", 0))
@@ -23827,6 +23951,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             "notes",
             "tasks",
             "local_addresses",
+            "custom_field_values",
         }:
             raise ValueError(f"Unsupported hosted primary key table: {table_name}")
         row = conn.execute(f"SELECT COALESCE(max(id), 0) + 1 AS next_id FROM {table_name}").fetchone()

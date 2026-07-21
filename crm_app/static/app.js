@@ -5481,6 +5481,7 @@ function defaultDetailBody(detail) {
   return `
     ${contactActions(detail)}
     ${dealNextActionPanel(detail)}
+    ${dealSalesProfileSection(detail)}
     ${editForm(detail)}
     ${recordFileHero(detail)}
     ${recordSnapshot(detail)}
@@ -5507,6 +5508,60 @@ function defaultDetailBody(detail) {
     ${notesSection(detail.notes || [])}
     ${addTaskForm(detail)}
     ${tasksSection(detail.tasks || [])}
+  `;
+}
+
+function dealSalesProfileSection(detail) {
+  if (detail.type !== "deal") return "";
+  const profile = detail.deal_sales_profile || {};
+  const fields = profile.fields || [];
+  if (!fields.length) return "";
+  return `
+    <div class="detail-section deal-sales-profile-section">
+      <div class="inline-header">
+        <div>
+          <h3>Sales Profile</h3>
+          <p class="muted">${formatNumber(profile.filled || 0)} of ${formatNumber(profile.total || fields.length)} fields filled</p>
+        </div>
+        <button class="text-button" id="saveDealSalesProfileButton" type="button">Save</button>
+      </div>
+      <form id="dealSalesProfileForm" class="deal-sales-profile-grid">
+        ${fields.map((field) => dealSalesProfileControl(field)).join("")}
+      </form>
+      <div id="dealSalesProfileError" class="form-error" hidden></div>
+    </div>
+  `;
+}
+
+function dealSalesProfileControl(field) {
+  const value = field.value ?? "";
+  const name = escapeHtml(field.key || "");
+  const label = escapeHtml(field.label || "");
+  if (field.kind === "textarea") {
+    return `
+      <label class="span-2">
+        <span>${label}</span>
+        <textarea name="${name}" rows="3">${escapeHtml(value)}</textarea>
+      </label>
+    `;
+  }
+  if (field.kind === "select") {
+    const options = String(field.options || "").split("|").filter(Boolean);
+    return `
+      <label>
+        <span>${label}</span>
+        <select name="${name}">
+          <option value=""></option>
+          ${options.map((option) => `<option value="${escapeHtml(option)}" ${String(value) === option ? "selected" : ""}>${escapeHtml(option)}</option>`).join("")}
+        </select>
+      </label>
+    `;
+  }
+  return `
+    <label>
+      <span>${label}</span>
+      <input name="${name}" type="${field.kind === "url" ? "url" : "text"}" value="${escapeHtml(value)}">
+    </label>
   `;
 }
 
@@ -6721,6 +6776,30 @@ function wireDetailForms(detail) {
     document.querySelector("#editRecordForm")?.addEventListener("submit", (event) => {
       event.preventDefault();
       saveRecord();
+    });
+  }
+
+  const dealSalesProfileButton = document.querySelector("#saveDealSalesProfileButton");
+  if (dealSalesProfileButton) {
+    dealSalesProfileButton.addEventListener("click", async () => {
+      const form = document.querySelector("#dealSalesProfileForm");
+      const fields = {};
+      new FormData(form).forEach((value, key) => {
+        fields[key] = value.toString().trim() || null;
+      });
+      await runDetailAction(
+        dealSalesProfileButton,
+        { progress: "Saving sales profile", success: "Sales profile saved", failure: "Sales profile save failed" },
+        async () => {
+          const updated = await postJson("/api/update_deal_sales_profile", {
+            id: detail.record.source_id,
+            fields,
+          });
+          renderDetail(updated.detail);
+          if (state.view === "dashboard") await renderDashboard();
+          await refreshCurrentListForDetail(updated.detail);
+        }
+      );
     });
   }
 

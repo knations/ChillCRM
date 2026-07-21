@@ -1717,12 +1717,17 @@ def main() -> int:
     assert "sales_command_center" in server_py
     assert "Today Cockpit" in server_py
     assert "deal_next_action" in server_py
+    assert "update_deal_sales_profile" in server_py
+    assert "CHILLCRM Sales -" in server_py
     assert "salesCommandCenterPanel" in app_js
     assert "Deals Missing Next Action" in app_js
     assert "dealNextActionPanel" in app_js
     assert "Add Next Action" in app_js
+    assert "dealSalesProfileSection" in app_js
+    assert "/api/update_deal_sales_profile" in app_js
     assert "sales-command-center" in styles_css
     assert "deal-next-action-panel" in styles_css
+    assert "deal-sales-profile-grid" in styles_css
     change_order_doctrine = (PROJECT_ROOT / "docs" / "change_order_doctrine.md").read_text(encoding="utf-8")
     assert "CHILLCRM Change Order Doctrine" in change_order_doctrine
     assert "Start Wave 1 now" in change_order_doctrine
@@ -4960,6 +4965,26 @@ def main() -> int:
         assert "next_action" in deal_next_action_detail
         assert deal_next_action_detail["next_action"]["status"] in {"attention", "ready", "waiting"}
         assert "missing" in deal_next_action_detail["next_action"]
+        assert "deal_sales_profile" in deal_next_action_detail
+        assert any(field["key"] == "need" for field in deal_next_action_detail["deal_sales_profile"]["fields"])
+        saved_sales_profile = handler.update_deal_sales_profile(
+            {
+                "id": deal_for_next_action["source_id"],
+                "fields": {
+                    "need": "Verify deal sales profile save.",
+                    "urgency": "High",
+                    "proposal_status": "Drafted",
+                    "fit_score": "4",
+                },
+            },
+            actor_user,
+        )
+        saved_profile = saved_sales_profile["detail"]["deal_sales_profile"]
+        saved_values = {field["key"]: field["value"] for field in saved_profile["fields"]}
+        assert saved_values["need"] == "Verify deal sales profile save."
+        assert saved_values["urgency"] == "High"
+        assert saved_values["proposal_status"] == "Drafted"
+        assert saved_values["fit_score"] == "4"
         assert work_queue["local_change_items"]
         assert all(
             row["activity_type"] in {"audit", "cleanup_decision", "project_decision"}

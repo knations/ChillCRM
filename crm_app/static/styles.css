@@ -718,6 +718,54 @@ button {
   border-color: #efb5a8;
 }
 
+.deal-sales-profile-section .inline-header {
+  align-items: flex-start;
+}
+
+.deal-sales-profile-section h3 {
+  margin-bottom: 6px;
+}
+
+.deal-sales-profile-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.deal-sales-profile-grid label {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+}
+
+.deal-sales-profile-grid label.span-2 {
+  grid-column: 1 / -1;
+}
+
+.deal-sales-profile-grid span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.deal-sales-profile-grid input,
+.deal-sales-profile-grid select,
+.deal-sales-profile-grid textarea {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--ink);
+  font: inherit;
+  min-width: 0;
+  padding: 10px 12px;
+  width: 100%;
+}
+
+.deal-sales-profile-grid textarea {
+  min-height: 86px;
+  resize: vertical;
+}
+
 .start-today-panel .band-header p {
   color: var(--muted);
   margin: 6px 0 0;
@@ -5254,6 +5302,7 @@ button {
 
   .start-today-body,
   .sales-command-grid,
+  .deal-sales-profile-grid,
   .start-guide-step,
   .followup-transition-step {
     grid-template-columns: 1fr;

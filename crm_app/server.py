@@ -17853,7 +17853,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             {"key": "proposal_status", "label": "Proposal Status", "kind": "select", "options": "Not started|Drafted|Sent|Viewed|Negotiating|Accepted|Declined|Expired"},
             {"key": "proposal_link", "label": "Proposal Link", "kind": "url"},
             {"key": "upgrade_to", "label": "Upgrade To", "kind": "select", "options": "FAMILY MASTERMIND|FAMILY MASTERMIND RENEWAL|OTHER"},
-            {"key": "next_follow_up_date", "label": "Next Follow-Up Date", "kind": "date"},
+            {"key": "next_follow_up_date", "label": "Follow Up", "kind": "date"},
             {"key": "won_lost_reason", "label": "Won/Lost Reason", "kind": "textarea"},
             {"key": "handoff_next_step", "label": "Handoff Next Step", "kind": "textarea"},
         ]
@@ -17954,7 +17954,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             task_message = local_next_task.get("content") or "Local next action is set."
             if follow_up_missing:
                 status = "attention"
-                title = "Next Follow-Up Date Needed"
+                title = "Follow Up Needed"
                 message = f"Set the dated follow-up for this deal. Task: {task_message}"
             elif follow_up_overdue:
                 status = "attention"
@@ -17984,7 +17984,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         else:
             status = "attention" if follow_up_missing or follow_up_overdue or follow_up_today else "ready"
             if follow_up_missing:
-                title = "Next Follow-Up Date Needed"
+                title = "Follow Up Needed"
                 message = "Every deal needs a dated follow-up, call, proposal, meeting, review, close, handoff, or upgrade action."
             elif follow_up_overdue:
                 title = "Follow-Up Overdue"

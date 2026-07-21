@@ -5720,7 +5720,7 @@ function dealNextActionPanel(detail) {
   const followUpControl = `
     <form class="deal-follow-up-action-form">
       <label>
-        <span>Next Follow-Up Date</span>
+        <span>Follow Up</span>
         <input name="next_follow_up_date" type="date" value="${escapeHtml(next.next_follow_up_date || "")}">
       </label>
       <button type="button" class="text-button saveDealFollowUpButton">${next.next_follow_up_date ? "Update Date" : "Save Date"}</button>

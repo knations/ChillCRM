@@ -6869,6 +6869,14 @@ function wireDetailForms(detail) {
     });
   });
 
+  document.querySelectorAll(".focus-next-action-task").forEach((button) => {
+    button.addEventListener("click", () => {
+      const form = document.querySelector("#taskForm");
+      form?.scrollIntoView({ block: "center", behavior: "smooth" });
+      form?.querySelector("[name='content']")?.focus({ preventScroll: true });
+    });
+  });
+
   const taskButton = document.querySelector("#addTaskButton");
   if (taskButton) {
     taskButton.addEventListener("click", async () => {

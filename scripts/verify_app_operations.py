@@ -1716,9 +1716,13 @@ def main() -> int:
     assert "System Status" in server_py
     assert "sales_command_center" in server_py
     assert "Today Cockpit" in server_py
+    assert "deal_next_action" in server_py
     assert "salesCommandCenterPanel" in app_js
     assert "Deals Missing Next Action" in app_js
+    assert "dealNextActionPanel" in app_js
+    assert "Add Next Action" in app_js
     assert "sales-command-center" in styles_css
+    assert "deal-next-action-panel" in styles_css
     change_order_doctrine = (PROJECT_ROOT / "docs" / "change_order_doctrine.md").read_text(encoding="utf-8")
     assert "CHILLCRM Change Order Doctrine" in change_order_doctrine
     assert "Start Wave 1 now" in change_order_doctrine
@@ -4951,6 +4955,11 @@ def main() -> int:
         assert len(sales_command_center["stale_deals"]) <= 6
         assert len(sales_command_center["hot_deals"]) <= 6
         assert len(sales_command_center["new_leads"]) <= 6
+        deal_for_next_action = handler.list_records({"type": ["deals"], "page_size": ["1"]})["records"][0]
+        deal_next_action_detail = handler.record_detail({"type": ["deal"], "id": [str(deal_for_next_action["source_id"])]})
+        assert "next_action" in deal_next_action_detail
+        assert deal_next_action_detail["next_action"]["status"] in {"attention", "ready", "waiting"}
+        assert "missing" in deal_next_action_detail["next_action"]
         assert work_queue["local_change_items"]
         assert all(
             row["activity_type"] in {"audit", "cleanup_decision", "project_decision"}

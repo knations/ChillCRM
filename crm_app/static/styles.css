@@ -683,6 +683,41 @@ button {
   color: var(--muted);
 }
 
+.deal-next-action-panel {
+  border-color: #d8cdbb;
+}
+
+.deal-next-action-panel.attention {
+  background: #fff8f5;
+  border-color: #efb5a8;
+}
+
+.deal-next-action-panel.ready {
+  background: #f6fbf7;
+  border-color: #b9d7c2;
+}
+
+.deal-next-action-panel .inline-header {
+  align-items: flex-start;
+}
+
+.deal-next-action-panel h3 {
+  margin-bottom: 6px;
+}
+
+.deal-next-action-panel p {
+  color: var(--muted);
+  margin: 0;
+}
+
+.deal-next-action-panel .muted {
+  margin-top: 6px;
+}
+
+.next-action-task-form {
+  border-color: #efb5a8;
+}
+
 .start-today-panel .band-header p {
   color: var(--muted);
   margin: 6px 0 0;

@@ -5057,19 +5057,39 @@ function wireCleanupFlagButtons(root) {
 }
 
 async function showDetail(type, id) {
-  setStatus("Loading details");
-  const detail = await fetchJson(`/api/detail?type=${encodeURIComponent(type)}&id=${encodeURIComponent(id)}`);
-  if (detail.error) {
+  try {
+    setStatus("Loading details");
     openMobileDetailView();
     els.detail.innerHTML = `
       <div class="detail-content">
-        ${detailHeader("Could not open record", detail.error, null, { mobileBackLabel: mobileDetailBackLabel() })}
+        ${detailHeader(`Opening ${labelize(type || "record")}`, "Loading record details", null, { mobileBackLabel: mobileDetailBackLabel() })}
+        <div class="detail-section">
+          <p class="muted">Loading...</p>
+        </div>
       </div>
     `;
-    return;
+    const detail = await fetchJson(`/api/detail?type=${encodeURIComponent(type)}&id=${encodeURIComponent(id)}`);
+    if (detail.error) {
+      openMobileDetailView();
+      els.detail.innerHTML = `
+        <div class="detail-content">
+          ${detailHeader("Could not open record", detail.error, null, { mobileBackLabel: mobileDetailBackLabel() })}
+        </div>
+      `;
+      setStatus("Open failed");
+      return;
+    }
+    renderDetail(detail);
+    setStatus("Ready");
+  } catch (error) {
+    openMobileDetailView();
+    els.detail.innerHTML = `
+      <div class="detail-content">
+        ${detailHeader("Could not open record", error.message || "The record could not be loaded.", null, { mobileBackLabel: mobileDetailBackLabel() })}
+      </div>
+    `;
+    setStatus("Open failed");
   }
-  renderDetail(detail);
-  setStatus("Ready");
 }
 
 async function showArchiveItem(id) {

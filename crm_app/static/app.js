@@ -5059,6 +5059,7 @@ function wireCleanupFlagButtons(root) {
 async function showDetail(type, id) {
   try {
     setStatus("Loading details");
+    setRecordWorkspace(true);
     openMobileDetailView();
     els.detail.innerHTML = `
       <div class="detail-content">

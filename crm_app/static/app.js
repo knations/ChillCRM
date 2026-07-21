@@ -1062,7 +1062,7 @@ function setMobileDetailOpen(active) {
 }
 
 function isMobileDetailViewport() {
-  return window.matchMedia?.("(max-width: 820px)").matches || false;
+  return window.matchMedia?.("(max-width: 1040px)").matches || false;
 }
 
 function openMobileDetailView(returnLabel = "") {

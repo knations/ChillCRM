@@ -687,6 +687,64 @@ button {
   border-color: #d8cdbb;
 }
 
+.deal-command-summary {
+  background: #fbfaf7;
+  border-color: #d8cdbb;
+  display: grid;
+  gap: 18px;
+}
+
+.deal-command-primary {
+  align-items: stretch;
+  display: grid;
+  gap: 14px;
+  grid-template-columns: minmax(0, 1fr) minmax(160px, 220px);
+}
+
+.deal-command-primary > div,
+.deal-command-facts > div {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  padding: 14px 16px;
+}
+
+.deal-command-summary span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.deal-command-summary strong,
+.deal-command-link {
+  color: var(--text);
+  font-size: 18px;
+  font-weight: 850;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.deal-command-link {
+  justify-self: start;
+  padding: 0;
+  text-align: left;
+}
+
+.deal-command-revenue strong {
+  font-size: 28px;
+}
+
+.deal-command-facts {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
 .deal-next-action-panel.attention {
   background: #fff8f5;
   border-color: #efb5a8;
@@ -5096,6 +5154,10 @@ button {
     flex-wrap: nowrap;
     justify-content: space-between;
   }
+
+  .deal-command-facts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 820px) {
@@ -5208,6 +5270,24 @@ button {
 
   .app-shell.mobile-detail-open .detail-title {
     font-size: 21px;
+  }
+
+  .app-shell.mobile-detail-open .deal-command-primary,
+  .app-shell.mobile-detail-open .deal-command-facts {
+    grid-template-columns: 1fr;
+  }
+
+  .app-shell.mobile-detail-open .deal-command-summary {
+    gap: 12px;
+  }
+
+  .app-shell.mobile-detail-open .deal-command-primary > div,
+  .app-shell.mobile-detail-open .deal-command-facts > div {
+    padding: 12px;
+  }
+
+  .app-shell.mobile-detail-open .deal-command-revenue strong {
+    font-size: 24px;
   }
 
   .app-shell.mobile-detail-open .detail-heading-layout.has-profile-image {

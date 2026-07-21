@@ -5552,6 +5552,7 @@ function dealDetailBody(detail) {
   const fileItems = [...(detail.record_files || []), ...(detail.archive_items || [])];
   const nonSalesFields = nonSalesCustomFields(detail.custom_fields || []);
   return `
+    ${dealCommandSummary(detail)}
     ${dealNextActionPanel(detail)}
     ${dealSalesProfileSection(detail, "qualification")}
     ${editForm(detail)}
@@ -5571,6 +5572,59 @@ function dealDetailBody(detail) {
     ${reviewFlagsSection(detail.review_flags || [])}
     ${nonSalesFields.length ? customFields(nonSalesFields, []) : ""}
     ${activitySection(detail.activity || [])}
+  `;
+}
+
+function dealCommandSummary(detail) {
+  if (detail.type !== "deal") return "";
+  const record = detail.record || {};
+  const contact = detail.contact || null;
+  const organization = detail.organization || null;
+  const next = detail.next_action || {};
+  const revenue = formatMoney(record.value, record.currency || "USD");
+  const stage = record.stage_name || "No stage";
+  const expectedClose = formatDate(record.estimated_close_date) || "No close date";
+  const contactLabel = contact?.name || record.contact_name || "";
+  const organizationLabel = organization?.name || record.organization_name || "";
+  return `
+    <div class="detail-section deal-command-summary">
+      <div class="deal-command-primary">
+        <div>
+          <span>Lead / Contact</span>
+          ${
+            contact
+              ? `<button class="text-button record-button deal-command-link" type="button" data-type="person" data-id="${escapeHtml(contact.source_id)}">${escapeHtml(contactLabel || "Open Contact")}</button>`
+              : `<strong>${escapeHtml(contactLabel || "No contact attached")}</strong>`
+          }
+        </div>
+        <div class="deal-command-revenue">
+          <span>Revenue</span>
+          <strong>${escapeHtml(revenue)}</strong>
+        </div>
+      </div>
+      <div class="deal-command-facts">
+        <div>
+          <span>Company</span>
+          ${
+            organization
+              ? `<button class="text-button record-button deal-command-link" type="button" data-type="company" data-id="${escapeHtml(organization.source_id)}">${escapeHtml(organizationLabel || "Open Company")}</button>`
+              : `<strong>${escapeHtml(organizationLabel || "No company attached")}</strong>`
+          }
+        </div>
+        <div>
+          <span>Stage</span>
+          <strong>${escapeHtml(stage)}</strong>
+        </div>
+        <div>
+          <span>Expected Close</span>
+          <strong>${escapeHtml(expectedClose)}</strong>
+        </div>
+        <div>
+          <span>Next Action</span>
+          <strong>${escapeHtml(next.title || "No next action")}</strong>
+        </div>
+      </div>
+    </div>
   `;
 }
 

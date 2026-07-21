@@ -1429,6 +1429,8 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         "/api/app_users/reactivate": "manage_users_roles",
         "/api/app_users/set_password": "manage_users_roles",
         "/api/auth/change_password": "change_own_password",
+        "/api/auth/passkey/register/options": "change_own_password",
+        "/api/auth/passkey/register/verify": "change_own_password",
     }
 
     def log_message(self, format: str, *args: Any) -> None:

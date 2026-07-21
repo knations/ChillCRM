@@ -1995,7 +1995,11 @@ def main() -> int:
             assert handler.permission_action_for_post("/api/update_record") == "create_edit_records"
             assert handler.permission_action_for_post("/api/save_project_decision") == "save_project_decision"
             assert handler.permission_action_for_post("/api/auth/change_password") == "change_own_password"
+            assert handler.permission_action_for_post("/api/auth/passkey/register/options") == "change_own_password"
+            assert handler.permission_action_for_post("/api/auth/passkey/register/verify") == "change_own_password"
             assert "/api/auth/change_password" not in handler.write_locked_post_paths
+            assert "/api/auth/passkey/register/options" not in handler.write_locked_post_paths
+            assert "/api/auth/passkey/register/verify" not in handler.write_locked_post_paths
             assert handler.user_can_perform(read_only_user, "view_dashboard_reports")
             assert not handler.user_can_perform(read_only_user, "create_edit_records")
             assert not handler.user_can_perform(read_only_user, "export_csv_reports")

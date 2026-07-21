@@ -1714,6 +1714,14 @@ def main() -> int:
     assert "start_today" in server_py
     assert "Start Work" in server_py
     assert "System Status" in server_py
+    assert "sales_command_center" in server_py
+    assert "Today Cockpit" in server_py
+    assert "salesCommandCenterPanel" in app_js
+    assert "Deals Missing Next Action" in app_js
+    assert "sales-command-center" in styles_css
+    change_order_doctrine = (PROJECT_ROOT / "docs" / "change_order_doctrine.md").read_text(encoding="utf-8")
+    assert "CHILLCRM Change Order Doctrine" in change_order_doctrine
+    assert "Start Wave 1 now" in change_order_doctrine
     assert "Hosted Staging" not in server_py
     assert "Remote staging is read-only" not in server_py
     assert "Start Today" in app_js
@@ -4933,6 +4941,16 @@ def main() -> int:
         assert len(work_queue["upcoming_tasks"]) <= 6
         assert len(work_queue["recent_records"]) <= 6
         assert len(work_queue["local_change_items"]) <= 6
+        sales_command_center = summary["sales_command_center"]
+        assert sales_command_center["title"] == "Today Cockpit"
+        sales_metrics = {item["label"]: item["value"] for item in sales_command_center["metrics"]}
+        assert {"Overdue", "Due Today", "No Next Action", "Stale Deals", "Hot Deals", "New Leads"}.issubset(sales_metrics)
+        assert len(sales_command_center["overdue_tasks"]) <= 4
+        assert len(sales_command_center["due_today_tasks"]) <= 4
+        assert len(sales_command_center["missing_next_action_deals"]) <= 6
+        assert len(sales_command_center["stale_deals"]) <= 6
+        assert len(sales_command_center["hot_deals"]) <= 6
+        assert len(sales_command_center["new_leads"]) <= 6
         assert work_queue["local_change_items"]
         assert all(
             row["activity_type"] in {"audit", "cleanup_decision", "project_decision"}

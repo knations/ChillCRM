@@ -1477,6 +1477,7 @@ async function renderDashboard() {
       </div>
     </div>
     ${startTodayPanel(data.start_today)}
+    ${salesCommandCenterPanel(data.sales_command_center)}
     <div class="metric-grid">
       ${metric("People", data.counts.people)}
       ${metric("Companies", data.counts.companies)}
@@ -1537,6 +1538,93 @@ async function renderDashboard() {
   wireCleanupSummaryButtons(els.dashboard);
   wireProfileSegmentButtons(els.dashboard);
   setStatus("Ready");
+}
+
+function salesCommandCenterPanel(center) {
+  if (!center?.title) return "";
+  const metrics = center.metrics || [];
+  const tone = center.status === "ready" ? "green" : center.status === "attention" ? "coral" : "gold";
+  return `
+    <div class="band sales-command-center ${escapeHtml(center.status || "")}">
+      <div class="band-header">
+        <div>
+          <h3>${escapeHtml(center.title || "Today Cockpit")}</h3>
+          <p>${escapeHtml(center.message || "")}</p>
+        </div>
+        <div class="start-today-actions">
+          <span class="pill ${tone}">${escapeHtml(labelize(center.status || "waiting"))}</span>
+          <button type="button" class="text-button nav-jump" data-view="followup">Follow Up</button>
+          <button type="button" class="text-button work-queue-preset" data-preset="active_deals">Active Deals</button>
+        </div>
+      </div>
+      <div class="sales-command-metrics">
+        ${metrics.map((item) => `
+          <div class="sales-command-metric">
+            <span>${escapeHtml(item.label || "")}</span>
+            <strong>${formatNumber(item.value || 0)}</strong>
+          </div>
+        `).join("")}
+      </div>
+      <div class="sales-command-grid">
+        ${salesCommandList("Overdue Follow-Ups", center.overdue_tasks || [], "task")}
+        ${salesCommandList("Due Today", center.due_today_tasks || [], "task")}
+        ${salesCommandList("Deals Missing Next Action", center.missing_next_action_deals || [], "record")}
+        ${salesCommandList("Stale Active Deals", center.stale_deals || [], "record")}
+        ${salesCommandList("Hot Deals", center.hot_deals || [], "record")}
+        ${salesCommandList("New Leads", center.new_leads || [], "record")}
+      </div>
+    </div>
+  `;
+}
+
+function salesCommandList(title, rows, mode) {
+  const empty = mode === "task" ? "No follow-ups here." : "Nothing waiting here.";
+  return `
+    <div class="sales-command-list">
+      <h4>${escapeHtml(title)}</h4>
+      ${
+        rows.length
+          ? rows.map((row) => mode === "task" ? salesCommandTaskRow(row) : salesCommandRecordRow(row)).join("")
+          : `<p class="muted">${empty}</p>`
+      }
+    </div>
+  `;
+}
+
+function salesCommandTaskRow(task) {
+  const type = task.record_type || "";
+  const id = task.record_id || "";
+  const recordName = task.record_name || "Unlinked";
+  return `
+    <div class="sales-command-row">
+      <div>
+        <strong>${escapeHtml(task.content || "Untitled follow-up")}</strong>
+        <span>${escapeHtml(formatDate(task.due_date) || "No due date")} · ${escapeHtml(task.task_source_label || "Task")}</span>
+      </div>
+      ${
+        type && id
+          ? `<button type="button" class="text-button record-button" data-type="${escapeHtml(type)}" data-id="${escapeHtml(id)}">${escapeHtml(recordName)}</button>`
+          : `<span class="muted">${escapeHtml(recordName)}</span>`
+      }
+    </div>
+  `;
+}
+
+function salesCommandRecordRow(record) {
+  const meta = [
+    record.stage_name,
+    record.value ? formatMoney(record.value) : "",
+    record.match_context,
+  ].filter(Boolean).join(" · ");
+  return `
+    <div class="sales-command-row">
+      <div>
+        <strong>${escapeHtml(record.name || "(blank)")}</strong>
+        <span>${escapeHtml(meta || formatDate(record.updated_at) || "")}</span>
+      </div>
+      <button type="button" class="text-button record-button" data-type="${escapeHtml(record.type)}" data-id="${escapeHtml(record.source_id)}">Open</button>
+    </div>
+  `;
 }
 
 function startTodayPanel(start) {

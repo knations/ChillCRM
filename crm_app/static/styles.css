@@ -587,6 +587,102 @@ button {
   border-color: #b9d7c2;
 }
 
+.sales-command-center {
+  border-color: #cfc6b7;
+}
+
+.sales-command-center.attention {
+  border-color: #efb5a8;
+}
+
+.sales-command-center .band-header p {
+  color: var(--muted);
+  margin: 6px 0 0;
+}
+
+.sales-command-metrics {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  padding: 14px 16px 0;
+}
+
+.sales-command-metric {
+  background: var(--surface-soft);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 10px;
+}
+
+.sales-command-metric span {
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+.sales-command-metric strong {
+  font-size: 24px;
+}
+
+.sales-command-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  padding: 14px 16px 16px;
+}
+
+.sales-command-list {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.sales-command-list h4 {
+  border-bottom: 1px solid var(--line);
+  font-size: 12px;
+  margin: 0;
+  padding: 10px 12px;
+  text-transform: uppercase;
+}
+
+.sales-command-list > p {
+  margin: 0;
+  padding: 12px;
+}
+
+.sales-command-row {
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding: 10px 12px;
+}
+
+.sales-command-row:last-child {
+  border-bottom: 0;
+}
+
+.sales-command-row div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.sales-command-row strong,
+.sales-command-row span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.sales-command-row span {
+  color: var(--muted);
+}
+
 .start-today-panel .band-header p {
   color: var(--muted);
   margin: 6px 0 0;
@@ -5122,8 +5218,18 @@ button {
   }
 
   .start-today-body,
+  .sales-command-grid,
   .start-guide-step,
   .followup-transition-step {
+    grid-template-columns: 1fr;
+  }
+
+  .sales-command-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .sales-command-row {
+    align-items: stretch;
     grid-template-columns: 1fr;
   }
 

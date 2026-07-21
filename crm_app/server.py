@@ -4342,6 +4342,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             "saved_views": saved_views,
             "cleanup_summary": cleanup_summary,
             "start_today": start_today,
+            "sales_command_center": self.sales_command_center(),
             "remote_write_lock": self.remote_write_lock_status(),
             "local_write_freeze": self.local_write_freeze_status(),
             "runtime": self.runtime_context(),
@@ -4500,11 +4501,185 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                 "step_count": 4,
                 "summary": f"{write_label} {file_label} {export_label}",
             },
+            "sales_command_center": self.sales_command_center(),
             "remote_write_lock": write_lock,
             "local_write_freeze": local_freeze,
             "runtime": runtime,
             "recently_updated": recently_updated,
             "upcoming_tasks": upcoming_tasks,
+        }
+
+    def sales_command_center(self) -> dict[str, Any]:
+        with self.db() as conn:
+            overdue_task_count = conn.execute(
+                "SELECT count(*) FROM tasks WHERE completed = 0 AND due_date IS NOT NULL AND date(due_date) < date('now')"
+            ).fetchone()[0]
+            due_today_task_count = conn.execute(
+                "SELECT count(*) FROM tasks WHERE completed = 0 AND due_date IS NOT NULL AND date(due_date) = date('now')"
+            ).fetchone()[0]
+            overdue_tasks = self.task_rows(conn, "overdue", 4, 0)
+            due_today_tasks = rows_to_dicts(
+                conn.execute(
+                    """
+                    SELECT t.id AS source_id, t.zendesk_task_id, t.content, t.completed, t.completed_at,
+                           t.due_date, t.remind_at, t.overdue, t.record_type, t.record_id,
+                           t.created_at, t.updated_at,
+                           CASE WHEN t.zendesk_task_id IS NULL THEN 'local' ELSE 'imported' END AS task_source,
+                           CASE WHEN t.zendesk_task_id IS NULL THEN 'Local' ELSE 'Imported' END AS task_source_label,
+                           CASE
+                             WHEN t.record_type = 'person' THEN p.name
+                             WHEN t.record_type = 'company' THEN c.name
+                             WHEN t.record_type = 'lead' THEN l.name
+                             WHEN t.record_type = 'deal' THEN d.name
+                             ELSE NULL
+                           END AS record_name
+                    FROM tasks t
+                    LEFT JOIN people p ON t.record_type = 'person' AND p.id = t.record_id
+                    LEFT JOIN companies c ON t.record_type = 'company' AND c.id = t.record_id
+                    LEFT JOIN leads l ON t.record_type = 'lead' AND l.id = t.record_id
+                    LEFT JOIN deals d ON t.record_type = 'deal' AND d.id = t.record_id
+                    WHERE t.completed = 0 AND t.due_date IS NOT NULL AND date(t.due_date) = date('now')
+                    ORDER BY t.updated_at DESC, t.id DESC
+                    LIMIT 4
+                    """
+                ).fetchall()
+            )
+            active_deal_count = conn.execute(
+                """
+                SELECT count(*)
+                FROM deals d
+                LEFT JOIN stages s ON s.id = d.stage_id
+                WHERE coalesce(s.category, '') IN ('incoming', 'in_progress')
+                """
+            ).fetchone()[0]
+            missing_next_action_count = conn.execute(
+                """
+                SELECT count(*)
+                FROM deals d
+                LEFT JOIN stages s ON s.id = d.stage_id
+                WHERE coalesce(s.category, '') IN ('incoming', 'in_progress')
+                  AND NOT EXISTS (
+                    SELECT 1
+                    FROM tasks t
+                    WHERE t.record_type = 'deal'
+                      AND t.record_id = d.id
+                      AND t.completed = 0
+                      AND t.zendesk_task_id IS NULL
+                  )
+                """
+            ).fetchone()[0]
+            stale_deal_count = conn.execute(
+                """
+                SELECT count(*)
+                FROM deals d
+                LEFT JOIN stages s ON s.id = d.stage_id
+                WHERE coalesce(s.category, '') IN ('incoming', 'in_progress')
+                  AND d.updated_at IS NOT NULL
+                  AND date(d.updated_at) < date('now', '-14 days')
+                """
+            ).fetchone()[0]
+            hot_deal_count = conn.execute(
+                """
+                SELECT count(*)
+                FROM deals d
+                LEFT JOIN stages s ON s.id = d.stage_id
+                WHERE coalesce(s.category, '') IN ('incoming', 'in_progress')
+                  AND coalesce(d.hot, 0) = 1
+                """
+            ).fetchone()[0]
+            new_lead_count = conn.execute(
+                "SELECT count(*) FROM leads WHERE coalesce(status, '') = 'New'"
+            ).fetchone()[0]
+            missing_next_action_deals = rows_to_dicts(
+                conn.execute(
+                    """
+                    SELECT 'deal' AS type, d.id AS source_id, 'deal' AS kind, d.name,
+                           NULL AS email, d.updated_at, s.name AS stage_name, d.value, d.currency,
+                           'Needs next action' AS match_context
+                    FROM deals d
+                    LEFT JOIN stages s ON s.id = d.stage_id
+                    WHERE coalesce(s.category, '') IN ('incoming', 'in_progress')
+                      AND NOT EXISTS (
+                        SELECT 1
+                        FROM tasks t
+                        WHERE t.record_type = 'deal'
+                          AND t.record_id = d.id
+                          AND t.completed = 0
+                          AND t.zendesk_task_id IS NULL
+                      )
+                    ORDER BY coalesce(d.hot, 0) DESC, coalesce(d.value, 0) DESC, d.updated_at DESC, d.name COLLATE NOCASE
+                    LIMIT 6
+                    """
+                ).fetchall()
+            )
+            stale_deals = rows_to_dicts(
+                conn.execute(
+                    """
+                    SELECT 'deal' AS type, d.id AS source_id, 'deal' AS kind, d.name,
+                           NULL AS email, d.updated_at, s.name AS stage_name, d.value, d.currency,
+                           'No update in 14+ days' AS match_context
+                    FROM deals d
+                    LEFT JOIN stages s ON s.id = d.stage_id
+                    WHERE coalesce(s.category, '') IN ('incoming', 'in_progress')
+                      AND d.updated_at IS NOT NULL
+                      AND date(d.updated_at) < date('now', '-14 days')
+                    ORDER BY d.updated_at ASC, coalesce(d.value, 0) DESC, d.name COLLATE NOCASE
+                    LIMIT 6
+                    """
+                ).fetchall()
+            )
+            hot_deals = rows_to_dicts(
+                conn.execute(
+                    """
+                    SELECT 'deal' AS type, d.id AS source_id, 'deal' AS kind, d.name,
+                           NULL AS email, d.updated_at, s.name AS stage_name, d.value, d.currency,
+                           'Hot deal' AS match_context
+                    FROM deals d
+                    LEFT JOIN stages s ON s.id = d.stage_id
+                    WHERE coalesce(s.category, '') IN ('incoming', 'in_progress')
+                      AND coalesce(d.hot, 0) = 1
+                    ORDER BY coalesce(d.value, 0) DESC, d.updated_at DESC, d.name COLLATE NOCASE
+                    LIMIT 6
+                    """
+                ).fetchall()
+            )
+            new_leads = rows_to_dicts(
+                conn.execute(
+                    """
+                    SELECT 'lead' AS type, l.id AS source_id, 'lead' AS kind, l.name,
+                           l.email, l.updated_at,
+                           CASE WHEN l.organization_name IS NOT NULL AND l.organization_name != '' THEN l.organization_name ELSE 'New lead' END AS match_context
+                    FROM leads l
+                    WHERE coalesce(l.status, '') = 'New'
+                    ORDER BY l.updated_at DESC, l.name COLLATE NOCASE
+                    LIMIT 6
+                    """
+                ).fetchall()
+            )
+        attention_count = (
+            int(missing_next_action_count or 0)
+            + int(stale_deal_count or 0)
+            + int(overdue_task_count or 0)
+        )
+        return {
+            "title": "Today Cockpit",
+            "status": "attention" if attention_count else "ready" if int(active_deal_count or 0) or int(new_lead_count or 0) else "waiting",
+            "message": "The daily sales command center: what is late, what needs a next action, and what is moving.",
+            "metrics": [
+                {"label": "Overdue", "value": int(overdue_task_count or 0)},
+                {"label": "Due Today", "value": int(due_today_task_count or 0)},
+                {"label": "No Next Action", "value": int(missing_next_action_count or 0)},
+                {"label": "Stale Deals", "value": int(stale_deal_count or 0)},
+                {"label": "Hot Deals", "value": int(hot_deal_count or 0)},
+                {"label": "New Leads", "value": int(new_lead_count or 0)},
+            ],
+            "active_deal_count": int(active_deal_count or 0),
+            "overdue_tasks": overdue_tasks,
+            "due_today_tasks": due_today_tasks,
+            "missing_next_action_deals": missing_next_action_deals,
+            "stale_deals": stale_deals,
+            "hot_deals": hot_deals,
+            "new_leads": new_leads,
         }
 
     def dashboard_start_today(self) -> dict[str, Any]:

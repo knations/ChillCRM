@@ -17743,14 +17743,20 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             (record_id, upgrade_field_name),
         ).fetchone()
         upgrade_to = self.clean_optional(upgrade_row["field_value"] if upgrade_row else None)
+        upgrade_labels = {
+            "FAMILY MASTERMIND": "Family Mastermind",
+            "FAMILY MASTERMIND RENEWAL": "Family Renewal",
+            "OTHER": "Other",
+        }
+        upgrade_label = upgrade_labels.get(str(upgrade_to or "").strip().upper(), upgrade_to)
         if local_next_task:
             status = "ready"
             title = "Next Action Set"
             message = local_next_task.get("content") or "Local next action is set."
         elif won:
             status = "ready" if upgrade_to else "attention"
-            title = "Upgrade To Set" if upgrade_to else "Upgrade To Needed"
-            message = f"Upgrade target: {upgrade_to}" if upgrade_to else "Choose the upgrade path for this won deal."
+            title = f"Upgrade to {upgrade_label}" if upgrade_to else "Upgrade To Needed"
+            message = f"Upgrade target: {upgrade_label}" if upgrade_to else "Choose the upgrade path for this won deal."
         else:
             status = "attention"
             title = "Next Action Needed"

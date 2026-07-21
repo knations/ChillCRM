@@ -135,6 +135,7 @@ const els = {
   authOverlay: document.querySelector("#authOverlay"),
   authLoginForm: document.querySelector("#authLoginForm"),
   authMessage: document.querySelector("#authMessage"),
+  passkeyLoginButton: document.querySelector("#passkeyLoginButton"),
   ownerRecoveryOpen: document.querySelector("#ownerRecoveryOpen"),
   ownerRecoveryOverlay: document.querySelector("#ownerRecoveryOverlay"),
   ownerRecoveryForm: document.querySelector("#ownerRecoveryForm"),
@@ -142,6 +143,8 @@ const els = {
   passwordOverlay: document.querySelector("#passwordOverlay"),
   passwordChangeForm: document.querySelector("#passwordChangeForm"),
   passwordMessage: document.querySelector("#passwordMessage"),
+  registerPasskeyButton: document.querySelector("#registerPasskeyButton"),
+  passkeyMessage: document.querySelector("#passkeyMessage"),
   searchForm: document.querySelector("#globalSearchForm"),
   searchClear: document.querySelector("#globalSearchClear"),
 };
@@ -545,6 +548,80 @@ async function postJson(url, payload) {
   });
 }
 
+function browserSupportsPasskeys() {
+  return Boolean(window.PublicKeyCredential && navigator.credentials);
+}
+
+function base64UrlToBytes(value) {
+  const padding = "=".repeat((4 - (value.length % 4)) % 4);
+  const base64 = `${value}${padding}`.replace(/-/g, "+").replace(/_/g, "/");
+  const binary = window.atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return bytes;
+}
+
+function bytesToBase64Url(value) {
+  const bytes = value instanceof ArrayBuffer ? new Uint8Array(value) : new Uint8Array(value.buffer || value);
+  let binary = "";
+  bytes.forEach((byte) => {
+    binary += String.fromCharCode(byte);
+  });
+  return window.btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+
+function passkeyCreationOptions(options) {
+  return {
+    ...options,
+    challenge: base64UrlToBytes(options.challenge),
+    user: {
+      ...options.user,
+      id: base64UrlToBytes(options.user.id),
+    },
+    excludeCredentials: (options.excludeCredentials || []).map((credential) => ({
+      ...credential,
+      id: base64UrlToBytes(credential.id),
+    })),
+  };
+}
+
+function passkeyRequestOptions(options) {
+  return {
+    ...options,
+    challenge: base64UrlToBytes(options.challenge),
+    allowCredentials: (options.allowCredentials || []).map((credential) => ({
+      ...credential,
+      id: base64UrlToBytes(credential.id),
+    })),
+  };
+}
+
+function passkeyCredentialPayload(credential, challengeToken, mode) {
+  const response = credential.response;
+  const payload = {
+    id: credential.id,
+    rawId: bytesToBase64Url(credential.rawId),
+    type: credential.type,
+    challenge_token: challengeToken,
+    response: {
+      clientDataJSON: bytesToBase64Url(response.clientDataJSON),
+    },
+  };
+  if (mode === "register") {
+    payload.response.attestationObject = bytesToBase64Url(response.attestationObject);
+    if (typeof response.getTransports === "function") {
+      payload.transports = response.getTransports();
+    }
+  } else {
+    payload.response.authenticatorData = bytesToBase64Url(response.authenticatorData);
+    payload.response.signature = bytesToBase64Url(response.signature);
+    payload.response.userHandle = response.userHandle ? bytesToBase64Url(response.userHandle) : "";
+  }
+  return payload;
+}
+
 function setStatus(text) {
   els.status.textContent = text;
 }
@@ -628,6 +705,9 @@ function showAuthOverlay(auth = state.auth || {}) {
   if (els.ownerRecoveryOpen) {
     els.ownerRecoveryOpen.hidden = !auth.owner_password_recovery_enabled;
   }
+  if (els.passkeyLoginButton) {
+    els.passkeyLoginButton.hidden = !browserSupportsPasskeys();
+  }
   if (!auth.auth_required || auth.authenticated) {
     els.authOverlay.hidden = true;
     if (els.authMessage) els.authMessage.textContent = "";
@@ -695,6 +775,14 @@ function showPasswordOverlay(open) {
     return;
   }
   if (els.passwordMessage) els.passwordMessage.textContent = "";
+  if (els.passkeyMessage) {
+    const count = Number(state.auth?.user?.passkey_count || 0);
+    els.passkeyMessage.textContent = browserSupportsPasskeys()
+      ? count
+        ? `${count} passkey${count === 1 ? "" : "s"} set up for this account.`
+        : "Use this on your iPhone or Mac to add Face ID, Touch ID, or device passkey login."
+      : "This browser does not support passkeys.";
+  }
   els.passwordChangeForm.querySelector('input[name="current_password"]')?.focus();
 }
 
@@ -724,6 +812,73 @@ async function submitPasswordChange(form, button) {
   } catch (error) {
     if (els.passwordMessage) els.passwordMessage.textContent = error.message;
     setStatus("Password change failed");
+  } finally {
+    if (button) button.disabled = false;
+  }
+}
+
+async function registerPasskey(button) {
+  if (!browserSupportsPasskeys()) {
+    if (els.passkeyMessage) els.passkeyMessage.textContent = "This browser does not support passkeys.";
+    return;
+  }
+  if (button) button.disabled = true;
+  if (els.passkeyMessage) els.passkeyMessage.textContent = "";
+  try {
+    setStatus("Setting up passkey");
+    const options = await postJson("/api/auth/passkey/register/options", {});
+    const credential = await navigator.credentials.create({
+      publicKey: passkeyCreationOptions(options.publicKey),
+    });
+    if (!credential) throw new Error("Passkey setup was cancelled.");
+    const result = await postJson(
+      "/api/auth/passkey/register/verify",
+      passkeyCredentialPayload(credential, options.challenge_token, "register")
+    );
+    setAuthState(result.auth || (await fetchJson("/api/auth/status")));
+    renderAuthControl();
+    if (els.passkeyMessage) els.passkeyMessage.textContent = "Face ID / Passkey is ready for this account.";
+    setStatus("Passkey ready");
+  } catch (error) {
+    if (els.passkeyMessage) els.passkeyMessage.textContent = error.message || "Passkey setup failed.";
+    setStatus("Passkey setup failed");
+  } finally {
+    if (button) button.disabled = false;
+  }
+}
+
+async function loginWithPasskey(button) {
+  if (!browserSupportsPasskeys()) {
+    if (els.authMessage) els.authMessage.textContent = "This browser does not support passkeys.";
+    return;
+  }
+  const email = els.authLoginForm?.querySelector('input[name="email"]')?.value || "";
+  if (!email.trim()) {
+    if (els.authMessage) els.authMessage.textContent = "Enter your email first.";
+    els.authLoginForm?.querySelector('input[name="email"]')?.focus();
+    return;
+  }
+  if (button) button.disabled = true;
+  if (els.authMessage) els.authMessage.textContent = "";
+  try {
+    setStatus("Checking passkey");
+    const options = await postJson("/api/auth/passkey/login/options", { email });
+    const credential = await navigator.credentials.get({
+      publicKey: passkeyRequestOptions(options.publicKey),
+    });
+    if (!credential) throw new Error("Passkey sign in was cancelled.");
+    const result = await postJson(
+      "/api/auth/passkey/login/verify",
+      passkeyCredentialPayload(credential, options.challenge_token, "login")
+    );
+    setAuthState(result.auth);
+    renderAuthControl();
+    showAuthOverlay(state.auth);
+    await renderDashboard();
+    setStatus("Ready");
+  } catch (error) {
+    if (els.authMessage) els.authMessage.textContent = error.message || "Passkey sign in failed.";
+    setStatus("Sign in needed");
   } finally {
     if (button) button.disabled = false;
   }
@@ -10258,6 +10413,10 @@ els.ownerRecoveryOpen?.addEventListener("click", () => {
   showOwnerRecoveryOverlay(true);
 });
 
+els.passkeyLoginButton?.addEventListener("click", async (event) => {
+  await loginWithPasskey(event.currentTarget);
+});
+
 els.ownerRecoveryForm?.addEventListener("submit", async (event) => {
   event.preventDefault();
   await submitOwnerRecovery(event.currentTarget, event.submitter);
@@ -10274,6 +10433,10 @@ els.passwordChangeForm?.addEventListener("submit", async (event) => {
 
 document.querySelector("#cancelPasswordChange")?.addEventListener("click", () => {
   showPasswordOverlay(false);
+});
+
+els.registerPasskeyButton?.addEventListener("click", async (event) => {
+  await registerPasskey(event.currentTarget);
 });
 
 initializeAuth()

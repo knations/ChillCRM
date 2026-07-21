@@ -1925,6 +1925,9 @@ def main() -> int:
             assert handler.should_require_auth_for_post("/api/update_record") is True
             assert handler.should_require_auth_for_post("/api/webhooks/zapier_purchase") is False
             assert handler.should_require_auth_for_post("/api/auth/login") is False
+            assert handler.should_require_auth_for_post("/api/auth/passkey/login/options") is False
+            assert handler.should_require_auth_for_post("/api/auth/passkey/login/verify") is False
+            assert handler.should_require_auth_for_post("/api/auth/passkey/register/options") is True
             os.environ["CHILLCRM_ZAPIER_WEBHOOK_SECRET"] = "unit-test-webhook-secret"
             handler.headers = {"Authorization": "Bearer unit-test-webhook-secret"}
             assert handler.zapier_purchase_webhook_authorization_error() is None
@@ -1943,6 +1946,23 @@ def main() -> int:
             assert auth_user["email"] == "owner@example.test"
             assert "owner" in auth_user["roles"]
             assert "admin" in auth_user["roles"]
+            handler.headers = {"Host": "chillcrm.app", "X-Forwarded-Proto": "https"}
+            passkey_options = handler.passkey_registration_options(auth_user)
+            assert passkey_options["publicKey"]["rp"]["id"] == "chillcrm.app"
+            assert passkey_options["publicKey"]["user"]["name"] == "owner@example.test"
+            assert passkey_options["publicKey"]["authenticatorSelection"]["userVerification"] == "required"
+            passkey_challenge = handler.verify_passkey_challenge_token(
+                passkey_options["challenge_token"],
+                server.WEBAUTHN_REGISTER_CHALLENGE_KIND,
+            )
+            assert passkey_challenge["origin"] == "https://chillcrm.app"
+            assert passkey_challenge["rp_id"] == "chillcrm.app"
+            try:
+                handler.passkey_login_options({"email": "owner@example.test"})
+                raise AssertionError("Passkey login should require a registered passkey.")
+            except ValueError as exc:
+                assert "No passkey is set up" in str(exc)
+            handler.headers = {}
             session_token = handler.create_session_token(auth_user)
             session_payload = server.verify_signed_session_token(session_token, "unit-test-session-secret")
             assert session_payload["email"] == "owner@example.test"

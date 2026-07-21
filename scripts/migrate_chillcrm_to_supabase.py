@@ -66,6 +66,7 @@ REMOTE_ONLY_TABLES = [
     "app_users",
     "app_roles",
     "app_user_roles",
+    "app_passkeys",
     "app_permissions",
     "remote_audit_events",
     "remote_file_objects",

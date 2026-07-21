@@ -29,6 +29,18 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 
+try:
+    from cryptography.exceptions import InvalidSignature
+    from cryptography.hazmat.primitives import hashes
+    from cryptography.hazmat.primitives.asymmetric import ec
+    from cryptography.hazmat.primitives.asymmetric.utils import decode_dss_signature, encode_dss_signature
+except ImportError:  # pragma: no cover - handled at runtime for local environments missing optional dependency
+    InvalidSignature = None
+    hashes = None
+    ec = None
+    decode_dss_signature = None
+    encode_dss_signature = None
+
 
 APP_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = APP_DIR.parent
@@ -506,6 +518,9 @@ CLEANUP_POLICY_LANES = {
 URL_RE = re.compile(r"https?://[^\s<>'\"]+")
 POSTGRES_ADAPTER_VALUES = {"postgres", "hosted_postgres", "supabase"}
 AUTH_COOKIE_NAME = "chillcrm_session"
+PASSKEY_USER_VERIFICATION_REQUIRED = True
+WEBAUTHN_REGISTER_CHALLENGE_KIND = "passkey_register"
+WEBAUTHN_LOGIN_CHALLENGE_KIND = "passkey_login"
 AUTH_ROLE_SEEDS = [
     ("owner", "Owner", "Full system authority for configuration, exports, backups, and cutover."),
     ("admin", "Admin", "Daily CRM administration and most operational workflows."),
@@ -719,6 +734,165 @@ def verify_signed_session_token(token: str, secret: str) -> dict[str, Any] | Non
         return payload
     except Exception:
         return None
+
+
+class CborDecodeError(ValueError):
+    pass
+
+
+class CborReader:
+    def __init__(self, data: bytes):
+        self.data = data
+        self.index = 0
+
+    def read(self, length: int) -> bytes:
+        if self.index + length > len(self.data):
+            raise CborDecodeError("CBOR payload ended early.")
+        chunk = self.data[self.index : self.index + length]
+        self.index += length
+        return chunk
+
+    def read_byte(self) -> int:
+        return self.read(1)[0]
+
+    def read_length(self, additional: int) -> int:
+        if additional < 24:
+            return additional
+        if additional == 24:
+            return self.read_byte()
+        if additional == 25:
+            return int.from_bytes(self.read(2), "big")
+        if additional == 26:
+            return int.from_bytes(self.read(4), "big")
+        if additional == 27:
+            return int.from_bytes(self.read(8), "big")
+        raise CborDecodeError("Unsupported CBOR length.")
+
+    def decode(self) -> Any:
+        initial = self.read_byte()
+        major = initial >> 5
+        additional = initial & 0x1F
+        if major == 0:
+            return self.read_length(additional)
+        if major == 1:
+            return -1 - self.read_length(additional)
+        if major == 2:
+            return self.read(self.read_length(additional))
+        if major == 3:
+            return self.read(self.read_length(additional)).decode("utf-8")
+        if major == 4:
+            return [self.decode() for _ in range(self.read_length(additional))]
+        if major == 5:
+            return {self.decode(): self.decode() for _ in range(self.read_length(additional))}
+        if major == 7:
+            if additional == 20:
+                return False
+            if additional == 21:
+                return True
+            if additional == 22:
+                return None
+        raise CborDecodeError("Unsupported CBOR value.")
+
+
+def cbor_decode(data: bytes) -> Any:
+    reader = CborReader(data)
+    value = reader.decode()
+    if reader.index != len(data):
+        raise CborDecodeError("CBOR payload had trailing bytes.")
+    return value
+
+
+def client_data_json(payload: str) -> dict[str, Any]:
+    return json.loads(b64url_decode(payload).decode("utf-8"))
+
+
+def verify_client_data(client_data: dict[str, Any], expected_type: str, challenge: str, origin: str) -> None:
+    if client_data.get("type") != expected_type:
+        raise ValueError("Passkey response type was not valid.")
+    if client_data.get("challenge") != challenge:
+        raise ValueError("Passkey challenge did not match.")
+    if client_data.get("origin") != origin:
+        raise ValueError("Passkey origin did not match this app.")
+
+
+def parse_authenticator_data(auth_data: bytes) -> dict[str, Any]:
+    if len(auth_data) < 37:
+        raise ValueError("Passkey authenticator data was incomplete.")
+    return {
+        "rp_id_hash": auth_data[:32],
+        "flags": auth_data[32],
+        "sign_count": int.from_bytes(auth_data[33:37], "big"),
+        "attested_credential_data": auth_data[37:],
+        "raw": auth_data,
+    }
+
+
+def require_user_verified(flags: int) -> None:
+    if not flags & 0x01:
+        raise ValueError("Passkey user presence was not confirmed.")
+    if PASSKEY_USER_VERIFICATION_REQUIRED and not flags & 0x04:
+        raise ValueError("Face ID, Touch ID, or device verification was not confirmed.")
+
+
+def extract_attested_credential(auth_data: bytes) -> dict[str, Any]:
+    parsed = parse_authenticator_data(auth_data)
+    require_user_verified(parsed["flags"])
+    if not parsed["flags"] & 0x40:
+        raise ValueError("Passkey registration did not include credential data.")
+    data = parsed["attested_credential_data"]
+    if len(data) < 18:
+        raise ValueError("Passkey credential data was incomplete.")
+    credential_id_length = int.from_bytes(data[16:18], "big")
+    credential_id = data[18 : 18 + credential_id_length]
+    public_key_cose = data[18 + credential_id_length :]
+    if not credential_id or not public_key_cose:
+        raise ValueError("Passkey credential was incomplete.")
+    return {
+        "credential_id": credential_id,
+        "public_key_cose": public_key_cose,
+        "sign_count": parsed["sign_count"],
+    }
+
+
+def es256_public_key_from_cose(public_key_cose: bytes) -> Any:
+    if ec is None:
+        raise RuntimeError("The cryptography package is required for passkey verification.")
+    cose = cbor_decode(public_key_cose)
+    if not isinstance(cose, dict):
+        raise ValueError("Passkey public key was not valid.")
+    if cose.get(1) != 2 or cose.get(3) != -7 or cose.get(-1) != 1:
+        raise ValueError("Only ES256 platform passkeys are currently supported.")
+    x = cose.get(-2)
+    y = cose.get(-3)
+    if not isinstance(x, bytes) or not isinstance(y, bytes):
+        raise ValueError("Passkey public key coordinates were missing.")
+    numbers = ec.EllipticCurvePublicNumbers(int.from_bytes(x, "big"), int.from_bytes(y, "big"), ec.SECP256R1())
+    return numbers.public_key()
+
+
+def verify_es256_signature(public_key_cose: bytes, signature: bytes, signed_data: bytes) -> None:
+    if ec is None or hashes is None or InvalidSignature is None:
+        raise RuntimeError("The cryptography package is required for passkey verification.")
+    public_key = es256_public_key_from_cose(public_key_cose)
+    try:
+        public_key.verify(signature, signed_data, ec.ECDSA(hashes.SHA256()))
+        return
+    except InvalidSignature:
+        pass
+    if decode_dss_signature is None or encode_dss_signature is None:
+        raise ValueError("Passkey signature was not valid.")
+    try:
+        part_length = len(signature) // 2
+        if len(signature) == 64:
+            der_signature = encode_dss_signature(
+                int.from_bytes(signature[:part_length], "big"),
+                int.from_bytes(signature[part_length:], "big"),
+            )
+            public_key.verify(der_signature, signed_data, ec.ECDSA(hashes.SHA256()))
+            return
+    except Exception:
+        pass
+    raise ValueError("Passkey signature was not valid.")
 
 
 def translate_sqlite_sql_for_postgres(sql: str) -> str:
@@ -1065,6 +1239,21 @@ def ensure_runtime_schema(db_path: Path) -> None:
 
             CREATE INDEX IF NOT EXISTS idx_app_user_roles_user
             ON app_user_roles(app_user_id, revoked_at);
+
+            CREATE TABLE IF NOT EXISTS app_passkeys (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                app_user_id INTEGER NOT NULL REFERENCES app_users(id),
+                credential_id TEXT NOT NULL UNIQUE,
+                public_key_cose TEXT NOT NULL,
+                sign_count INTEGER NOT NULL DEFAULT 0,
+                label TEXT,
+                transports TEXT,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                last_used_at TEXT
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_app_passkeys_user
+            ON app_passkeys(app_user_id, created_at DESC);
             """
         )
         columns = {row[1] for row in conn.execute("PRAGMA table_info(review_flags)")}
@@ -1523,6 +1712,11 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             ).fetchall()
         )
         user["roles"] = [role["role_key"] for role in roles]
+        try:
+            passkey_row = conn.execute("SELECT count(*) AS count FROM app_passkeys WHERE app_user_id = ?", (user_id,)).fetchone()
+            user["passkey_count"] = int(passkey_row["count"] if passkey_row else 0)
+        except Exception:
+            user["passkey_count"] = 0
         return user
 
     def load_app_user_by_email(self, conn: Any, email: str) -> dict[str, Any] | None:
@@ -1538,6 +1732,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             "display_name": user.get("display_name"),
             "status": user.get("status"),
             "roles": user.get("roles") or [],
+            "passkey_count": int(user.get("passkey_count") or 0),
         }
 
     def public_app_user(self, user: dict[str, Any] | None) -> dict[str, Any] | None:
@@ -1959,6 +2154,288 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         response = {"ok": True, "user": self.public_app_user(updated), "temporary_password": temporary_password}
         return response
 
+    def request_origin(self) -> str:
+        headers = getattr(self, "headers", {})
+        host = str(headers.get("X-Forwarded-Host") or headers.get("Host") or "").strip()
+        proto = str(headers.get("X-Forwarded-Proto") or "").split(",", 1)[0].strip()
+        if not proto:
+            proto = "https" if self.session_cookie_secure_enabled() else "http"
+        return f"{proto}://{host}"
+
+    def webauthn_rp_id(self) -> str:
+        configured = os.environ.get("CHILLCRM_PASSKEY_RP_ID", "").strip().lower()
+        if configured:
+            return configured
+        host = urllib.parse.urlparse(self.request_origin()).hostname or ""
+        return host.strip(".").lower()
+
+    def passkey_schema_statements(self) -> list[str]:
+        if self.hosted_postgres_adapter_enabled():
+            return [
+                """
+                CREATE TABLE IF NOT EXISTS app_passkeys (
+                    id bigint GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+                    app_user_id bigint NOT NULL REFERENCES app_users(id),
+                    credential_id text NOT NULL UNIQUE,
+                    public_key_cose text NOT NULL,
+                    sign_count bigint NOT NULL DEFAULT 0,
+                    label text,
+                    transports text,
+                    created_at timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    last_used_at timestamptz
+                )
+                """,
+                "CREATE INDEX IF NOT EXISTS idx_app_passkeys_user ON app_passkeys(app_user_id, created_at DESC)",
+            ]
+        return [
+            """
+            CREATE TABLE IF NOT EXISTS app_passkeys (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                app_user_id INTEGER NOT NULL REFERENCES app_users(id),
+                credential_id TEXT NOT NULL UNIQUE,
+                public_key_cose TEXT NOT NULL,
+                sign_count INTEGER NOT NULL DEFAULT 0,
+                label TEXT,
+                transports TEXT,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                last_used_at TEXT
+            )
+            """,
+            "CREATE INDEX IF NOT EXISTS idx_app_passkeys_user ON app_passkeys(app_user_id, created_at DESC)",
+        ]
+
+    def ensure_passkey_schema(self, conn: Any) -> None:
+        for statement in self.passkey_schema_statements():
+            conn.execute(statement)
+
+    def passkey_challenge_token(self, kind: str, payload: dict[str, Any]) -> str:
+        if not self.session_secret():
+            raise RuntimeError("SESSION_SECRET is required before passkeys are enabled.")
+        now = int(time.time())
+        payload = {
+            **payload,
+            "kind": kind,
+            "iat": now,
+            "exp": now + 300,
+        }
+        return signed_session_token(payload, self.session_secret())
+
+    def verify_passkey_challenge_token(self, token: str, expected_kind: str) -> dict[str, Any]:
+        if not self.session_secret():
+            raise RuntimeError("SESSION_SECRET is required before passkeys are enabled.")
+        payload = verify_signed_session_token(token, self.session_secret())
+        if not payload or payload.get("kind") != expected_kind:
+            raise ValueError("Passkey challenge expired. Try again.")
+        return payload
+
+    def passkey_registration_options(self, actor_user: dict[str, Any] | None) -> dict[str, Any]:
+        if not actor_user:
+            raise ValueError("Sign in before setting up Face ID / Passkey.")
+        if ec is None:
+            raise RuntimeError("Passkeys need the cryptography package on the server.")
+        user_id = int(actor_user.get("id") or 0)
+        challenge = b64url_encode(secrets.token_bytes(32))
+        rp_id = self.webauthn_rp_id()
+        origin = self.request_origin()
+        with self.db() as conn:
+            self.ensure_passkey_schema(conn)
+            credentials = rows_to_dicts(
+                conn.execute(
+                    "SELECT credential_id FROM app_passkeys WHERE app_user_id = ? ORDER BY created_at DESC",
+                    (user_id,),
+                ).fetchall()
+            )
+            conn.commit()
+        token = self.passkey_challenge_token(
+            WEBAUTHN_REGISTER_CHALLENGE_KIND,
+            {"challenge": challenge, "uid": user_id, "rp_id": rp_id, "origin": origin},
+        )
+        return {
+            "ok": True,
+            "challenge_token": token,
+            "publicKey": {
+                "challenge": challenge,
+                "rp": {"name": "ChillCRM", "id": rp_id},
+                "user": {
+                    "id": b64url_encode(str(user_id).encode("utf-8")),
+                    "name": actor_user.get("email") or "",
+                    "displayName": actor_user.get("display_name") or actor_user.get("email") or "CHILLCRM User",
+                },
+                "pubKeyCredParams": [{"type": "public-key", "alg": -7}],
+                "timeout": 60000,
+                "attestation": "none",
+                "excludeCredentials": [
+                    {"type": "public-key", "id": row["credential_id"]} for row in credentials if row.get("credential_id")
+                ],
+                "authenticatorSelection": {
+                    "authenticatorAttachment": "platform",
+                    "residentKey": "preferred",
+                    "userVerification": "required",
+                },
+            },
+        }
+
+    def verify_passkey_registration(self, payload: dict[str, Any], actor_user: dict[str, Any] | None) -> dict[str, Any]:
+        if not actor_user:
+            raise ValueError("Sign in before setting up Face ID / Passkey.")
+        challenge_payload = self.verify_passkey_challenge_token(str(payload.get("challenge_token") or ""), WEBAUTHN_REGISTER_CHALLENGE_KIND)
+        user_id = int(actor_user.get("id") or 0)
+        if int(challenge_payload.get("uid") or 0) != user_id:
+            raise ValueError("Passkey setup was for a different signed-in user.")
+        client_data_encoded = str((payload.get("response") or {}).get("clientDataJSON") or "")
+        attestation_encoded = str((payload.get("response") or {}).get("attestationObject") or "")
+        raw_id_encoded = str(payload.get("rawId") or "")
+        client_data = client_data_json(client_data_encoded)
+        verify_client_data(client_data, "webauthn.create", str(challenge_payload.get("challenge") or ""), str(challenge_payload.get("origin") or ""))
+        attestation = cbor_decode(b64url_decode(attestation_encoded))
+        auth_data = attestation.get("authData") if isinstance(attestation, dict) else None
+        if not isinstance(auth_data, bytes):
+            raise ValueError("Passkey registration did not include authenticator data.")
+        expected_rp_hash = hashlib.sha256(str(challenge_payload.get("rp_id") or "").encode("utf-8")).digest()
+        parsed = parse_authenticator_data(auth_data)
+        if parsed["rp_id_hash"] != expected_rp_hash:
+            raise ValueError("Passkey was not created for this app.")
+        credential = extract_attested_credential(auth_data)
+        if b64url_encode(credential["credential_id"]) != raw_id_encoded:
+            raise ValueError("Passkey credential id did not match.")
+        transports = payload.get("transports") if isinstance(payload.get("transports"), list) else []
+        label = str(payload.get("label") or "Face ID / Passkey").strip()[:120] or "Face ID / Passkey"
+        with self.db() as conn:
+            self.ensure_passkey_schema(conn)
+            existing = conn.execute("SELECT id FROM app_passkeys WHERE credential_id = ?", (raw_id_encoded,)).fetchone()
+            if existing:
+                raise ValueError("This passkey is already registered.")
+            conn.execute(
+                """
+                INSERT INTO app_passkeys (app_user_id, credential_id, public_key_cose, sign_count, label, transports)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    user_id,
+                    raw_id_encoded,
+                    b64url_encode(credential["public_key_cose"]),
+                    int(credential["sign_count"]),
+                    label,
+                    json.dumps(transports, ensure_ascii=False),
+                ),
+            )
+            updated = self.load_app_user(conn, user_id)
+            self.insert_audit_log(
+                conn,
+                action="app_user_passkey_add",
+                record_type="app_user",
+                record_id=user_id,
+                field_name="passkey",
+                old_value={"passkey_count": int(actor_user.get("passkey_count") or 0)},
+                new_value={"passkey_count": int(updated.get("passkey_count") or 0) if updated else None},
+                note=f"Passkey registered: {label}.",
+                actor_user=updated,
+                permission_action="change_own_password",
+            )
+            conn.commit()
+        return {"ok": True, "auth": self.auth_status_payload(updated), "passkey_count": int(updated.get("passkey_count") or 0)}
+
+    def passkey_login_options(self, payload: dict[str, Any]) -> dict[str, Any]:
+        if ec is None:
+            raise RuntimeError("Passkeys need the cryptography package on the server.")
+        email = str(payload.get("email") or "").strip().lower()
+        if not email:
+            raise ValueError("Enter your email first.")
+        challenge = b64url_encode(secrets.token_bytes(32))
+        rp_id = self.webauthn_rp_id()
+        origin = self.request_origin()
+        with self.db() as conn:
+            self.ensure_bootstrap_admin(conn)
+            self.ensure_passkey_schema(conn)
+            user = self.load_app_user_by_email(conn, email)
+            if not user or str(user.get("status") or "").lower() != "active":
+                raise ValueError("No active user with a passkey was found.")
+            credentials = rows_to_dicts(
+                conn.execute(
+                    "SELECT credential_id FROM app_passkeys WHERE app_user_id = ? ORDER BY created_at DESC",
+                    (int(user["id"]),),
+                ).fetchall()
+            )
+            conn.commit()
+        if not credentials:
+            raise ValueError("No passkey is set up for this email yet.")
+        token = self.passkey_challenge_token(
+            WEBAUTHN_LOGIN_CHALLENGE_KIND,
+            {
+                "challenge": challenge,
+                "uid": int(user["id"]),
+                "rp_id": rp_id,
+                "origin": origin,
+                "credential_ids": [row["credential_id"] for row in credentials],
+            },
+        )
+        return {
+            "ok": True,
+            "challenge_token": token,
+            "publicKey": {
+                "challenge": challenge,
+                "rpId": rp_id,
+                "allowCredentials": [{"type": "public-key", "id": row["credential_id"]} for row in credentials],
+                "userVerification": "required",
+                "timeout": 60000,
+            },
+        }
+
+    def verify_passkey_login(self, payload: dict[str, Any]) -> None:
+        if not self.auth_required_enabled():
+            self.send_json({"ok": True, "auth": self.auth_status_payload(None)})
+            return
+        if not self.session_secret():
+            self.send_json({"ok": False, "error": "SESSION_SECRET is required before hosted login is enabled.", "code": "session_secret_missing"}, 503)
+            return
+        challenge_payload = self.verify_passkey_challenge_token(str(payload.get("challenge_token") or ""), WEBAUTHN_LOGIN_CHALLENGE_KIND)
+        credential_id = str(payload.get("rawId") or payload.get("id") or "")
+        if credential_id not in set(challenge_payload.get("credential_ids") or []):
+            raise ValueError("Passkey credential was not requested.")
+        response = payload.get("response") or {}
+        client_data_encoded = str(response.get("clientDataJSON") or "")
+        authenticator_data = b64url_decode(str(response.get("authenticatorData") or ""))
+        signature = b64url_decode(str(response.get("signature") or ""))
+        client_data = client_data_json(client_data_encoded)
+        verify_client_data(client_data, "webauthn.get", str(challenge_payload.get("challenge") or ""), str(challenge_payload.get("origin") or ""))
+        parsed = parse_authenticator_data(authenticator_data)
+        require_user_verified(parsed["flags"])
+        expected_rp_hash = hashlib.sha256(str(challenge_payload.get("rp_id") or "").encode("utf-8")).digest()
+        if parsed["rp_id_hash"] != expected_rp_hash:
+            raise ValueError("Passkey was not used for this app.")
+        with self.db() as conn:
+            self.ensure_passkey_schema(conn)
+            row = row_to_dict(conn.execute("SELECT * FROM app_passkeys WHERE credential_id = ?", (credential_id,)).fetchone())
+            if not row or int(row.get("app_user_id") or 0) != int(challenge_payload.get("uid") or 0):
+                raise ValueError("Passkey was not recognized.")
+            user = self.load_app_user(conn, int(row["app_user_id"]))
+            if not user or str(user.get("status") or "").lower() != "active":
+                raise ValueError("Passkey user is not active.")
+            signed_data = authenticator_data + hashlib.sha256(b64url_decode(client_data_encoded)).digest()
+            verify_es256_signature(b64url_decode(row["public_key_cose"]), signature, signed_data)
+            next_count = max(int(row.get("sign_count") or 0), int(parsed["sign_count"] or 0))
+            conn.execute(
+                "UPDATE app_passkeys SET sign_count = ?, last_used_at = CURRENT_TIMESTAMP WHERE credential_id = ?",
+                (next_count, credential_id),
+            )
+            conn.execute("UPDATE app_users SET last_login_at = CURRENT_TIMESTAMP WHERE id = ?", (int(user["id"]),))
+            updated = self.load_app_user(conn, int(user["id"]))
+            self.insert_audit_log(
+                conn,
+                action="app_user_passkey_login",
+                record_type="app_user",
+                record_id=int(user["id"]),
+                field_name="session",
+                old_value=None,
+                new_value={"method": "passkey"},
+                note="App user signed in with Face ID / Passkey.",
+                actor_user=updated,
+                permission_action="login",
+            )
+            conn.commit()
+        token = self.create_session_token(updated)
+        self.send_json({"ok": True, "auth": self.auth_status_payload(updated)}, headers={"Set-Cookie": self.session_cookie_header(token)})
+
     def change_current_app_user_password(self, payload: dict[str, Any], actor_user: dict[str, Any] | None = None) -> dict[str, Any]:
         if not actor_user:
             raise ValueError("A signed-in user is required.")
@@ -2157,6 +2634,8 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             "/api/auth/login",
             "/api/auth/logout",
             "/api/auth/owner_password_recovery",
+            "/api/auth/passkey/login/options",
+            "/api/auth/passkey/login/verify",
             "/api/webhooks/zapier_purchase",
             "/api/webhooks/twilio_recording",
             "/api/twilio/voice",
@@ -3118,6 +3597,12 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             if path == "/api/auth/owner_password_recovery":
                 self.owner_password_recovery_response(self.read_json_body())
                 return
+            if path == "/api/auth/passkey/login/options":
+                self.send_json(self.passkey_login_options(self.read_json_body()))
+                return
+            if path == "/api/auth/passkey/login/verify":
+                self.verify_passkey_login(self.read_json_body())
+                return
             if path == "/api/auth/logout":
                 self.logout_response()
                 return
@@ -3230,6 +3715,10 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                 self.send_json(self.set_app_user_password(payload, auth_user))
             elif path == "/api/auth/change_password":
                 self.send_json(self.change_current_app_user_password(payload, auth_user))
+            elif path == "/api/auth/passkey/register/options":
+                self.send_json(self.passkey_registration_options(auth_user))
+            elif path == "/api/auth/passkey/register/verify":
+                self.send_json(self.verify_passkey_registration(payload, auth_user))
             else:
                 self.send_text("Not found", 404)
         except ValueError as exc:
@@ -11323,6 +11812,22 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                     '"granted_by_user_id" bigint REFERENCES crm."app_users"("id")',
                     '"created_at" timestamptz NOT NULL DEFAULT now()',
                     '"revoked_at" timestamptz',
+                ],
+            ),
+            (
+                "app_passkeys",
+                "Remote identity",
+                "WebAuthn passkeys for Face ID, Touch ID, and device-verification login.",
+                [
+                    '"id" bigint GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY',
+                    '"app_user_id" bigint NOT NULL REFERENCES crm."app_users"("id")',
+                    '"credential_id" text NOT NULL UNIQUE',
+                    '"public_key_cose" text NOT NULL',
+                    '"sign_count" bigint NOT NULL DEFAULT 0',
+                    '"label" text',
+                    '"transports" text',
+                    '"created_at" timestamptz NOT NULL DEFAULT now()',
+                    '"last_used_at" timestamptz',
                 ],
             ),
             (

@@ -315,6 +315,10 @@ button {
   color: var(--ink);
 }
 
+.auth-panel .passkey-button {
+  margin-top: 10px;
+}
+
 .auth-panel > button + button {
   margin-top: 10px;
 }
@@ -337,6 +341,12 @@ button {
   color: var(--muted);
   font-size: 12px;
   line-height: 1.35;
+}
+
+.passkey-setup {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
 }
 
 .view {

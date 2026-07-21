@@ -87,6 +87,7 @@
         </label>
         <p id="authMessage" class="auth-message"></p>
         <button type="submit">Sign In</button>
+        <button id="passkeyLoginButton" class="secondary passkey-button" type="button">Use Face ID / Passkey</button>
         <button id="ownerRecoveryOpen" class="secondary" type="button" hidden>Set Owner Password</button>
         <p class="auth-help">Owner password recovery is available only when the private recovery switch is enabled.</p>
       </form>
@@ -137,6 +138,10 @@
         <div class="auth-panel-actions">
           <button type="submit">Save Password</button>
           <button type="button" class="secondary" id="cancelPasswordChange">Cancel</button>
+        </div>
+        <div class="passkey-setup">
+          <button type="button" class="secondary" id="registerPasskeyButton">Set Up Face ID / Passkey</button>
+          <p id="passkeyMessage" class="auth-help"></p>
         </div>
       </form>
     </div>

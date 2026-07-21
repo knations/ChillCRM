@@ -726,6 +726,10 @@ button {
   margin-bottom: 6px;
 }
 
+.deal-sales-profile-section.proposal {
+  border-color: #d5d1c7;
+}
+
 .deal-sales-profile-grid {
   display: grid;
   gap: 12px;

@@ -5486,7 +5486,7 @@ function renderDetail(detail) {
     <div class="detail-content">
       ${detailHeader(record.name || "(blank)", subtitle || detail.type, detail)}
       <div id="detailActionError" class="form-error" hidden></div>
-      ${detail.type === "person" ? personDetailBody(detail) : defaultDetailBody(detail)}
+      ${detail.type === "person" ? personDetailBody(detail) : detail.type === "deal" ? dealDetailBody(detail) : defaultDetailBody(detail)}
     </div>
   `;
   resetDetailScroll();
@@ -5531,24 +5531,65 @@ function defaultDetailBody(detail) {
   `;
 }
 
-function dealSalesProfileSection(detail) {
+function dealDetailBody(detail) {
+  const fileItems = [...(detail.record_files || []), ...(detail.archive_items || [])];
+  const nonSalesFields = nonSalesCustomFields(detail.custom_fields || []);
+  return `
+    ${dealNextActionPanel(detail)}
+    ${dealSalesProfileSection(detail, "qualification")}
+    ${editForm(detail)}
+    ${dealSalesProfileSection(detail, "proposal")}
+    ${addTaskForm(detail)}
+    ${tasksSection(detail.tasks || [])}
+    ${addNoteForm(detail)}
+    ${notesSection(detail.notes || [])}
+    ${archiveItems(fileItems, { title: "Files" })}
+    ${linkedResources(detail.linked_resources || [])}
+    ${contactActions(detail)}
+    ${detail.contact ? linkSection("Contact", [detail.contact], "person") : ""}
+    ${detail.organization ? linkSection("Organization", [detail.organization], "company") : ""}
+    ${detailTags(detail, detail.tags || [])}
+    ${recordLifecycleSection(detail)}
+    ${detailQualityPanel(detail)}
+    ${reviewFlagsSection(detail.review_flags || [])}
+    ${nonSalesFields.length ? customFields(nonSalesFields, []) : ""}
+    ${activitySection(detail.activity || [])}
+  `;
+}
+
+function nonSalesCustomFields(fields) {
+  return fields.filter((field) => !String(field.field_name || "").startsWith("CHILLCRM Sales - "));
+}
+
+function dealSalesProfileSection(detail, section = "qualification") {
   if (detail.type !== "deal") return "";
   const profile = detail.deal_sales_profile || {};
-  const fields = profile.fields || [];
+  const fieldGroups = {
+    qualification: {
+      title: "Qualification",
+      keys: new Set(["need", "budget", "authority", "timeline", "service_interest", "urgency", "fit_score", "objections"]),
+    },
+    proposal: {
+      title: "Proposal / Handoff",
+      keys: new Set(["proposal_status", "proposal_link", "won_lost_reason", "handoff_next_step"]),
+    },
+  };
+  const group = fieldGroups[section] || fieldGroups.qualification;
+  const fields = (profile.fields || []).filter((field) => group.keys.has(field.key));
   if (!fields.length) return "";
+  const filled = fields.filter((field) => String(field.value || "").trim()).length;
   return `
-    <div class="detail-section deal-sales-profile-section">
+    <div class="detail-section deal-sales-profile-section ${escapeHtml(section)}">
       <div class="inline-header">
         <div>
-          <h3>Sales Profile</h3>
-          <p class="muted">${formatNumber(profile.filled || 0)} of ${formatNumber(profile.total || fields.length)} fields filled</p>
+          <h3>${escapeHtml(group.title)}</h3>
+          <p class="muted">${formatNumber(filled)} of ${formatNumber(fields.length)} fields filled</p>
         </div>
-        <button class="text-button" id="saveDealSalesProfileButton" type="button">Save</button>
+        <button class="text-button saveDealSalesProfileButton" type="button">Save</button>
       </div>
-      <form id="dealSalesProfileForm" class="deal-sales-profile-grid">
+      <form class="deal-sales-profile-form deal-sales-profile-grid">
         ${fields.map((field) => dealSalesProfileControl(field)).join("")}
       </form>
-      <div id="dealSalesProfileError" class="form-error" hidden></div>
     </div>
   `;
 }
@@ -6799,10 +6840,10 @@ function wireDetailForms(detail) {
     });
   }
 
-  const dealSalesProfileButton = document.querySelector("#saveDealSalesProfileButton");
-  if (dealSalesProfileButton) {
+  document.querySelectorAll(".saveDealSalesProfileButton").forEach((dealSalesProfileButton) => {
     dealSalesProfileButton.addEventListener("click", async () => {
-      const form = document.querySelector("#dealSalesProfileForm");
+      const form = dealSalesProfileButton.closest(".deal-sales-profile-section")?.querySelector(".deal-sales-profile-form");
+      if (!form) return;
       const fields = {};
       new FormData(form).forEach((value, key) => {
         fields[key] = value.toString().trim() || null;
@@ -6821,7 +6862,7 @@ function wireDetailForms(detail) {
         }
       );
     });
-  }
+  });
 
   const lifecycleButton = document.querySelector("#setLifecycleButton");
   if (lifecycleButton) {

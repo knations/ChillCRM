@@ -1725,6 +1725,10 @@ def main() -> int:
     assert "Add Next Action" in app_js
     assert "dealSalesProfileSection" in app_js
     assert "/api/update_deal_sales_profile" in app_js
+    assert "function dealDetailBody(detail)" in app_js
+    assert 'dealSalesProfileSection(detail, "qualification")' in app_js
+    assert 'dealSalesProfileSection(detail, "proposal")' in app_js
+    assert "nonSalesCustomFields" in app_js
     assert "sales-command-center" in styles_css
     assert "deal-next-action-panel" in styles_css
     assert "deal-sales-profile-grid" in styles_css

@@ -5642,7 +5642,7 @@ function dealSalesProfileSection(detail, section = "qualification") {
     },
     proposal: {
       title: "Proposal / Handoff",
-      keys: new Set(["proposal_status", "proposal_link", "won_lost_reason", "handoff_next_step"]),
+      keys: new Set(["proposal_status", "proposal_link", "upgrade_to", "won_lost_reason", "handoff_next_step"]),
     },
   };
   const group = fieldGroups[section] || fieldGroups.qualification;
@@ -5700,11 +5700,26 @@ function dealSalesProfileControl(field) {
 function dealNextActionPanel(detail) {
   if (detail.type !== "deal") return "";
   const next = detail.next_action || {};
-  const tone = next.status === "ready" ? "green" : next.status === "attention" ? "coral" : "gold";
   const task = next.local_task || {};
   const taskMeta = [task.due_date ? `Due ${formatDate(task.due_date)}` : "", next.imported_open_count ? `${formatNumber(next.imported_open_count)} imported open reminder${Number(next.imported_open_count) === 1 ? "" : "s"}` : ""]
     .filter(Boolean)
     .join(" · ");
+  const upgradeOptions = Array.isArray(next.upgrade_options) ? next.upgrade_options : [];
+  const upgradeControl =
+    next.kind === "upgrade_to"
+      ? `
+        <form class="deal-upgrade-action-form">
+          <label>
+            <span>Upgrade To</span>
+            <select name="upgrade_to">
+              <option value="">Choose upgrade option</option>
+              ${upgradeOptions.map((option) => `<option value="${escapeHtml(option)}" ${String(next.upgrade_to || "") === option ? "selected" : ""}>${escapeHtml(option)}</option>`).join("")}
+            </select>
+          </label>
+          <button type="button" class="text-button saveDealUpgradeButton">${next.upgrade_to ? "Update Upgrade" : "Save Upgrade"}</button>
+        </form>
+      `
+      : "";
   return `
     <div class="detail-section deal-next-action-panel ${escapeHtml(next.status || "")}">
       <div class="inline-header">
@@ -5713,8 +5728,9 @@ function dealNextActionPanel(detail) {
           <p>${escapeHtml(next.message || "")}</p>
           ${taskMeta ? `<p class="muted">${escapeHtml(taskMeta)}</p>` : ""}
         </div>
-        <button type="button" class="text-button focus-next-action-task">${next.missing ? "Add Next Action" : "Update Tasks"}</button>
+        ${next.kind === "upgrade_to" ? "" : `<button type="button" class="text-button focus-next-action-task">${next.missing ? "Add Next Action" : "Update Tasks"}</button>`}
       </div>
+      ${upgradeControl}
     </div>
   `;
 }
@@ -6926,6 +6942,31 @@ function wireDetailForms(detail) {
           const updated = await postJson("/api/update_deal_sales_profile", {
             id: detail.record.source_id,
             fields,
+          });
+          renderDetail(updated.detail);
+          if (state.view === "dashboard") await renderDashboard();
+          await refreshCurrentListForDetail(updated.detail);
+        }
+      );
+    });
+  });
+
+  document.querySelectorAll(".saveDealUpgradeButton").forEach((dealUpgradeButton) => {
+    dealUpgradeButton.addEventListener("click", async () => {
+      const form = dealUpgradeButton.closest(".deal-next-action-panel")?.querySelector(".deal-upgrade-action-form");
+      if (!form) return;
+      const upgradeTo = String(new FormData(form).get("upgrade_to") || "").trim();
+      if (!upgradeTo) {
+        showDetailActionError("Choose an upgrade option before saving.");
+        return;
+      }
+      await runDetailAction(
+        dealUpgradeButton,
+        { progress: "Saving upgrade", success: "Upgrade saved", failure: "Upgrade save failed" },
+        async () => {
+          const updated = await postJson("/api/update_deal_sales_profile", {
+            id: detail.record.source_id,
+            fields: { upgrade_to: upgradeTo },
           });
           renderDetail(updated.detail);
           if (state.view === "dashboard") await renderDashboard();

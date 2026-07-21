@@ -17672,6 +17672,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             {"key": "objections", "label": "Objections", "kind": "textarea"},
             {"key": "proposal_status", "label": "Proposal Status", "kind": "select", "options": "Not started|Drafted|Sent|Viewed|Negotiating|Accepted|Declined|Expired"},
             {"key": "proposal_link", "label": "Proposal Link", "kind": "url"},
+            {"key": "upgrade_to", "label": "Upgrade To", "kind": "select", "options": "The FORUM Mastermind|Sovereign League|CHILLIONAIRE FULL ACCESS|CHILLIONAIRE MONTHLY ACCESS|Family Mastermind|Family Mastermind Event Upgrade|BMSE Event|Big Money Small Events|The Federation|Custom"},
             {"key": "won_lost_reason", "label": "Won/Lost Reason", "kind": "textarea"},
             {"key": "handoff_next_step", "label": "Handoff Next Step", "kind": "textarea"},
         ]
@@ -17703,7 +17704,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
 
     def deal_next_action(self, conn: sqlite3.Connection, record_id: int, record: dict[str, Any]) -> dict[str, Any]:
         stage_category = str(record.get("stage_category") or "").strip()
-        active = stage_category in {"incoming", "in_progress"}
+        won = stage_category == "won" or str(record.get("stage_name") or "").strip().casefold() == "won"
         local_next_task = row_to_dict(
             conn.execute(
                 """
@@ -17728,28 +17729,44 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
               AND completed = 0
               AND zendesk_task_id IS NOT NULL
             """,
-            (record_id,),
-        ).fetchone()[0]
+                (record_id,),
+            ).fetchone()[0]
+        upgrade_field_name = self.deal_sales_profile_field_names().get("upgrade_to", "CHILLCRM Sales - Upgrade To")
+        upgrade_row = conn.execute(
+            """
+            SELECT field_value
+            FROM custom_field_values
+            WHERE record_type = 'deal' AND record_id = ? AND field_name = ?
+            ORDER BY id
+            LIMIT 1
+            """,
+            (record_id, upgrade_field_name),
+        ).fetchone()
+        upgrade_to = self.clean_optional(upgrade_row["field_value"] if upgrade_row else None)
         if local_next_task:
             status = "ready"
             title = "Next Action Set"
             message = local_next_task.get("content") or "Local next action is set."
-        elif active:
+        elif won:
+            status = "ready" if upgrade_to else "attention"
+            title = "Upgrade To Set" if upgrade_to else "Upgrade To Needed"
+            message = f"Upgrade target: {upgrade_to}" if upgrade_to else "Choose the upgrade path for this won deal."
+        else:
             status = "attention"
             title = "Next Action Needed"
-            message = "This active deal needs a local follow-up, call, proposal, meeting, review, close, or handoff task."
-        else:
-            status = "waiting"
-            title = "No Active Next Action Required"
-            message = "Next actions are required for incoming and in-progress deals."
+            message = "Every deal needs a follow-up, call, proposal, meeting, review, close, handoff, or upgrade action."
         return {
             "status": status,
             "title": title,
             "message": message,
-            "active": active,
+            "active": True,
+            "won": won,
+            "kind": "upgrade_to" if won and not local_next_task else "task",
             "stage_category": stage_category,
             "local_task": local_next_task,
-            "missing": active and not bool(local_next_task),
+            "missing": not bool(local_next_task) and not (won and bool(upgrade_to)),
+            "upgrade_to": upgrade_to,
+            "upgrade_options": ["The FORUM Mastermind", "Sovereign League", "CHILLIONAIRE FULL ACCESS", "CHILLIONAIRE MONTHLY ACCESS", "Family Mastermind", "Family Mastermind Event Upgrade", "BMSE Event", "Big Money Small Events", "The Federation", "Custom"],
             "imported_open_count": int(imported_open_count or 0),
         }
 

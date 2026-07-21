@@ -772,6 +772,36 @@ button {
   margin-top: 6px;
 }
 
+.deal-upgrade-action-form {
+  align-items: end;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  margin-top: 16px;
+}
+
+.deal-upgrade-action-form label {
+  display: grid;
+  gap: 7px;
+}
+
+.deal-upgrade-action-form span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.deal-upgrade-action-form select {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--text);
+  font: inherit;
+  min-height: 44px;
+  padding: 0 12px;
+}
+
 .next-action-task-form {
   border-color: #efb5a8;
 }
@@ -5288,6 +5318,14 @@ button {
 
   .app-shell.mobile-detail-open .deal-command-revenue strong {
     font-size: 24px;
+  }
+
+  .app-shell.mobile-detail-open .deal-upgrade-action-form {
+    grid-template-columns: 1fr;
+  }
+
+  .app-shell.mobile-detail-open .deal-upgrade-action-form .text-button {
+    justify-self: stretch;
   }
 
   .app-shell.mobile-detail-open .detail-heading-layout.has-profile-image {

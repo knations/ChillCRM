@@ -4517,9 +4517,10 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
     def sales_command_center(self) -> dict[str, Any]:
         today_text = date.today().isoformat()
         upcoming_text = (date.today() + timedelta(days=7)).isoformat()
-        sales_field_names = self.deal_sales_profile_field_names()
-        follow_up_field_name = sales_field_names.get("next_follow_up_date", "CHILLCRM Sales - Next Follow-Up Date")
-        upgrade_field_name = sales_field_names.get("upgrade_to", "CHILLCRM Sales - Upgrade To")
+        follow_up_field_names = self.deal_follow_up_field_names()
+        follow_up_field_placeholders = ", ".join("?" for _ in follow_up_field_names)
+        upgrade_field_names = self.deal_upgrade_field_names()
+        upgrade_field_placeholders = ", ".join("?" for _ in upgrade_field_names)
         with self.db() as conn:
             overdue_task_count = conn.execute(
                 "SELECT count(*) FROM tasks WHERE completed = 0 AND due_date IS NOT NULL AND date(due_date) < date('now')"
@@ -4601,47 +4602,47 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                 "SELECT count(*) FROM leads WHERE coalesce(status, '') = 'New'"
             ).fetchone()[0]
             overdue_deal_followup_count = conn.execute(
-                """
+                f"""
                 SELECT count(*)
                 FROM deals d
                 JOIN custom_field_values cf
                   ON cf.record_type = 'deal'
                  AND cf.record_id = d.id
-                 AND cf.field_name = ?
+                 AND cf.field_name IN ({follow_up_field_placeholders})
                 WHERE nullif(trim(cf.field_value), '') IS NOT NULL
                   AND cf.field_value < ?
                 """,
-                (follow_up_field_name, today_text),
+                (*follow_up_field_names, today_text),
             ).fetchone()[0]
             due_today_deal_followup_count = conn.execute(
-                """
+                f"""
                 SELECT count(*)
                 FROM deals d
                 JOIN custom_field_values cf
                   ON cf.record_type = 'deal'
                  AND cf.record_id = d.id
-                 AND cf.field_name = ?
+                 AND cf.field_name IN ({follow_up_field_placeholders})
                 WHERE nullif(trim(cf.field_value), '') IS NOT NULL
                   AND cf.field_value = ?
                 """,
-                (follow_up_field_name, today_text),
+                (*follow_up_field_names, today_text),
             ).fetchone()[0]
             upcoming_deal_followup_count = conn.execute(
-                """
+                f"""
                 SELECT count(*)
                 FROM deals d
                 JOIN custom_field_values cf
                   ON cf.record_type = 'deal'
                  AND cf.record_id = d.id
-                 AND cf.field_name = ?
+                 AND cf.field_name IN ({follow_up_field_placeholders})
                 WHERE nullif(trim(cf.field_value), '') IS NOT NULL
                   AND cf.field_value > ?
                   AND cf.field_value <= ?
                 """,
-                (follow_up_field_name, today_text, upcoming_text),
+                (*follow_up_field_names, today_text, upcoming_text),
             ).fetchone()[0]
             missing_deal_followup_count = conn.execute(
-                """
+                f"""
                 SELECT count(*)
                 FROM deals d
                 LEFT JOIN stages s ON s.id = d.stage_id
@@ -4651,14 +4652,14 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                     FROM custom_field_values cf
                     WHERE cf.record_type = 'deal'
                       AND cf.record_id = d.id
-                      AND cf.field_name = ?
+                      AND cf.field_name IN ({follow_up_field_placeholders})
                       AND nullif(trim(cf.field_value), '') IS NOT NULL
                   )
                 """,
-                (follow_up_field_name,),
+                (*follow_up_field_names,),
             ).fetchone()[0]
             won_missing_upgrade_count = conn.execute(
-                """
+                f"""
                 SELECT count(*)
                 FROM deals d
                 LEFT JOIN stages s ON s.id = d.stage_id
@@ -4668,15 +4669,15 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                     FROM custom_field_values cf
                     WHERE cf.record_type = 'deal'
                       AND cf.record_id = d.id
-                      AND cf.field_name = ?
+                      AND cf.field_name IN ({upgrade_field_placeholders})
                       AND nullif(trim(cf.field_value), '') IS NOT NULL
                   )
                 """,
-                (upgrade_field_name,),
+                (*upgrade_field_names,),
             ).fetchone()[0]
             overdue_deal_followups = rows_to_dicts(
                 conn.execute(
-                    """
+                    f"""
                     SELECT 'deal' AS type, d.id AS source_id, 'deal' AS kind, d.name,
                            NULL AS email, d.updated_at, s.name AS stage_name, d.value, d.currency,
                            'Follow-up ' || cf.field_value AS match_context
@@ -4685,18 +4686,18 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                     JOIN custom_field_values cf
                       ON cf.record_type = 'deal'
                      AND cf.record_id = d.id
-                     AND cf.field_name = ?
+                     AND cf.field_name IN ({follow_up_field_placeholders})
                     WHERE nullif(trim(cf.field_value), '') IS NOT NULL
                       AND cf.field_value < ?
                     ORDER BY cf.field_value ASC, coalesce(d.value, 0) DESC, d.name COLLATE NOCASE
                     LIMIT 6
                     """,
-                    (follow_up_field_name, today_text),
+                    (*follow_up_field_names, today_text),
                 ).fetchall()
             )
             due_today_deal_followups = rows_to_dicts(
                 conn.execute(
-                    """
+                    f"""
                     SELECT 'deal' AS type, d.id AS source_id, 'deal' AS kind, d.name,
                            NULL AS email, d.updated_at, s.name AS stage_name, d.value, d.currency,
                            'Follow-up today' AS match_context
@@ -4705,18 +4706,18 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                     JOIN custom_field_values cf
                       ON cf.record_type = 'deal'
                      AND cf.record_id = d.id
-                     AND cf.field_name = ?
+                     AND cf.field_name IN ({follow_up_field_placeholders})
                     WHERE nullif(trim(cf.field_value), '') IS NOT NULL
                       AND cf.field_value = ?
                     ORDER BY coalesce(d.value, 0) DESC, d.name COLLATE NOCASE
                     LIMIT 6
                     """,
-                    (follow_up_field_name, today_text),
+                    (*follow_up_field_names, today_text),
                 ).fetchall()
             )
             upcoming_deal_followups = rows_to_dicts(
                 conn.execute(
-                    """
+                    f"""
                     SELECT 'deal' AS type, d.id AS source_id, 'deal' AS kind, d.name,
                            NULL AS email, d.updated_at, s.name AS stage_name, d.value, d.currency,
                            'Follow-up ' || cf.field_value AS match_context
@@ -4725,19 +4726,19 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                     JOIN custom_field_values cf
                       ON cf.record_type = 'deal'
                      AND cf.record_id = d.id
-                     AND cf.field_name = ?
+                     AND cf.field_name IN ({follow_up_field_placeholders})
                     WHERE nullif(trim(cf.field_value), '') IS NOT NULL
                       AND cf.field_value > ?
                       AND cf.field_value <= ?
                     ORDER BY cf.field_value ASC, coalesce(d.value, 0) DESC, d.name COLLATE NOCASE
                     LIMIT 6
                     """,
-                    (follow_up_field_name, today_text, upcoming_text),
+                    (*follow_up_field_names, today_text, upcoming_text),
                 ).fetchall()
             )
             won_missing_upgrade_deals = rows_to_dicts(
                 conn.execute(
-                    """
+                    f"""
                     SELECT 'deal' AS type, d.id AS source_id, 'deal' AS kind, d.name,
                            NULL AS email, d.updated_at, s.name AS stage_name, d.value, d.currency,
                            'Choose upgrade path' AS match_context
@@ -4749,13 +4750,13 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                         FROM custom_field_values cf
                         WHERE cf.record_type = 'deal'
                           AND cf.record_id = d.id
-                          AND cf.field_name = ?
+                          AND cf.field_name IN ({upgrade_field_placeholders})
                           AND nullif(trim(cf.field_value), '') IS NOT NULL
                       )
                     ORDER BY coalesce(d.value, 0) DESC, d.updated_at DESC, d.name COLLATE NOCASE
                     LIMIT 6
                     """,
-                    (upgrade_field_name,),
+                    (*upgrade_field_names,),
                 ).fetchall()
             )
             missing_next_action_deals = rows_to_dicts(
@@ -7010,6 +7011,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         quality_issue = self.normalize_list_quality_issue(record_type, quality_issue)
         provenance_filter = self.normalize_list_provenance_filter(params.get("provenance", [""])[0] if params.get("provenance") else "")
         lifecycle_filter = self.normalize_people_lifecycle_filter(params.get("lifecycle", ["active"])[0] if params.get("lifecycle") else "active") if record_type == "people" else None
+        deal_queue = self.normalize_deal_queue_filter(params.get("deal_queue", [""])[0] if params.get("deal_queue") else "") if record_type == "deals" else None
         status_field = self.clean_optional(params.get("status_field", [""])[0] if params.get("status_field") else "")
         status_value = self.clean_optional(params.get("status_value", [""])[0] if params.get("status_value") else "")
         status_field, status_value = self.normalize_list_status_filter(record_type, status_field, status_value)
@@ -7069,7 +7071,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                     offset,
                 )
             elif record_type == "deals":
-                total, records = self.list_deals(conn, q, tag_id, status_field, status_value, quality_issue, provenance_filter, date_field, date_from, date_to, order_by, page_size, offset)
+                total, records = self.list_deals(conn, q, tag_id, status_field, status_value, quality_issue, provenance_filter, deal_queue, date_field, date_from, date_to, order_by, page_size, offset)
             else:
                 return {"error": f"Unknown type: {record_type}"}
             status_options = self.list_status_filter_options(conn, record_type)
@@ -7093,6 +7095,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             "quality_options": quality_options,
             "provenance": provenance_filter,
             "provenance_options": provenance_options,
+            "deal_queue": deal_queue,
             "lifecycle_filter": lifecycle_filter,
             "lifecycle_counts": lifecycle_counts,
             "date_field": date_field,
@@ -7136,6 +7139,24 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
     def normalize_people_lifecycle_filter(self, lifecycle_filter: Any) -> str:
         value = str(lifecycle_filter or "").strip().lower()
         return "all" if value == "all" else "active"
+
+    def normalize_deal_queue_filter(self, deal_queue: Any) -> str | None:
+        value = str(deal_queue or "").strip().lower()
+        queues = {"needs_follow_up", "due_today", "overdue", "won_needs_upgrade", "no_deal_date"}
+        return value if value in queues else None
+
+    def deal_sales_profile_storage_names(self, key: str) -> list[str]:
+        field_names = self.deal_sales_profile_field_names()
+        names = [field_names.get(key)]
+        if key == "next_follow_up_date":
+            names.append("CHILLCRM Sales - Next Follow-Up Date")
+        return list(dict.fromkeys([name for name in names if name]))
+
+    def deal_follow_up_field_names(self) -> list[str]:
+        return self.deal_sales_profile_storage_names("next_follow_up_date")
+
+    def deal_upgrade_field_names(self) -> list[str]:
+        return self.deal_sales_profile_storage_names("upgrade_to")
 
     def apply_people_lifecycle_filter(self, conn: sqlite3.Connection, clauses: list[str], lifecycle_filter: str | None) -> None:
         if lifecycle_filter != "active" or not self.record_lifecycle_table_exists(conn):
@@ -7652,6 +7673,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         status_value: str | None,
         quality_issue: str | None,
         provenance_filter: str | None,
+        deal_queue: str | None,
         date_field: str | None,
         date_from: str,
         date_to: str,
@@ -7673,6 +7695,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             values.append(status_value)
         self.apply_list_quality_filter("deals", clauses, quality_issue)
         self.apply_list_provenance_filter("deals", clauses, provenance_filter)
+        self.apply_deal_queue_filter(clauses, values, deal_queue)
         self.apply_list_date_filter("deals", clauses, values, date_field, date_from, date_to)
         where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
         total = conn.execute(
@@ -7706,8 +7729,153 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             ).fetchall()
         )
         self.attach_quality_summaries("deals", records)
+        self.attach_deal_queue_summaries(conn, records, deal_queue)
         self.attach_lifecycle_summaries(conn, "deal", records)
         return total, records
+
+    def apply_deal_queue_filter(self, clauses: list[str], values: list[Any], deal_queue: str | None) -> None:
+        if not deal_queue:
+            return
+        today_text = date.today().isoformat()
+        follow_up_names = self.deal_follow_up_field_names()
+        follow_up_placeholders = ", ".join("?" for _ in follow_up_names)
+        follow_up_exists = f"""
+            EXISTS (
+                SELECT 1
+                FROM custom_field_values cf
+                WHERE cf.record_type = 'deal'
+                  AND cf.record_id = d.id
+                  AND cf.field_name IN ({follow_up_placeholders})
+                  AND nullif(trim(cf.field_value), '') IS NOT NULL
+            )
+        """
+        follow_up_missing = f"NOT {follow_up_exists}"
+        if deal_queue == "needs_follow_up":
+            clauses.append(
+                f"""
+                coalesce(s.category, '') NOT IN ('lost', 'unqualified')
+                AND (
+                    {follow_up_missing}
+                    OR EXISTS (
+                        SELECT 1
+                        FROM custom_field_values cf
+                        WHERE cf.record_type = 'deal'
+                          AND cf.record_id = d.id
+                          AND cf.field_name IN ({follow_up_placeholders})
+                          AND nullif(trim(cf.field_value), '') IS NOT NULL
+                          AND cf.field_value <= ?
+                    )
+                )
+                """
+            )
+            values.extend(follow_up_names)
+            values.extend(follow_up_names)
+            values.append(today_text)
+        elif deal_queue == "due_today":
+            clauses.append(
+                f"""
+                EXISTS (
+                    SELECT 1
+                    FROM custom_field_values cf
+                    WHERE cf.record_type = 'deal'
+                      AND cf.record_id = d.id
+                      AND cf.field_name IN ({follow_up_placeholders})
+                      AND nullif(trim(cf.field_value), '') IS NOT NULL
+                      AND cf.field_value = ?
+                )
+                """
+            )
+            values.extend(follow_up_names)
+            values.append(today_text)
+        elif deal_queue == "overdue":
+            clauses.append(
+                f"""
+                EXISTS (
+                    SELECT 1
+                    FROM custom_field_values cf
+                    WHERE cf.record_type = 'deal'
+                      AND cf.record_id = d.id
+                      AND cf.field_name IN ({follow_up_placeholders})
+                      AND nullif(trim(cf.field_value), '') IS NOT NULL
+                      AND cf.field_value < ?
+                )
+                """
+            )
+            values.extend(follow_up_names)
+            values.append(today_text)
+        elif deal_queue == "no_deal_date":
+            clauses.append(
+                f"""
+                coalesce(s.category, '') NOT IN ('lost', 'unqualified')
+                AND {follow_up_missing}
+                """
+            )
+            values.extend(follow_up_names)
+        elif deal_queue == "won_needs_upgrade":
+            upgrade_names = self.deal_upgrade_field_names()
+            upgrade_placeholders = ", ".join("?" for _ in upgrade_names)
+            clauses.append(
+                f"""
+                coalesce(s.category, '') = 'won'
+                AND NOT EXISTS (
+                    SELECT 1
+                    FROM custom_field_values cf
+                    WHERE cf.record_type = 'deal'
+                      AND cf.record_id = d.id
+                      AND cf.field_name IN ({upgrade_placeholders})
+                      AND nullif(trim(cf.field_value), '') IS NOT NULL
+                )
+                """
+            )
+            values.extend(upgrade_names)
+
+    def attach_deal_queue_summaries(
+        self, conn: sqlite3.Connection, records: list[dict[str, Any]], deal_queue: str | None
+    ) -> None:
+        if not records:
+            return
+        ids = [int(record["source_id"]) for record in records if record.get("source_id") is not None]
+        follow_up_by_id: dict[int, str] = {}
+        if ids:
+            id_placeholders = ", ".join("?" for _ in ids)
+            follow_up_names = self.deal_follow_up_field_names()
+            follow_up_placeholders = ", ".join("?" for _ in follow_up_names)
+            rows = rows_to_dicts(
+                conn.execute(
+                    f"""
+                    SELECT record_id, field_value
+                    FROM custom_field_values
+                    WHERE record_type = 'deal'
+                      AND record_id IN ({id_placeholders})
+                      AND field_name IN ({follow_up_placeholders})
+                      AND nullif(trim(field_value), '') IS NOT NULL
+                    ORDER BY record_id, field_name
+                    """,
+                    ids + follow_up_names,
+                ).fetchall()
+            )
+            for row in rows:
+                record_id = int(row.get("record_id") or 0)
+                follow_up_by_id.setdefault(record_id, str(row.get("field_value") or ""))
+        today_text = date.today().isoformat()
+        for record in records:
+            record_id = int(record.get("source_id") or 0)
+            follow_up = follow_up_by_id.get(record_id, "")
+            if follow_up:
+                record["next_follow_up_date"] = follow_up
+            if deal_queue == "due_today":
+                record["match_context"] = "Follow Up today"
+            elif deal_queue == "overdue":
+                record["match_context"] = f"Follow Up {follow_up}" if follow_up else "Overdue follow-up"
+            elif deal_queue == "needs_follow_up":
+                if follow_up:
+                    record["match_context"] = "Follow Up today" if follow_up == today_text else f"Follow Up {follow_up}"
+                else:
+                    record["match_context"] = "No follow-up date"
+            elif deal_queue == "won_needs_upgrade":
+                record["match_context"] = "Choose upgrade path"
+            elif deal_queue == "no_deal_date":
+                record["match_context"] = "No follow-up date"
 
     def attach_quality_summaries(self, record_type: str, records: list[dict[str, Any]]) -> None:
         for record in records:
@@ -17912,18 +18080,19 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             """,
                 (record_id,),
             ).fetchone()[0]
-        sales_field_names = self.deal_sales_profile_field_names()
-        upgrade_field_name = sales_field_names.get("upgrade_to", "CHILLCRM Sales - Upgrade To")
-        next_follow_up_field_name = sales_field_names.get("next_follow_up_date", "CHILLCRM Sales - Next Follow-Up Date")
+        upgrade_field_names = self.deal_upgrade_field_names()
+        upgrade_field_placeholders = ", ".join("?" for _ in upgrade_field_names)
+        next_follow_up_field_names = self.deal_follow_up_field_names()
+        next_follow_up_field_placeholders = ", ".join("?" for _ in next_follow_up_field_names)
         upgrade_row = conn.execute(
-            """
+            f"""
             SELECT field_value
             FROM custom_field_values
-            WHERE record_type = 'deal' AND record_id = ? AND field_name = ?
+            WHERE record_type = 'deal' AND record_id = ? AND field_name IN ({upgrade_field_placeholders})
             ORDER BY id
             LIMIT 1
             """,
-            (record_id, upgrade_field_name),
+            (record_id, *upgrade_field_names),
         ).fetchone()
         upgrade_to = self.clean_optional(upgrade_row["field_value"] if upgrade_row else None)
         upgrade_labels = {
@@ -17933,14 +18102,14 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         }
         upgrade_label = upgrade_labels.get(str(upgrade_to or "").strip().upper(), upgrade_to)
         next_follow_up_row = conn.execute(
-            """
+            f"""
             SELECT field_value
             FROM custom_field_values
-            WHERE record_type = 'deal' AND record_id = ? AND field_name = ?
+            WHERE record_type = 'deal' AND record_id = ? AND field_name IN ({next_follow_up_field_placeholders})
             ORDER BY id
             LIMIT 1
             """,
-            (record_id, next_follow_up_field_name),
+            (record_id, *next_follow_up_field_names),
         ).fetchone()
         next_follow_up_date = self.clean_optional(next_follow_up_row["field_value"] if next_follow_up_row else None)
         follow_up_missing = not bool(next_follow_up_date)

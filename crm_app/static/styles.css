@@ -1963,6 +1963,20 @@ button {
   color: var(--text);
 }
 
+.quick-filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  width: 100%;
+}
+
+.quick-filter-button.active {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: #065c5b;
+  font-weight: 700;
+}
+
 .tag-search-filter {
   align-items: center;
   display: inline-grid;

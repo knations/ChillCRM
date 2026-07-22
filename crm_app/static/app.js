@@ -40,6 +40,7 @@ const state = {
   listLifecycleFilters: {
     people: "active",
   },
+  listDealQueue: "",
   listSavedViewId: {
     people: "",
     companies: "",
@@ -1476,7 +1477,6 @@ async function renderDashboard() {
         <p>${formatNumber(data.counts.people + data.counts.companies + data.counts.leads)} client and lead records</p>
       </div>
     </div>
-    ${startTodayPanel(data.start_today)}
     ${salesCommandCenterPanel(data.sales_command_center)}
     <div class="metric-grid">
       ${metric("People", data.counts.people)}
@@ -1490,9 +1490,6 @@ async function renderDashboard() {
       ${metric("Tags", data.counts.tags)}
       ${metric("Archive", data.counts.archive_items || 0)}
     </div>
-    ${cleanupSummarySection(data.cleanup_summary || {})}
-    ${savedViewsSection(data.saved_views || [])}
-    ${applicationSegmentSection(data.profile_segments || [])}
     <div class="band">
       <div class="band-header">
         <h3>Sales Pipeline</h3>
@@ -1514,6 +1511,7 @@ async function renderDashboard() {
           .join("")}
       </div>
     </div>
+    ${startTodayPanel(data.start_today)}
     <div class="band">
       <div class="band-header">
         <h3>Follow Up</h3>
@@ -1527,6 +1525,9 @@ async function renderDashboard() {
       </div>
       ${recordTable(data.recently_updated, "recent")}
     </div>
+    ${savedViewsSection(data.saved_views || [])}
+    ${applicationSegmentSection(data.profile_segments || [])}
+    ${cleanupSummarySection(data.cleanup_summary || {})}
     ${productionStatusPanel(data.production_status)}
   `;
   wireRecordButtons(els.dashboard);
@@ -2346,6 +2347,7 @@ function resetListFiltersFor(listType) {
   state.listDateFilters[listType] = { field: "", from: "", to: "" };
   state.listQualityIssues[listType] = "";
   state.listProvenanceFilters[listType] = "";
+  if (listType === "deals") state.listDealQueue = "";
   state.listSort[listType] = { field: "updated_at", direction: "desc" };
   state.listSavedViewId[listType] = "";
   state.page = 1;
@@ -2362,6 +2364,13 @@ function openSourcePreset(listType, source) {
   resetListFiltersFor(listType);
   state.listProvenanceFilters[listType] = source;
   setView(listType);
+}
+
+function openDealQueuePreset(queue) {
+  resetListFiltersFor("deals");
+  state.listDealQueue = queue;
+  state.listSort.deals = { field: "updated_at", direction: "desc" };
+  setView("deals");
 }
 
 function openArchiveReviewPreset(reviewStatus) {
@@ -2389,6 +2398,11 @@ function openWorkQueuePreset(preset) {
     state.listStatusFilters.deals = { field: "", value: "" };
     state.listSort.deals = { field: "value", direction: "desc" };
     setView("deals");
+    return;
+  }
+  const dealQueueMatch = preset.match(/^deals_(needs_follow_up|due_today|overdue|won_needs_upgrade|no_deal_date)$/);
+  if (dealQueueMatch) {
+    openDealQueuePreset(dealQueueMatch[1]);
     return;
   }
   if (preset === "new_leads") {
@@ -3737,6 +3751,35 @@ function ownerFilterControls(ownerOptions = []) {
   `;
 }
 
+function dealQuickFilterOptions() {
+  return [
+    ["", "All Deals"],
+    ["needs_follow_up", "Needs Follow Up"],
+    ["due_today", "Due Today"],
+    ["overdue", "Overdue"],
+    ["won_needs_upgrade", "Won Needs Upgrade"],
+    ["no_deal_date", "No Deal Date"],
+  ];
+}
+
+function dealQuickFilterControls(activeQueue = "") {
+  if (state.listType !== "deals") return "";
+  return `
+    <div class="quick-filter-row" aria-label="Deal quick filters">
+      ${dealQuickFilterOptions()
+        .map(([value, label]) => {
+          const active = String(value) === String(activeQueue || "");
+          return `
+            <button class="text-button quick-filter-button deal-quick-filter ${active ? "active" : ""}" data-queue="${escapeHtml(value)}" type="button">
+              ${escapeHtml(label)}
+            </button>
+          `;
+        })
+        .join("")}
+    </div>
+  `;
+}
+
 function profileFilterControls(profileData) {
   if (state.listType === "people") return "";
   if (!profileData.fields?.length) return "";
@@ -3959,6 +4002,7 @@ function currentListSettings() {
     profile_value: simplifiedPeopleFilters ? "" : state.listProfileValue,
     quality_issue: qualityIssue,
     provenance,
+    deal_queue: state.listType === "deals" ? state.listDealQueue : "",
     lifecycle: state.listType === "people" ? currentPeopleLifecycleFilter() : "",
     date_field: dateFilter.field,
     date_from: dateFilter.from,
@@ -3983,6 +4027,7 @@ function applyListSettings(settings = {}) {
   };
   state.listQualityIssues[state.listType] = settings.quality_issue || "";
   state.listProvenanceFilters[state.listType] = settings.provenance || "";
+  if (state.listType === "deals") state.listDealQueue = settings.deal_queue || "";
   if (state.listType === "people") {
     state.listLifecycleFilters.people = settings.lifecycle === "all" ? "all" : "active";
   }
@@ -4017,6 +4062,7 @@ function resetCurrentListView() {
   state.listDateFilters[state.listType] = { field: "", from: "", to: "" };
   state.listQualityIssues[state.listType] = "";
   state.listProvenanceFilters[state.listType] = "";
+  if (state.listType === "deals") state.listDealQueue = "";
   if (state.listType === "people") state.listLifecycleFilters.people = "active";
   state.listSort[state.listType] = { field: "updated_at", direction: "desc" };
   state.listSavedViewId[state.listType] = "";
@@ -4189,6 +4235,7 @@ async function renderList() {
   const qualityIssue = simplifiedPeopleFilters ? "" : currentListQualityIssue();
   const provenance = simplifiedPeopleFilters ? "" : currentListProvenanceFilter();
   const lifecycle = state.listType === "people" ? currentPeopleLifecycleFilter() : "";
+  const dealQueue = state.listType === "deals" ? state.listDealQueue || "" : "";
   const params = new URLSearchParams({
     type: state.listType,
     page: String(state.page),
@@ -4198,6 +4245,7 @@ async function renderList() {
     direction: sort.direction,
   });
   if (state.listType === "people") params.set("lifecycle", lifecycle);
+  if (dealQueue) params.set("deal_queue", dealQueue);
   if (state.listTagId) params.set("tag_id", state.listTagId);
   if (statusFilter.field && statusFilter.value) {
     params.set("status_field", statusFilter.field);
@@ -4246,6 +4294,7 @@ async function renderList() {
   const selectedProfileValue = selectedProfileField?.values.find((item) => item.value === state.listProfileValue);
   const selectedQualityIssue = (data.quality_options || []).find((item) => item.issue === data.quality_issue);
   const selectedProvenance = (data.provenance_options || []).find((item) => item.value === data.provenance);
+  const selectedDealQueue = dealQuickFilterOptions().find(([value]) => value === (data.deal_queue || ""));
   const lifecycleSummary = state.listType === "people" ? (data.lifecycle_filter === "all" ? " · Includes inactive" : " · Active only") : "";
   const selectedDateField = (data.date_options || []).find((item) => item.field === data.date_field);
   const dateRangeText = data.date_from && data.date_to
@@ -4260,7 +4309,7 @@ async function renderList() {
     <div class="section-header">
       <div>
         <h2>${escapeHtml(listTitles[state.listType])}</h2>
-        <p>${formatNumber(data.total)} records${lifecycleSummary}${selectedTag ? ` tagged ${escapeHtml(selectedTag.display_name)}` : ""}${selectedOwner ? ` · Owner: ${escapeHtml(selectedOwner.label)}` : ""}${selectedQualityIssue ? ` · Quality: ${escapeHtml(selectedQualityIssue.label)}` : ""}${selectedProvenance ? ` · Source: ${escapeHtml(selectedProvenance.label)}` : ""}${selectedStatusValue ? ` · ${escapeHtml(selectedStatusField.label)}: ${escapeHtml(selectedStatusValue.value)}` : ""}${selectedProfileValue ? ` · ${escapeHtml(state.listProfileField)}: ${escapeHtml(selectedProfileValue.value)}` : ""}${dateSummary}</p>
+        <p>${formatNumber(data.total)} records${lifecycleSummary}${selectedDealQueue && selectedDealQueue[0] ? ` · Queue: ${escapeHtml(selectedDealQueue[1])}` : ""}${selectedTag ? ` tagged ${escapeHtml(selectedTag.display_name)}` : ""}${selectedOwner ? ` · Owner: ${escapeHtml(selectedOwner.label)}` : ""}${selectedQualityIssue ? ` · Quality: ${escapeHtml(selectedQualityIssue.label)}` : ""}${selectedProvenance ? ` · Source: ${escapeHtml(selectedProvenance.label)}` : ""}${selectedStatusValue ? ` · ${escapeHtml(selectedStatusField.label)}: ${escapeHtml(selectedStatusValue.value)}` : ""}${selectedProfileValue ? ` · ${escapeHtml(state.listProfileField)}: ${escapeHtml(selectedProfileValue.value)}` : ""}${dateSummary}</p>
       </div>
       <button class="text-button" id="newRecordButton">New</button>
     </div>
@@ -4278,6 +4327,7 @@ async function renderList() {
         ${listDateFilterControls(data.date_options || [])}
         ${listSortControls()}
       </div>
+      ${dealQuickFilterControls(data.deal_queue || "")}
       <div class="pager">
         <a class="text-button action-link" href="${escapeHtml(exportUrl)}">Export CSV</a>
         <button class="icon-button" id="prevPage" title="Previous page" ${state.page <= 1 ? "disabled" : ""}>‹</button>
@@ -4310,6 +4360,14 @@ async function renderList() {
   const listDateTo = document.querySelector("#listDateTo");
   const listSortField = document.querySelector("#listSortField");
   const listSortDirection = document.querySelector("#listSortDirection");
+  document.querySelectorAll(".deal-quick-filter").forEach((button) => {
+    button.addEventListener("click", () => {
+      clearSelectedSavedView();
+      state.listDealQueue = button.dataset.queue || "";
+      state.page = 1;
+      renderList();
+    });
+  });
   document.querySelector("#newRecordButton").addEventListener("click", () => {
     renderCreateForm(state.listType).catch((error) => {
       setStatus("Error");

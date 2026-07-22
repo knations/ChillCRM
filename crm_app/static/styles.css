@@ -2029,6 +2029,45 @@ button {
   margin-bottom: 14px;
 }
 
+.pipeline-focus-strip {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-bottom: 12px;
+}
+
+.pipeline-focus-metric {
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 5px;
+  padding: 12px 14px;
+}
+
+.pipeline-focus-metric span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.pipeline-focus-metric strong {
+  color: var(--text);
+  font-size: 18px;
+  line-height: 1.1;
+}
+
+.pipeline-empty-toggle {
+  margin-left: auto;
+}
+
+.pipeline-empty-toggle.active {
+  background: var(--surface-soft);
+  border-color: var(--accent);
+  color: #065c5b;
+}
+
 .pipeline-board {
   align-items: stretch;
   display: grid;
@@ -2040,7 +2079,7 @@ button {
 }
 
 .pipeline-column {
-  background: #fbfaf7;
+  background: rgba(251, 250, 247, 0.78);
   border: 1px solid var(--line);
   border-radius: 8px;
   display: grid;
@@ -2069,8 +2108,8 @@ button {
 }
 
 .pipeline-stage-category {
-  background: var(--surface);
-  border: 1px solid var(--line);
+  background: transparent;
+  border: 0;
   border-radius: 999px;
   color: var(--muted);
   flex: 0 0 auto;
@@ -2091,6 +2130,7 @@ button {
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: 8px;
+  box-shadow: 0 1px 2px rgba(32, 29, 25, 0.04);
   color: var(--text);
   cursor: pointer;
   display: grid;
@@ -2102,6 +2142,7 @@ button {
 
 .pipeline-deal-card:hover {
   border-color: var(--accent);
+  box-shadow: 0 8px 20px rgba(32, 29, 25, 0.08);
 }
 
 .pipeline-card-topline {
@@ -2145,13 +2186,8 @@ button {
 }
 
 .pipeline-card-meta .attention {
-  background: #fff1ed;
+  background: #f8ebe6;
   color: #9b3d2b;
-}
-
-.pipeline-card-meta .ready {
-  background: #eef7f1;
-  color: #2f7a54;
 }
 
 .pipeline-empty-card {
@@ -5653,6 +5689,7 @@ button {
   .decision-prep-summary,
   .decision-prep-facts,
   .daily-guide-metrics,
+  .pipeline-focus-strip,
   .followup-transition-counts,
   .archive-association-mini,
   .cleanup-starter-summary,

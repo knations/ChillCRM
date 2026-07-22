@@ -7156,6 +7156,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                 ).fetchall()
             )
             self.attach_deal_queue_summaries(conn, deals, deal_queue)
+            metrics = self.pipeline_board_metrics(conn)
         known_stage_ids = {str(stage.get("stage_id")) for stage in stages if stage.get("stage_id") is not None}
         if any(str(deal.get("stage_id") or "none") not in known_stage_ids for deal in deals):
             stages.append(
@@ -7174,8 +7175,52 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             "deals": deals,
             "total": len(deals),
             "total_value": round(sum(float(deal.get("value") or 0) for deal in deals), 2),
+            "metrics": metrics,
             "limit": 300,
         }
+
+    def pipeline_board_metrics(self, conn: sqlite3.Connection) -> dict[str, Any]:
+        open_value = conn.execute(
+            """
+            SELECT coalesce(round(sum(d.value), 2), 0)
+            FROM deals d
+            LEFT JOIN stages s ON s.id = d.stage_id
+            WHERE coalesce(s.category, '') IN ('incoming', 'in_progress')
+            """
+        ).fetchone()[0]
+        won_value = conn.execute(
+            """
+            SELECT coalesce(round(sum(d.value), 2), 0)
+            FROM deals d
+            LEFT JOIN stages s ON s.id = d.stage_id
+            WHERE coalesce(s.category, '') = 'won'
+            """
+        ).fetchone()[0]
+        return {
+            "open_value": float(open_value or 0),
+            "won_value": float(won_value or 0),
+            "needs_follow_up": self.deal_queue_count(conn, "needs_follow_up"),
+            "won_needs_upgrade": self.deal_queue_count(conn, "won_needs_upgrade"),
+            "needs_attention": self.deal_queue_count(conn, "attention"),
+        }
+
+    def deal_queue_count(self, conn: sqlite3.Connection, deal_queue: str) -> int:
+        values: list[Any] = []
+        clauses: list[str] = []
+        self.apply_deal_queue_filter(clauses, values, deal_queue)
+        where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+        return int(
+            conn.execute(
+                f"""
+                SELECT count(*)
+                FROM deals d
+                LEFT JOIN stages s ON s.id = d.stage_id
+                {where}
+                """,
+                values,
+            ).fetchone()[0]
+            or 0
+        )
 
     def normalize_list_status_filter(
         self, record_type: str, status_field: str | None, status_value: str | None
@@ -7209,7 +7254,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
 
     def normalize_deal_queue_filter(self, deal_queue: Any) -> str | None:
         value = str(deal_queue or "").strip().lower()
-        queues = {"needs_follow_up", "due_today", "overdue", "won_needs_upgrade", "no_deal_date"}
+        queues = {"attention", "needs_follow_up", "due_today", "overdue", "won_needs_upgrade", "no_deal_date"}
         return value if value in queues else None
 
     def deal_sales_profile_storage_names(self, key: str) -> list[str]:
@@ -7806,6 +7851,8 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         today_text = date.today().isoformat()
         follow_up_names = self.deal_follow_up_field_names()
         follow_up_placeholders = ", ".join("?" for _ in follow_up_names)
+        upgrade_names = self.deal_upgrade_field_names()
+        upgrade_placeholders = ", ".join("?" for _ in upgrade_names)
         follow_up_exists = f"""
             EXISTS (
                 SELECT 1
@@ -7817,7 +7864,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             )
         """
         follow_up_missing = f"NOT {follow_up_exists}"
-        if deal_queue == "needs_follow_up":
+        if deal_queue in {"attention", "needs_follow_up"}:
             clauses.append(
                 f"""
                 coalesce(s.category, '') NOT IN ('lost', 'unqualified')
@@ -7832,12 +7879,15 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                           AND nullif(trim(cf.field_value), '') IS NOT NULL
                           AND cf.field_value <= ?
                     )
+                    {f"OR (coalesce(s.category, '') = 'won' AND NOT EXISTS (SELECT 1 FROM custom_field_values cf WHERE cf.record_type = 'deal' AND cf.record_id = d.id AND cf.field_name IN ({upgrade_placeholders}) AND nullif(trim(cf.field_value), '') IS NOT NULL))" if deal_queue == "attention" else ""}
                 )
                 """
             )
             values.extend(follow_up_names)
             values.extend(follow_up_names)
             values.append(today_text)
+            if deal_queue == "attention":
+                values.extend(upgrade_names)
         elif deal_queue == "due_today":
             clauses.append(
                 f"""
@@ -7879,8 +7929,6 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             )
             values.extend(follow_up_names)
         elif deal_queue == "won_needs_upgrade":
-            upgrade_names = self.deal_upgrade_field_names()
-            upgrade_placeholders = ", ".join("?" for _ in upgrade_names)
             clauses.append(
                 f"""
                 coalesce(s.category, '') = 'won'
@@ -7934,11 +7982,13 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                 record["match_context"] = "Follow Up today"
             elif deal_queue == "overdue":
                 record["match_context"] = f"Follow Up {follow_up}" if follow_up else "Overdue follow-up"
-            elif deal_queue == "needs_follow_up":
+            elif deal_queue in {"attention", "needs_follow_up"}:
                 if follow_up:
                     record["match_context"] = "Follow Up today" if follow_up == today_text else f"Follow Up {follow_up}"
                 else:
                     record["match_context"] = "No follow-up date"
+                if deal_queue == "attention" and str(record.get("stage_category") or "") == "won":
+                    record["match_context"] = "Choose upgrade path"
             elif deal_queue == "won_needs_upgrade":
                 record["match_context"] = "Choose upgrade path"
             elif deal_queue == "no_deal_date":

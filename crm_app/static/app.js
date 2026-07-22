@@ -42,6 +42,7 @@ const state = {
   },
   listDealQueue: "",
   pipelineDealQueue: "",
+  pipelineShowEmptyStages: false,
   listSavedViewId: {
     people: "",
     companies: "",
@@ -1561,6 +1562,11 @@ async function renderPipelineBoard() {
     if (!stageCards.has(key)) stageCards.set(key, []);
     stageCards.get(key).push(deal);
   });
+  const visibleStages = (data.stages || []).filter((stage) => {
+    const deals = stageCards.get(String(stage.stage_id || "none")) || [];
+    return state.pipelineShowEmptyStages || deals.length;
+  });
+  const metrics = data.metrics || {};
   els.pipeline.innerHTML = `
     <div class="section-header">
       <div>
@@ -1568,6 +1574,12 @@ async function renderPipelineBoard() {
         <p>${formatNumber(data.total || 0)} deals${selectedQueue && selectedQueue[0] ? ` · ${escapeHtml(selectedQueue[1])}` : ""} · ${escapeHtml(formatMoney(data.total_value || 0, "USD"))}</p>
       </div>
       <button class="text-button nav-jump" data-view="deals" type="button">Open Deal List</button>
+    </div>
+    <div class="pipeline-focus-strip">
+      ${pipelineMetric("Open Value", formatMoney(metrics.open_value || 0, "USD"))}
+      ${pipelineMetric("Won Value", formatMoney(metrics.won_value || 0, "USD"))}
+      ${pipelineMetric("Needs Follow Up", formatNumber(metrics.needs_follow_up || 0))}
+      ${pipelineMetric("Won Needs Upgrade", formatNumber(metrics.won_needs_upgrade || 0))}
     </div>
     <div class="pipeline-toolbar">
       ${dealQuickFilterOptions()
@@ -1577,9 +1589,12 @@ async function renderPipelineBoard() {
           </button>
         `)
         .join("")}
+      <button class="text-button pipeline-empty-toggle ${state.pipelineShowEmptyStages ? "active" : ""}" type="button">
+        ${state.pipelineShowEmptyStages ? "Hide Empty Stages" : "Show Empty Stages"}
+      </button>
     </div>
     <div class="pipeline-board" role="list" aria-label="Deal pipeline stages">
-      ${(data.stages || [])
+      ${visibleStages
         .map((stage) => pipelineStageColumn(stage, stageCards.get(String(stage.stage_id || "none")) || []))
         .join("")}
     </div>
@@ -1590,9 +1605,22 @@ async function renderPipelineBoard() {
       renderPipelineBoard();
     });
   });
+  els.pipeline.querySelector(".pipeline-empty-toggle")?.addEventListener("click", () => {
+    state.pipelineShowEmptyStages = !state.pipelineShowEmptyStages;
+    renderPipelineBoard();
+  });
   wireRecordButtons(els.pipeline);
   wireNavJumps(els.pipeline);
   setStatus("Ready");
+}
+
+function pipelineMetric(label, value) {
+  return `
+    <div class="pipeline-focus-metric">
+      <span>${escapeHtml(label)}</span>
+      <strong>${escapeHtml(value)}</strong>
+    </div>
+  `;
 }
 
 function pipelineStageColumn(stage, deals) {
@@ -1621,7 +1649,10 @@ function pipelineDealCard(deal) {
   const relationship = deal.contact_name || deal.organization_name || "No contact attached";
   const followUp = deal.next_follow_up_date ? formatDate(deal.next_follow_up_date) : "";
   const attention = deal.match_context || (followUp ? `Follow Up ${followUp}` : "");
-  const tone = attention ? "attention" : "ready";
+  const metaItems = [
+    deal.estimated_close_date ? `<span>Close ${escapeHtml(formatDate(deal.estimated_close_date))}</span>` : "",
+    attention ? `<span class="attention">${escapeHtml(attention)}</span>` : "",
+  ].filter(Boolean);
   return `
     <button class="pipeline-deal-card record-button" data-type="deal" data-id="${escapeHtml(deal.source_id)}" type="button">
       <span class="pipeline-card-topline">
@@ -1629,10 +1660,7 @@ function pipelineDealCard(deal) {
         <em>${escapeHtml(formatMoney(deal.value || 0, deal.currency || "USD"))}</em>
       </span>
       <span class="pipeline-card-relationship">${escapeHtml(relationship)}</span>
-      <span class="pipeline-card-meta">
-        ${deal.estimated_close_date ? `<span>Close ${escapeHtml(formatDate(deal.estimated_close_date))}</span>` : ""}
-        ${attention ? `<span class="${tone}">${escapeHtml(attention)}</span>` : `<span class="ready">No alert</span>`}
-      </span>
+      ${metaItems.length ? `<span class="pipeline-card-meta">${metaItems.join("")}</span>` : ""}
     </button>
   `;
 }
@@ -3850,6 +3878,7 @@ function ownerFilterControls(ownerOptions = []) {
 function dealQuickFilterOptions() {
   return [
     ["", "All Deals"],
+    ["attention", "Needs Attention"],
     ["needs_follow_up", "Needs Follow Up"],
     ["due_today", "Due Today"],
     ["overdue", "Overdue"],

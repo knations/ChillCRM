@@ -5616,9 +5616,9 @@ function dealDetailBody(detail) {
   return `
     ${dealCommandSummary(detail)}
     ${dealNextActionPanel(detail)}
+    ${dealSalesProfileSection(detail, "proposal")}
     ${dealSalesProfileSection(detail, "qualification")}
     ${editForm(detail)}
-    ${dealSalesProfileSection(detail, "proposal")}
     ${addTaskForm(detail)}
     ${tasksSection(detail.tasks || [])}
     ${addNoteForm(detail)}
@@ -5646,10 +5646,20 @@ function dealCommandSummary(detail) {
   const revenue = formatMoney(record.value, record.currency || "USD");
   const stage = record.stage_name || "No stage";
   const expectedClose = formatDate(record.estimated_close_date) || "No close date";
+  const followUp = next.next_follow_up_date ? formatDate(next.next_follow_up_date) : "Not set";
+  const upgrade = next.upgrade_to ? dealUpgradeDisplayLabel(next.upgrade_to) : "Not set";
+  const nextTone = next.status === "ready" ? "Ready" : "Needs Attention";
   const contactLabel = contact?.name || record.contact_name || "";
   const organizationLabel = organization?.name || record.organization_name || "";
   return `
     <div class="detail-section deal-command-summary">
+      <div class="deal-command-head">
+        <div>
+          <span>Deal File</span>
+          <strong>${escapeHtml(record.name || "(blank)")}</strong>
+        </div>
+        <span class="deal-command-pill ${escapeHtml(next.status || "attention")}">${escapeHtml(nextTone)}</span>
+      </div>
       <div class="deal-command-primary">
         <div>
           <span>Lead / Contact</span>
@@ -5682,12 +5692,30 @@ function dealCommandSummary(detail) {
           <strong>${escapeHtml(expectedClose)}</strong>
         </div>
         <div>
+          <span>Follow Up</span>
+          <strong>${escapeHtml(followUp)}</strong>
+        </div>
+        <div>
+          <span>Upgrade To</span>
+          <strong>${escapeHtml(upgrade)}</strong>
+        </div>
+        <div class="span-2">
           <span>Next Action</span>
           <strong>${escapeHtml(next.title || "No next action")}</strong>
         </div>
       </div>
     </div>
   `;
+}
+
+function dealUpgradeDisplayLabel(value) {
+  const normalized = String(value || "").trim().toUpperCase();
+  const labels = {
+    "FAMILY MASTERMIND": "Family Mastermind",
+    "FAMILY MASTERMIND RENEWAL": "Family Renewal",
+    OTHER: "Other",
+  };
+  return labels[normalized] || labelize(String(value || "").toLowerCase());
 }
 
 function nonSalesCustomFields(fields) {

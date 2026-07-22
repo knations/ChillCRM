@@ -41,6 +41,7 @@ const state = {
     people: "active",
   },
   listDealQueue: "",
+  pipelineDealQueue: "",
   listSavedViewId: {
     people: "",
     companies: "",
@@ -119,6 +120,7 @@ const els = {
   shell: document.querySelector(".app-shell"),
   dashboard: document.querySelector("#dashboardView"),
   migrationStatus: document.querySelector("#migrationStatusView"),
+  pipeline: document.querySelector("#pipelineView"),
   list: document.querySelector("#listView"),
   tags: document.querySelector("#tagsView"),
   customFields: document.querySelector("#customFieldsView"),
@@ -971,6 +973,7 @@ function setView(view) {
     : {
         dashboard: els.dashboard,
         migrationStatus: els.migrationStatus,
+        pipeline: els.pipeline,
         tags: els.tags,
         customFields: els.customFields,
         linkedResources: els.linkedResources,
@@ -985,6 +988,8 @@ function setView(view) {
   updateRecordWorkspaceForView(view);
   if (view === "migrationStatus") {
     renderMigrationStatus();
+  } else if (view === "pipeline") {
+    renderPipelineBoard();
   } else if (["people", "companies", "leads", "deals"].includes(view)) {
     state.listType = view;
     if (!profileFilterSupported(view)) {
@@ -1042,6 +1047,7 @@ function viewDisplayLabel(view = state.view) {
     {
       dashboard: "Dashboard",
       migrationStatus: "Status",
+      pipeline: "Pipeline",
       tags: "Tags",
       customFields: "Custom Fields",
       linkedResources: "Linked Resources",
@@ -1539,6 +1545,96 @@ async function renderDashboard() {
   wireCleanupSummaryButtons(els.dashboard);
   wireProfileSegmentButtons(els.dashboard);
   setStatus("Ready");
+}
+
+async function renderPipelineBoard() {
+  setStatus("Loading pipeline");
+  state.mobileDetailReturnLabel = "Pipeline";
+  const params = new URLSearchParams();
+  if (state.pipelineDealQueue) params.set("deal_queue", state.pipelineDealQueue);
+  const data = await fetchJson(`/api/pipeline_board${params.toString() ? `?${params.toString()}` : ""}`);
+  const activeQueue = data.deal_queue || "";
+  const selectedQueue = dealQuickFilterOptions().find(([value]) => value === activeQueue);
+  const stageCards = new Map();
+  (data.deals || []).forEach((deal) => {
+    const key = String(deal.stage_id || "none");
+    if (!stageCards.has(key)) stageCards.set(key, []);
+    stageCards.get(key).push(deal);
+  });
+  els.pipeline.innerHTML = `
+    <div class="section-header">
+      <div>
+        <h2>Pipeline</h2>
+        <p>${formatNumber(data.total || 0)} deals${selectedQueue && selectedQueue[0] ? ` · ${escapeHtml(selectedQueue[1])}` : ""} · ${escapeHtml(formatMoney(data.total_value || 0, "USD"))}</p>
+      </div>
+      <button class="text-button nav-jump" data-view="deals" type="button">Open Deal List</button>
+    </div>
+    <div class="pipeline-toolbar">
+      ${dealQuickFilterOptions()
+        .map(([value, label]) => `
+          <button class="text-button quick-filter-button pipeline-quick-filter ${String(value) === String(activeQueue || "") ? "active" : ""}" data-queue="${escapeHtml(value)}" type="button">
+            ${escapeHtml(label)}
+          </button>
+        `)
+        .join("")}
+    </div>
+    <div class="pipeline-board" role="list" aria-label="Deal pipeline stages">
+      ${(data.stages || [])
+        .map((stage) => pipelineStageColumn(stage, stageCards.get(String(stage.stage_id || "none")) || []))
+        .join("")}
+    </div>
+  `;
+  els.pipeline.querySelectorAll(".pipeline-quick-filter").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.pipelineDealQueue = button.dataset.queue || "";
+      renderPipelineBoard();
+    });
+  });
+  wireRecordButtons(els.pipeline);
+  wireNavJumps(els.pipeline);
+  setStatus("Ready");
+}
+
+function pipelineStageColumn(stage, deals) {
+  const totalValue = deals.reduce((sum, deal) => sum + Number(deal.value || 0), 0);
+  return `
+    <section class="pipeline-column" role="listitem">
+      <div class="pipeline-column-header">
+        <div>
+          <h3>${escapeHtml(stage.name || "No Stage")}</h3>
+          <p>${formatNumber(deals.length)} deals · ${escapeHtml(formatMoney(totalValue, "USD"))}</p>
+        </div>
+        <span class="pipeline-stage-category">${escapeHtml(stage.category || "stage")}</span>
+      </div>
+      <div class="pipeline-card-stack">
+        ${
+          deals.length
+            ? deals.map((deal) => pipelineDealCard(deal)).join("")
+            : `<div class="pipeline-empty-card">No deals here.</div>`
+        }
+      </div>
+    </section>
+  `;
+}
+
+function pipelineDealCard(deal) {
+  const relationship = deal.contact_name || deal.organization_name || "No contact attached";
+  const followUp = deal.next_follow_up_date ? formatDate(deal.next_follow_up_date) : "";
+  const attention = deal.match_context || (followUp ? `Follow Up ${followUp}` : "");
+  const tone = attention ? "attention" : "ready";
+  return `
+    <button class="pipeline-deal-card record-button" data-type="deal" data-id="${escapeHtml(deal.source_id)}" type="button">
+      <span class="pipeline-card-topline">
+        <strong>${escapeHtml(deal.name || "(blank)")}</strong>
+        <em>${escapeHtml(formatMoney(deal.value || 0, deal.currency || "USD"))}</em>
+      </span>
+      <span class="pipeline-card-relationship">${escapeHtml(relationship)}</span>
+      <span class="pipeline-card-meta">
+        ${deal.estimated_close_date ? `<span>Close ${escapeHtml(formatDate(deal.estimated_close_date))}</span>` : ""}
+        ${attention ? `<span class="${tone}">${escapeHtml(attention)}</span>` : `<span class="ready">No alert</span>`}
+      </span>
+    </button>
+  `;
 }
 
 function salesCommandCenterPanel(center) {

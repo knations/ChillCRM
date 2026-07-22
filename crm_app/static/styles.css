@@ -2022,6 +2022,146 @@ button {
   font-weight: 700;
 }
 
+.pipeline-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.pipeline-board {
+  align-items: stretch;
+  display: grid;
+  gap: 14px;
+  grid-auto-columns: minmax(280px, 340px);
+  grid-auto-flow: column;
+  overflow-x: auto;
+  padding-bottom: 10px;
+}
+
+.pipeline-column {
+  background: #fbfaf7;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 12px;
+  grid-template-rows: auto minmax(0, 1fr);
+  max-height: calc(100vh - 190px);
+  min-height: 420px;
+  padding: 12px;
+}
+
+.pipeline-column-header {
+  align-items: start;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+.pipeline-column-header h3 {
+  font-size: 16px;
+  margin: 0 0 4px;
+}
+
+.pipeline-column-header p {
+  color: var(--muted);
+  margin: 0;
+}
+
+.pipeline-stage-category {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--muted);
+  flex: 0 0 auto;
+  font-size: 11px;
+  font-weight: 800;
+  padding: 5px 8px;
+  text-transform: uppercase;
+}
+
+.pipeline-card-stack {
+  display: grid;
+  gap: 10px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.pipeline-deal-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--text);
+  cursor: pointer;
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  text-align: left;
+  width: 100%;
+}
+
+.pipeline-deal-card:hover {
+  border-color: var(--accent);
+}
+
+.pipeline-card-topline {
+  align-items: start;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.pipeline-card-topline strong {
+  font-size: 15px;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.pipeline-card-topline em {
+  color: #2f7a54;
+  font-style: normal;
+  font-weight: 850;
+}
+
+.pipeline-card-relationship {
+  color: var(--muted);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.pipeline-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.pipeline-card-meta span {
+  background: #f4f1ea;
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  padding: 5px 8px;
+}
+
+.pipeline-card-meta .attention {
+  background: #fff1ed;
+  color: #9b3d2b;
+}
+
+.pipeline-card-meta .ready {
+  background: #eef7f1;
+  color: #2f7a54;
+}
+
+.pipeline-empty-card {
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  color: var(--muted);
+  padding: 18px 12px;
+  text-align: center;
+}
+
 .tag-search-filter {
   align-items: center;
   display: inline-grid;
@@ -5526,10 +5666,26 @@ button {
 
   .start-today-body,
   .sales-command-grid,
+  .pipeline-board,
   .deal-sales-profile-grid,
   .start-guide-step,
   .followup-transition-step {
     grid-template-columns: 1fr;
+  }
+
+  .pipeline-board {
+    grid-auto-flow: row;
+    grid-auto-columns: unset;
+    overflow-x: visible;
+  }
+
+  .pipeline-column {
+    max-height: none;
+    min-height: 0;
+  }
+
+  .pipeline-card-stack {
+    max-height: 420px;
   }
 
   .sales-command-metrics {

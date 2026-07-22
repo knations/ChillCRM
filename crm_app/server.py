@@ -1365,6 +1365,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         "/api/production_gates": "view_dashboard_reports",
         "/api/project_decisions": "view_dashboard_reports",
         "/api/list": "view_dashboard_reports",
+        "/api/pipeline_board": "view_dashboard_reports",
         "/api/detail": "view_dashboard_reports",
         "/api/vcard": "view_dashboard_reports",
         "/api/tasks": "view_dashboard_reports",
@@ -3521,6 +3522,8 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                 self.send_json(self.project_decisions())
             elif path == "/api/list":
                 self.send_json(self.list_records(params))
+            elif path == "/api/pipeline_board":
+                self.send_json(self.pipeline_board(params))
             elif path == "/api/detail":
                 self.send_json(self.record_detail(params))
             elif path == "/api/vcard":
@@ -7108,6 +7111,70 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             "page_size": page_size,
             "total": total,
             "records": records,
+        }
+
+    def pipeline_board(self, params: dict[str, list[str]]) -> dict[str, Any]:
+        deal_queue = self.normalize_deal_queue_filter(params.get("deal_queue", [""])[0] if params.get("deal_queue") else "")
+        values: list[Any] = []
+        clauses: list[str] = []
+        self.apply_deal_queue_filter(clauses, values, deal_queue)
+        where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+        with self.db() as conn:
+            stages = rows_to_dicts(
+                conn.execute(
+                    """
+                    SELECT s.id AS stage_id, s.position, s.name, s.category, s.pipeline_id,
+                           p.name AS pipeline_name
+                    FROM stages s
+                    LEFT JOIN pipelines p ON p.id = s.pipeline_id
+                    ORDER BY p.name COLLATE NOCASE, s.position, s.name COLLATE NOCASE
+                    """
+                ).fetchall()
+            )
+            deals = rows_to_dicts(
+                conn.execute(
+                    f"""
+                    SELECT d.id AS source_id, 'deal' AS type, 'deal' AS kind,
+                           d.name, d.value, d.currency, d.estimated_close_date,
+                           d.created_at, d.updated_at, d.stage_id,
+                           s.name AS stage_name, s.category AS stage_category,
+                           p.name AS contact_name, c.name AS organization_name
+                    FROM deals d
+                    LEFT JOIN stages s ON s.id = d.stage_id
+                    LEFT JOIN people p ON p.id = d.person_id
+                    LEFT JOIN companies c ON c.id = d.company_id
+                    {where}
+                    ORDER BY
+                      CASE WHEN s.position IS NULL THEN 1 ELSE 0 END,
+                      s.position,
+                      coalesce(d.value, 0) DESC,
+                      d.updated_at DESC,
+                      d.name COLLATE NOCASE
+                    LIMIT 300
+                    """,
+                    values,
+                ).fetchall()
+            )
+            self.attach_deal_queue_summaries(conn, deals, deal_queue)
+        known_stage_ids = {str(stage.get("stage_id")) for stage in stages if stage.get("stage_id") is not None}
+        if any(str(deal.get("stage_id") or "none") not in known_stage_ids for deal in deals):
+            stages.append(
+                {
+                    "stage_id": "none",
+                    "position": 9999,
+                    "name": "No Stage",
+                    "category": "uncategorized",
+                    "pipeline_id": None,
+                    "pipeline_name": "",
+                }
+            )
+        return {
+            "deal_queue": deal_queue,
+            "stages": stages,
+            "deals": deals,
+            "total": len(deals),
+            "total_value": round(sum(float(deal.get("value") or 0) for deal in deals), 2),
+            "limit": 300,
         }
 
     def normalize_list_status_filter(

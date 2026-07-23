@@ -2980,6 +2980,10 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                 "enabled": document_files["enabled"],
                 "mode": document_files["mode"],
             },
+            "portal_preview": {
+                "enabled": self.portal_preview_enabled(),
+                "mode": "owner_only" if self.portal_preview_enabled() else "disabled",
+            },
         }
 
     def database_url(self) -> str:

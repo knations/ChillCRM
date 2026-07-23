@@ -5011,7 +5011,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                 LEFT JOIN leads l ON n.record_type = 'lead' AND l.id = n.record_id
                 LEFT JOIN deals d ON n.record_type = 'deal' AND d.id = n.record_id
                 LEFT JOIN companies c ON n.record_type = 'company' AND c.id = n.record_id
-                WHERE n.source_json LIKE '%zapier_purchase_webhook%'
+                WHERE CAST(n.source_json AS TEXT) LIKE '%zapier_purchase_webhook%'
                 ORDER BY n.created_at DESC, n.id DESC
                 LIMIT 100
                 """

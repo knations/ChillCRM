@@ -7,10 +7,10 @@ Local Zendesk Sell migration and CRM project.
 ChillPortal is now represented as an internal-only CHILLCRM foundation for a
 future Person-first client portal. The local app can prepare Portal status,
 shared documents, client next steps, and separate client-visible notes from a
-Person record. A disabled-by-default staff preview is available at
-`/portal?person_id=<id>` only when `CHILLPORTAL_ENABLED=true`, but there is not
-yet a client login, invitation flow, storage provider change, or production
-cutover.
+Person record. A disabled-by-default owner-only preview is available at
+`/portal?person_id=<id>` only when `CHILLPORTAL_ENABLED=true`, CHILLCRM auth is
+enabled, and the signed-in internal user has the `owner` role. There is not yet
+a client login, invitation flow, storage provider change, or production cutover.
 
 ## Current Status
 

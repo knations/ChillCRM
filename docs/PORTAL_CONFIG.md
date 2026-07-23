@@ -1,7 +1,7 @@
 # Portal Config Map
 
 The current portal foundation is intentionally conservative. It gives future
-work stable names and an internal staff preview without turning on client
+work stable names and an internal owner-only preview without turning on client
 access.
 
 ## Confirmed Files
@@ -21,9 +21,10 @@ access.
 - `PORTAL_PRIMARY_RECORD_TYPE`: `people`
 - `PORTAL_OPTIONAL_CONTEXT_RECORD_TYPES`: `companies`
 
-`/portal?person_id=<id>` is wired as a disabled-by-default staff preview route.
+`/portal?person_id=<id>` is wired as a disabled-by-default owner-only preview route.
 It returns 404 unless `CHILLPORTAL_ENABLED=true` is set in a local or approved
-staging environment.
+owner-only environment. It also refuses to render unless CHILLCRM auth is
+enabled and the signed-in internal user has the `owner` role.
 
 ## Feature Flags
 

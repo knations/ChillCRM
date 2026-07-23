@@ -6037,12 +6037,29 @@ function personPortalSection(portal, personId) {
   const selectedStatus = portal.status === "not_enabled" ? "draft" : portal.status || "draft";
   const nextSteps = portal.next_steps || [];
   const clientNotes = portal.client_notes || [];
+  const sharedDocuments = portal.shared_documents || [];
+  const counts = portal.counts || {};
+  const publishedNotes = Number(counts.published_client_notes || 0);
+  const readinessItems = [
+    { label: "Portal status set", ready: selectedStatus === "active" },
+    { label: "At least one shared document", ready: sharedDocuments.length > 0 },
+    { label: "At least one client next step", ready: nextSteps.some((step) => (step.status || "open") === "open") },
+    { label: "At least one published client note", ready: publishedNotes > 0 },
+  ];
   const previewUrl = `/portal?person_id=${encodeURIComponent(personId || "")}`;
   return `
     <div class="detail-section person-portal-section">
       <div class="inline-header">
-        <h3>Portal</h3>
+        <div>
+          <h3>Portal</h3>
+          <p class="muted portal-section-subtitle">Client-visible prep only. Internal notes, calls, tasks, and audit stay private.</p>
+        </div>
         <span class="pill ${portal.enabled ? "green" : ""}">${escapeHtml(status)}</span>
+      </div>
+      <div class="portal-readiness-list">
+        ${readinessItems.map((item) => `
+          <span class="portal-readiness-pill ${item.ready ? "ready" : ""}">${item.ready ? "Ready" : "Needed"} · ${escapeHtml(item.label)}</span>
+        `).join("")}
       </div>
       <div class="portal-module-grid">
         ${modules.map((module) => `
@@ -6052,7 +6069,6 @@ function personPortalSection(portal, personId) {
           </div>
         `).join("")}
       </div>
-      <p class="muted portal-safety-note">${escapeHtml(portal.safety || "Person-first client-visible portal data only.")}</p>
       <div class="portal-control-row">
         <label>
           <span>Portal Status</span>
@@ -6063,14 +6079,31 @@ function personPortalSection(portal, personId) {
         <button id="savePortalProfileButton" class="text-button" type="button">Save Portal</button>
         <a class="text-button portal-preview-button" href="${escapeHtml(previewUrl)}" target="_blank" rel="noreferrer">Preview Portal</a>
       </div>
+      <div class="portal-entry-panel portal-shared-documents-panel">
+        <h4>Shared Documents</h4>
+        <div class="portal-mini-list">
+          ${sharedDocuments.length ? sharedDocuments.slice(0, 6).map((doc) => `
+            <div class="portal-mini-item">
+              <strong>${escapeHtml(doc.title || "Shared document")}</strong>
+              <span>${escapeHtml(labelize(doc.visibility_status || "shared"))}${doc.shared_at ? ` · ${escapeHtml(formatDate(doc.shared_at))}` : ""}</span>
+            </div>
+          `).join("") : `<p class="muted">No shared documents yet. Use Share on a file in the Files section.</p>`}
+        </div>
+      </div>
       <div class="portal-entry-grid">
         <div class="portal-entry-panel">
           <h4>Client Next Steps</h4>
           <div class="portal-mini-list">
             ${nextSteps.length ? nextSteps.map((step) => `
               <div class="portal-mini-item">
-                <strong>${escapeHtml(step.title || "")}</strong>
-                ${step.due_at ? `<span>${escapeHtml(formatDate(step.due_at))}</span>` : ""}
+                <div>
+                  <strong>${escapeHtml(step.title || "")}</strong>
+                  <span>${escapeHtml(labelize(step.status || "open"))}${step.due_at ? ` · ${escapeHtml(formatDate(step.due_at))}` : ""}</span>
+                </div>
+                <div class="portal-mini-actions">
+                  ${(step.status || "open") === "done" ? `<button class="text-button portal-next-step-status-button" type="button" data-next-step-id="${escapeHtml(step.source_id)}" data-status="open">Reopen</button>` : `<button class="text-button portal-next-step-status-button" type="button" data-next-step-id="${escapeHtml(step.source_id)}" data-status="done">Done</button>`}
+                  <button class="text-button portal-next-step-status-button" type="button" data-next-step-id="${escapeHtml(step.source_id)}" data-status="archived">Archive</button>
+                </div>
               </div>
             `).join("") : `<p class="muted">No client next steps yet.</p>`}
           </div>
@@ -6090,8 +6123,16 @@ function personPortalSection(portal, personId) {
           <div class="portal-mini-list">
             ${clientNotes.length ? clientNotes.map((note) => `
               <div class="portal-mini-item">
-                <strong>${escapeHtml(note.title || "Client Note")}</strong>
-                <span>${escapeHtml(labelize(note.visibility_status || "draft"))}</span>
+                <div>
+                  <strong>${escapeHtml(note.title || "Client Note")}</strong>
+                  <span>${escapeHtml(labelize(note.visibility_status || "draft"))}${note.published_at ? ` · ${escapeHtml(formatDate(note.published_at))}` : ""}</span>
+                </div>
+                <div class="portal-mini-actions">
+                  ${(note.visibility_status || "draft") === "published"
+                    ? `<button class="text-button portal-client-note-status-button" type="button" data-client-note-id="${escapeHtml(note.source_id)}" data-status="draft">Unpublish</button>`
+                    : `<button class="text-button portal-client-note-status-button" type="button" data-client-note-id="${escapeHtml(note.source_id)}" data-status="published">Publish</button>`}
+                  <button class="text-button portal-client-note-status-button" type="button" data-client-note-id="${escapeHtml(note.source_id)}" data-status="archived">Archive</button>
+                </div>
               </div>
             `).join("") : `<p class="muted">No client notes yet.</p>`}
           </div>
@@ -7463,6 +7504,42 @@ function wireDetailForms(detail) {
       );
     });
   }
+
+  document.querySelectorAll(".portal-next-step-status-button").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const status = button.dataset.status || "open";
+      await runDetailAction(
+        button,
+        { progress: "Updating next step", success: "Next step updated", failure: "Next step update failed" },
+        async () => {
+          const updated = await postJson("/api/update_portal_next_step", {
+            person_id: detail.record.source_id,
+            next_step_id: Number(button.dataset.nextStepId),
+            status,
+          });
+          renderDetail(updated.detail);
+        }
+      );
+    });
+  });
+
+  document.querySelectorAll(".portal-client-note-status-button").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const visibilityStatus = button.dataset.status || "draft";
+      await runDetailAction(
+        button,
+        { progress: "Updating client note", success: "Client note updated", failure: "Client note update failed" },
+        async () => {
+          const updated = await postJson("/api/update_portal_client_note", {
+            person_id: detail.record.source_id,
+            client_note_id: Number(button.dataset.clientNoteId),
+            visibility_status: visibilityStatus,
+          });
+          renderDetail(updated.detail);
+        }
+      );
+    });
+  });
 
   document.querySelectorAll(".portal-document-share-button").forEach((button) => {
     button.addEventListener("click", async () => {

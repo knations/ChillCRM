@@ -1384,7 +1384,9 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             "/api/add_task",
             "/api/save_portal_profile",
             "/api/add_portal_next_step",
+            "/api/update_portal_next_step",
             "/api/add_portal_client_note",
+            "/api/update_portal_client_note",
             "/api/set_portal_document_share",
             "/api/update_task",
             "/api/copy_imported_task_to_local",
@@ -1414,7 +1416,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         "edit_addresses_tags": frozenset({"owner", "admin", "staff"}),
         "notes_tasks_followups": frozenset({"owner", "admin", "staff"}),
         "manage_person_portal": frozenset({"owner", "admin", "staff"}),
-        "preview_portal_experience": frozenset({"owner", "admin", "staff"}),
+        "preview_portal_experience": frozenset({"owner"}),
         "archive_review_status": frozenset({"owner", "admin", "staff"}),
         "link_archive_item": frozenset({"owner", "admin"}),
         "resolve_cleanup_flags": frozenset({"owner", "admin"}),
@@ -1485,7 +1487,9 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         "/api/add_task": "notes_tasks_followups",
         "/api/save_portal_profile": "manage_person_portal",
         "/api/add_portal_next_step": "manage_person_portal",
+        "/api/update_portal_next_step": "manage_person_portal",
         "/api/add_portal_client_note": "manage_person_portal",
+        "/api/update_portal_client_note": "manage_person_portal",
         "/api/set_portal_document_share": "manage_person_portal",
         "/api/update_task": "notes_tasks_followups",
         "/api/copy_imported_task_to_local": "notes_tasks_followups",
@@ -3570,6 +3574,23 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             auth_user = self.current_auth_user()
             if path == "/api/auth/status":
                 self.send_json(self.auth_status_payload())
+            elif path == "/portal" or path.startswith("/portal/"):
+                if not self.auth_required_enabled():
+                    self.send_json(
+                        {
+                            "ok": False,
+                            "error": "ChillPortal preview is owner-only. Enable CHILLCRM_AUTH_REQUIRED=true and sign in as an owner to preview it.",
+                            "code": "portal_owner_auth_required",
+                            "path": path,
+                        },
+                        403,
+                    )
+                elif not auth_user:
+                    self.send_auth_required(path)
+                elif not self.user_can_perform(auth_user, "preview_portal_experience"):
+                    self.send_permission_denied(path, "preview_portal_experience", auth_user)
+                else:
+                    self.send_portal_preview(params)
             elif path == "/api/twilio/voice":
                 authorization_error = self.twilio_webhook_authorization_error({key: values[0] if values else "" for key, values in params.items()})
                 if authorization_error:
@@ -3583,8 +3604,6 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                 self.send_permission_denied(path, self.permission_action_for_get(path), auth_user)
             elif path == "/":
                 self.send_file(APP_DIR / "static" / "index.html")
-            elif path == "/portal" or path.startswith("/portal/"):
-                self.send_portal_preview(params)
             elif path.startswith("/static/"):
                 self.send_file(APP_DIR / path.lstrip("/"))
             elif path == "/api/summary":
@@ -3776,8 +3795,12 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                 self.send_json(self.save_portal_profile(payload, auth_user, action_key))
             elif path == "/api/add_portal_next_step":
                 self.send_json(self.add_portal_next_step(payload, auth_user, action_key))
+            elif path == "/api/update_portal_next_step":
+                self.send_json(self.update_portal_next_step(payload, auth_user, action_key))
             elif path == "/api/add_portal_client_note":
                 self.send_json(self.add_portal_client_note(payload, auth_user, action_key))
+            elif path == "/api/update_portal_client_note":
+                self.send_json(self.update_portal_client_note(payload, auth_user, action_key))
             elif path == "/api/set_portal_document_share":
                 self.send_json(self.set_portal_document_share(payload, auth_user, action_key))
             elif path == "/api/update_task":
@@ -22806,7 +22829,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
     def send_portal_preview(self, params: dict[str, list[str]]) -> None:
         if not self.portal_preview_enabled():
             self.send_text(
-                "ChillPortal preview is disabled. Set CHILLPORTAL_ENABLED=true in a local or approved staging environment to preview it.",
+                "ChillPortal owner preview is disabled. Set CHILLPORTAL_ENABLED=true in a local or approved owner-only environment to preview it.",
                 404,
             )
             return
@@ -22853,6 +22876,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         document_cards = "".join(
             f"""
             <article class="portal-card">
+              <span class="eyebrow">Document</span>
               <a href="/api/archive_file?id={self.html_escape(doc.get('archive_item_id'))}" target="_blank" rel="noreferrer">{self.html_escape(doc.get('title') or 'Shared document')}</a>
               <p>Shared {self.html_escape(self.portal_preview_date(doc.get('shared_at') or doc.get('updated_at')) or 'recently')}</p>
             </article>
@@ -22862,7 +22886,8 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         )
         next_step_cards = "".join(
             f"""
-            <article class="portal-card">
+            <article class="portal-card {self.html_escape(step.get('status') or 'open')}">
+              <span class="eyebrow">{self.html_escape('Complete' if str(step.get('status') or '').lower() == 'done' else 'Next Step')}</span>
               <strong>{self.html_escape(step.get('title') or 'Next step')}</strong>
               {f"<p>Due {self.html_escape(self.portal_preview_date(step.get('due_at')))}</p>" if step.get('due_at') else ""}
               {f"<p>{self.html_escape(step.get('details'))}</p>" if step.get('details') else ""}
@@ -22873,6 +22898,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         note_cards = "".join(
             f"""
             <article class="portal-card">
+              <span class="eyebrow">Note</span>
               <strong>{self.html_escape(note.get('title') or 'Client note')}</strong>
               <p>{self.html_escape(note.get('body'))}</p>
             </article>
@@ -22894,26 +22920,33 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
       --surface: #fffdf9;
       --panel: #f7f2ea;
       --green: #2f8a62;
+      --gold: #f2c94c;
     }}
     * {{ box-sizing: border-box; }}
     body {{
       margin: 0;
-      background: var(--surface);
+      background: linear-gradient(180deg, #fffdf9 0%, #f7f2ea 100%);
       color: var(--ink);
       font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", sans-serif;
       line-height: 1.35;
     }}
     main {{ width: min(980px, calc(100% - 32px)); margin: 0 auto; padding: 32px 0 56px; }}
-    header {{ display: flex; justify-content: space-between; gap: 18px; align-items: flex-start; padding: 16px 0 28px; border-bottom: 1px solid var(--line); }}
-    h1 {{ margin: 0; font-size: clamp(34px, 7vw, 64px); letter-spacing: 0; }}
+    nav {{ display: flex; align-items: center; justify-content: space-between; color: var(--muted); font-size: 14px; font-weight: 700; padding: 6px 0 22px; }}
+    .brand {{ color: var(--ink); }}
+    header {{ display: flex; justify-content: space-between; gap: 18px; align-items: flex-start; padding: 24px 0 30px; border-bottom: 1px solid var(--line); }}
+    h1 {{ margin: 0; font-size: clamp(38px, 7vw, 68px); letter-spacing: 0; line-height: 1; }}
     h2 {{ margin: 0 0 14px; font-size: 18px; text-transform: uppercase; color: var(--muted); }}
     p {{ margin: 6px 0 0; color: var(--muted); font-size: 18px; }}
     a {{ color: inherit; text-decoration-thickness: 1px; text-underline-offset: 4px; }}
     .pill {{ border-radius: 999px; background: #eee8df; padding: 8px 14px; color: var(--muted); font-weight: 700; white-space: nowrap; }}
     .pill.active {{ background: #dff2e8; color: var(--green); }}
+    .hero-actions {{ display: flex; flex-wrap: wrap; gap: 10px; margin-top: 22px; }}
+    .hero-action {{ border: 1px solid var(--line); border-radius: 999px; background: #fff; padding: 10px 14px; color: var(--ink); font-weight: 700; text-decoration: none; }}
     .grid {{ display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; margin-top: 28px; }}
     section {{ margin-top: 34px; }}
-    .portal-card {{ border: 1px solid var(--line); border-radius: 8px; background: white; padding: 18px; min-height: 112px; }}
+    .portal-card {{ border: 1px solid var(--line); border-radius: 8px; background: rgba(255,255,255,0.84); padding: 18px; min-height: 112px; box-shadow: 0 1px 2px rgba(0,0,0,0.04); }}
+    .portal-card.done {{ opacity: 0.72; }}
+    .eyebrow {{ display: block; color: var(--muted); font-size: 12px; font-weight: 800; letter-spacing: 0; margin-bottom: 8px; text-transform: uppercase; }}
     .portal-card strong, .portal-card a {{ display: block; font-size: 20px; font-weight: 750; }}
     .empty {{ border: 1px dashed var(--line); border-radius: 8px; background: var(--panel); padding: 18px; }}
     .notice {{ margin-top: 20px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--muted); }}
@@ -22927,23 +22960,32 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
 </head>
 <body>
   <main>
+    <nav>
+      <span class="brand">ChillPortal</span>
+      <span>Owner-only client-side preview</span>
+    </nav>
     <header>
       <div>
         <h1>{name}</h1>
         <p>{email}{' · ' if email and phone else ''}{phone}</p>
+        <div class="hero-actions">
+          <a class="hero-action" href="#next-steps">Next Steps</a>
+          <a class="hero-action" href="#documents">Documents</a>
+          <a class="hero-action" href="#notes">Notes</a>
+        </div>
       </div>
       <span class="pill {'active' if is_active else ''}">{'Active Portal' if is_active else f'Portal {status}'}</span>
     </header>
-    <div class="notice">Preview only. Client login, invitations, notifications, and production portal access are not enabled here.</div>
-    <section>
+    <div class="notice">Owner-only preview. Client login, invitations, notifications, and production portal access are not enabled here.</div>
+    <section id="next-steps">
       <h2>Next Steps</h2>
       <div class="grid">{next_step_cards or '<div class="empty">No client next steps yet.</div>'}</div>
     </section>
-    <section>
+    <section id="documents">
       <h2>Shared Documents</h2>
       <div class="grid">{document_cards or '<div class="empty">No shared documents yet.</div>'}</div>
     </section>
-    <section>
+    <section id="notes">
       <h2>Client Notes</h2>
       <div class="grid">{note_cards or '<div class="empty">No published client notes yet.</div>'}</div>
     </section>
@@ -25439,6 +25481,59 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             conn.commit()
         return {"ok": True, "backup": str(backup_path), "detail": self.record_detail({"type": ["person"], "id": [str(person_id)]})}
 
+    def update_portal_next_step(
+        self,
+        payload: dict[str, Any],
+        actor_user: dict[str, Any] | None = None,
+        permission_action: str | None = "manage_person_portal",
+    ) -> dict[str, Any]:
+        person_id = self.clean_portal_person_id(payload)
+        next_step_id = self.optional_int(payload.get("next_step_id") or payload.get("id"))
+        status = str(payload.get("status") or "").strip().lower()
+        if not next_step_id:
+            raise ValueError("Client next step id is required.")
+        if status not in {"open", "done", "archived"}:
+            raise ValueError("Client next step status must be open, done, or archived.")
+        backup_path = self.create_backup(f"portal_step_status_p{person_id}")
+        timestamp = now_iso()
+        with self.db() as conn:
+            self.ensure_portal_schema(conn)
+            existing = row_to_dict(
+                conn.execute(
+                    """
+                    SELECT id, person_id, title, status
+                    FROM portal_next_steps
+                    WHERE id = ? AND person_id = ?
+                    LIMIT 1
+                    """,
+                    (next_step_id, person_id),
+                ).fetchone()
+            )
+            if not existing:
+                raise ValueError("Client next step not found for this Person.")
+            conn.execute(
+                """
+                UPDATE portal_next_steps
+                SET status = ?, updated_at = ?, archived_at = CASE WHEN ? = 'archived' THEN ? ELSE NULL END
+                WHERE id = ? AND person_id = ?
+                """,
+                (status, timestamp, status, timestamp, next_step_id, person_id),
+            )
+            self.insert_audit_log(
+                conn,
+                action="update_portal_next_step",
+                record_type="person",
+                record_id=person_id,
+                field_name="portal_next_step.status",
+                old_value=existing.get("status"),
+                new_value=status,
+                note=f"Backup: {backup_path.name}; next_step_id={next_step_id}",
+                actor_user=actor_user,
+                permission_action=permission_action,
+            )
+            conn.commit()
+        return {"ok": True, "backup": str(backup_path), "detail": self.record_detail({"type": ["person"], "id": [str(person_id)]})}
+
     def add_portal_client_note(
         self,
         payload: dict[str, Any],
@@ -25489,6 +25584,74 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                 old_value=None,
                 new_value=title or body[:100],
                 note=f"Backup: {backup_path.name}; separate client-visible note added.",
+                actor_user=actor_user,
+                permission_action=permission_action,
+            )
+            conn.commit()
+        return {"ok": True, "backup": str(backup_path), "detail": self.record_detail({"type": ["person"], "id": [str(person_id)]})}
+
+    def update_portal_client_note(
+        self,
+        payload: dict[str, Any],
+        actor_user: dict[str, Any] | None = None,
+        permission_action: str | None = "manage_person_portal",
+    ) -> dict[str, Any]:
+        person_id = self.clean_portal_person_id(payload)
+        note_id = self.optional_int(payload.get("client_note_id") or payload.get("id"))
+        visibility_status = str(payload.get("visibility_status") or "").strip().lower()
+        if not note_id:
+            raise ValueError("Client note id is required.")
+        if visibility_status not in {"draft", "published", "archived"}:
+            raise ValueError("Client note status must be draft, published, or archived.")
+        backup_path = self.create_backup(f"portal_note_status_p{person_id}")
+        timestamp = now_iso()
+        with self.db() as conn:
+            self.ensure_portal_schema(conn)
+            existing = row_to_dict(
+                conn.execute(
+                    """
+                    SELECT id, person_id, title, visibility_status
+                    FROM portal_client_notes
+                    WHERE id = ? AND person_id = ?
+                    LIMIT 1
+                    """,
+                    (note_id, person_id),
+                ).fetchone()
+            )
+            if not existing:
+                raise ValueError("Client note not found for this Person.")
+            conn.execute(
+                """
+                UPDATE portal_client_notes
+                SET visibility_status = ?,
+                    published_at = CASE WHEN ? = 'published' THEN COALESCE(published_at, ?) ELSE NULL END,
+                    published_by_user_id = CASE WHEN ? = 'published' THEN ? ELSE NULL END,
+                    updated_at = ?,
+                    archived_at = CASE WHEN ? = 'archived' THEN ? ELSE NULL END
+                WHERE id = ? AND person_id = ?
+                """,
+                (
+                    visibility_status,
+                    visibility_status,
+                    timestamp,
+                    visibility_status,
+                    actor_user.get("id") if actor_user else None,
+                    timestamp,
+                    visibility_status,
+                    timestamp,
+                    note_id,
+                    person_id,
+                ),
+            )
+            self.insert_audit_log(
+                conn,
+                action="update_portal_client_note",
+                record_type="person",
+                record_id=person_id,
+                field_name="portal_client_note.visibility_status",
+                old_value=existing.get("visibility_status"),
+                new_value=visibility_status,
+                note=f"Backup: {backup_path.name}; client_note_id={note_id}",
                 actor_user=actor_user,
                 permission_action=permission_action,
             )

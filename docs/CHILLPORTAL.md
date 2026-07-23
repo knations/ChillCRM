@@ -14,8 +14,9 @@ production access is turned on.
 - Company context is optional only.
 - The current foundation is internal-only: CHILLCRM can prepare Person-linked
   Portal status, shared documents, client next steps, and client-visible notes.
-- `/portal?person_id=<id>` is a disabled-by-default staff preview route gated by
-  `CHILLPORTAL_ENABLED`; it is not client login or public portal access.
+- `/portal?person_id=<id>` is a disabled-by-default owner-only preview route gated by
+  `CHILLPORTAL_ENABLED`, `CHILLCRM_AUTH_REQUIRED`, and the internal owner role;
+  it is not client login or public portal access.
 - The approved Portal MVP is a client dashboard with Shared Documents,
   Client Next Steps, and separate client-visible notes only.
 - `crm_app/portal_config.py` defines reserved portal route, navigation,
@@ -36,7 +37,7 @@ production access is turned on.
 - Build portal features behind explicit feature flags.
 - Keep all internal Portal preparation controls write-locked in hosted
   environments until explicitly approved.
-- Use the staff preview only to verify the client-facing shape before adding
+- Use the owner-only preview only to verify the client-facing shape before adding
   invitations or client auth.
 
 ## Unknown

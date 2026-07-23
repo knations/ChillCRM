@@ -600,10 +600,53 @@ button {
   margin: 6px 0 0;
 }
 
+.sales-command-priority-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  padding: 14px 16px 0;
+}
+
+.sales-priority-card {
+  background: #fffdf9;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--ink);
+  cursor: pointer;
+  display: grid;
+  gap: 6px;
+  min-height: 132px;
+  min-width: 0;
+  padding: 14px;
+  text-align: left;
+}
+
+.sales-priority-card:hover {
+  border-color: var(--accent);
+}
+
+.sales-priority-card span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.sales-priority-card strong {
+  font-size: 44px;
+  line-height: 1;
+}
+
+.sales-priority-card small {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.25;
+}
+
 .sales-command-metrics {
   display: grid;
   gap: 10px;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   padding: 14px 16px 0;
 }
 
@@ -630,7 +673,7 @@ button {
 .sales-command-grid {
   display: grid;
   gap: 12px;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   padding: 14px 16px 16px;
 }
 
@@ -641,12 +684,26 @@ button {
   overflow: hidden;
 }
 
-.sales-command-list h4 {
+.sales-command-list-header {
+  align-items: center;
   border-bottom: 1px solid var(--line);
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+  min-height: 43px;
+  padding: 8px 10px 8px 12px;
+}
+
+.sales-command-list h4 {
   font-size: 12px;
   margin: 0;
-  padding: 10px 12px;
   text-transform: uppercase;
+}
+
+.sales-command-list-header .text-button {
+  font-size: 12px;
+  min-height: 28px;
+  padding: 4px 8px;
 }
 
 .sales-command-list > p {
@@ -681,6 +738,18 @@ button {
 
 .sales-command-row span {
   color: var(--muted);
+}
+
+.dashboard-snapshot .metric-grid {
+  padding: 0 16px 16px;
+}
+
+.dashboard-snapshot-grid {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+
+.dashboard-secondary-work {
+  margin-top: 14px;
 }
 
 .deal-next-action-panel {
@@ -2821,6 +2890,112 @@ button {
   grid-template-columns: minmax(0, 1.45fr) minmax(300px, 0.85fr);
 }
 
+.person-command-strip {
+  background: #fffdf8;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr) minmax(0, 1fr);
+  padding: 12px;
+}
+
+.person-command-card {
+  background: var(--surface);
+  border: 1px solid rgba(214, 206, 193, 0.78);
+  border-radius: 8px;
+  display: grid;
+  gap: 6px;
+  min-height: 104px;
+  min-width: 0;
+  padding: 14px;
+}
+
+.person-command-card.primary {
+  border-color: #b7d7c5;
+  background: #f2fbf6;
+}
+
+.person-command-card span,
+.person-vault-section summary span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.person-command-card strong {
+  font-size: 18px;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.person-command-card small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.person-action-section,
+.person-conversation-section {
+  background: #fffdf8;
+}
+
+.person-action-section > .detail-section,
+.person-conversation-section > .detail-section {
+  border-top: 1px solid var(--line);
+  margin-top: 14px;
+  padding-top: 14px;
+}
+
+.person-action-section > .detail-section:first-child,
+.person-conversation-section > .detail-section:first-child {
+  border-top: 0;
+  margin-top: 0;
+  padding-top: 0;
+}
+
+.person-action-section .inline-header,
+.person-conversation-section .inline-header {
+  margin-bottom: 10px;
+}
+
+.person-next-task-card {
+  background: #f2fbf6;
+  border: 1px solid #b7d7c5;
+  border-radius: 8px;
+  display: grid;
+  gap: 6px;
+  margin-bottom: 14px;
+  padding: 14px;
+}
+
+.person-next-task-card.empty {
+  background: var(--surface-soft);
+  border-color: var(--line);
+}
+
+.person-next-task-card span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.person-next-task-card strong {
+  font-size: 17px;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.person-section-heading {
+  align-items: flex-start;
+}
+
+.person-section-heading p {
+  margin: 4px 0 0;
+}
+
 .person-detail-main > .detail-section:first-child,
 .person-detail-sidebar > .detail-section:first-child {
   border-top: 0;
@@ -2958,6 +3133,57 @@ button {
 
 .timeline-overflow-note {
   margin: 12px 0 0;
+}
+
+.person-vault-section {
+  background: #f8f6f1;
+}
+
+.person-vault-section summary {
+  align-items: center;
+  cursor: pointer;
+  display: grid;
+  gap: 4px;
+  grid-template-columns: minmax(0, 1fr);
+  list-style: none;
+}
+
+.person-vault-section summary::-webkit-details-marker {
+  display: none;
+}
+
+.person-vault-section summary::after {
+  color: var(--muted);
+  content: "Show";
+  font-size: 13px;
+  font-weight: 800;
+  justify-self: end;
+  margin-top: -34px;
+}
+
+.person-vault-section[open] summary::after {
+  content: "Hide";
+}
+
+.person-vault-section summary strong {
+  font-size: 15px;
+  line-height: 1.35;
+}
+
+.person-vault-body {
+  display: grid;
+  gap: 14px;
+  margin-top: 16px;
+}
+
+.person-vault-body > .detail-section {
+  border-top: 1px solid var(--line);
+  padding-top: 14px;
+}
+
+.person-vault-body > .detail-section:first-child {
+  border-top: 0;
+  padding-top: 0;
 }
 
 .detail-masthead {
@@ -5415,7 +5641,8 @@ button {
   }
 
   .person-detail-overview,
-  .person-detail-layout {
+  .person-detail-layout,
+  .person-command-strip {
     grid-template-columns: 1fr;
   }
 
@@ -5845,6 +6072,7 @@ button {
 
   .start-today-body,
   .sales-command-grid,
+  .sales-command-priority-grid,
   .pipeline-board,
   .deal-sales-profile-grid,
   .start-guide-step,
@@ -5869,6 +6097,18 @@ button {
 
   .sales-command-metrics {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .dashboard-snapshot-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .sales-priority-card {
+    min-height: 0;
+  }
+
+  .sales-priority-card strong {
+    font-size: 36px;
   }
 
   .sales-command-row {

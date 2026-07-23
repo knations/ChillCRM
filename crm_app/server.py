@@ -4941,6 +4941,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                     """
                 ).fetchall()
             )
+            recent_purchases = self.recent_purchase_rows(conn, limit=6)
         attention_count = (
             int(missing_next_action_count or 0)
             + int(stale_deal_count or 0)
@@ -4963,6 +4964,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                 {"label": "Stale Deals", "value": int(stale_deal_count or 0)},
                 {"label": "Hot Deals", "value": int(hot_deal_count or 0)},
                 {"label": "New Leads", "value": int(new_lead_count or 0)},
+                {"label": "Recent Purchases", "value": len(recent_purchases)},
             ],
             "active_deal_count": int(active_deal_count or 0),
             "overdue_tasks": overdue_tasks,
@@ -4982,7 +4984,74 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             "stale_deals": stale_deals,
             "hot_deals": hot_deals,
             "new_leads": new_leads,
+            "recent_purchases": recent_purchases,
         }
+
+    def recent_purchase_rows(self, conn: Any, limit: int = 6) -> list[dict[str, Any]]:
+        rows = rows_to_dicts(
+            conn.execute(
+                """
+                SELECT n.id AS source_id, n.record_type, n.record_id, n.content, n.created_at, n.updated_at,
+                       n.source_json,
+                       CASE
+                         WHEN n.record_type = 'person' THEN p.name
+                         WHEN n.record_type = 'lead' THEN l.name
+                         WHEN n.record_type = 'deal' THEN d.name
+                         WHEN n.record_type = 'company' THEN c.name
+                         ELSE NULL
+                       END AS record_name,
+                       CASE
+                         WHEN n.record_type = 'person' THEN p.email
+                         WHEN n.record_type = 'lead' THEN l.email
+                         WHEN n.record_type = 'company' THEN c.email
+                         ELSE NULL
+                       END AS email
+                FROM notes n
+                LEFT JOIN people p ON n.record_type = 'person' AND p.id = n.record_id
+                LEFT JOIN leads l ON n.record_type = 'lead' AND l.id = n.record_id
+                LEFT JOIN deals d ON n.record_type = 'deal' AND d.id = n.record_id
+                LEFT JOIN companies c ON n.record_type = 'company' AND c.id = n.record_id
+                WHERE n.source_json LIKE '%zapier_purchase_webhook%'
+                ORDER BY n.created_at DESC, n.id DESC
+                LIMIT 100
+                """
+            ).fetchall()
+        )
+        purchases: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        for row in rows:
+            purchase = self.purchase_summary_from_note(row)
+            if not purchase:
+                continue
+            key = purchase.get("purchase_identity") or f"note:{row.get('source_id')}"
+            if key in seen:
+                continue
+            seen.add(key)
+            purchases.append(
+                {
+                    "type": row.get("record_type") or "person",
+                    "source_id": row.get("record_id"),
+                    "kind": row.get("record_type") or "person",
+                    "name": row.get("record_name") or row.get("email") or "Purchase",
+                    "email": row.get("email") or "",
+                    "updated_at": purchase.get("purchase_date") or row.get("created_at"),
+                    "product_name": purchase.get("product_name") or "Purchase",
+                    "price_label": purchase.get("price_label") or "",
+                    "cart_source": purchase.get("cart_source") or "Purchase",
+                    "match_context": " · ".join(
+                        part
+                        for part in [
+                            purchase.get("product_name") or "Purchase",
+                            purchase.get("price_label") or "",
+                            purchase.get("cart_source") or "",
+                        ]
+                        if part
+                    ),
+                }
+            )
+            if len(purchases) >= limit:
+                break
+        return purchases
 
     def dashboard_start_today(self) -> dict[str, Any]:
         project_decisions = self.project_decisions()

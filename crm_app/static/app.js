@@ -1478,29 +1478,31 @@ async function renderDashboard() {
   setRuntimeContext(data.runtime);
   const maxDeals = Math.max(...data.pipeline.map((stage) => stage.deal_count), 1);
   els.dashboard.innerHTML = `
-    <div class="section-header">
+    <div class="section-header dashboard-today-header">
       <div>
-        <h2>Dashboard</h2>
-        <p>${formatNumber(data.counts.people + data.counts.companies + data.counts.leads)} client and lead records</p>
+        <h2>Today</h2>
+        <p>Only what needs attention, movement, or follow-up.</p>
       </div>
     </div>
     ${salesCommandCenterPanel(data.sales_command_center)}
-    <div class="metric-grid">
-      ${metric("People", data.counts.people)}
-      ${metric("Companies", data.counts.companies)}
-      ${metric("Leads", data.counts.leads)}
-      ${metric("Deals", data.counts.deals)}
-      ${metric("Notes", data.counts.notes)}
-      ${metric("Open Tasks", data.counts.open_tasks)}
-      ${metric("Overdue", data.counts.overdue_tasks, "metric-alert")}
-      ${metric("Due Soon", data.counts.due_soon_tasks)}
-      ${metric("Tags", data.counts.tags)}
-      ${metric("Archive", data.counts.archive_items || 0)}
+    <div class="band dashboard-snapshot">
+      <div class="band-header">
+        <h3>Snapshot</h3>
+        <span class="muted">${formatNumber(data.counts.people + data.counts.companies + data.counts.leads)} records</span>
+      </div>
+      <div class="metric-grid dashboard-snapshot-grid">
+        ${metric("People", data.counts.people)}
+        ${metric("Leads", data.counts.leads)}
+        ${metric("Deals", data.counts.deals)}
+        ${metric("Open Tasks", data.counts.open_tasks)}
+        ${metric("Overdue", data.counts.overdue_tasks, "metric-alert")}
+        ${metric("Due Soon", data.counts.due_soon_tasks)}
+      </div>
     </div>
-    <div class="band">
+    <div class="band dashboard-pipeline-band">
       <div class="band-header">
         <h3>Sales Pipeline</h3>
-        <span class="muted">${formatNumber(data.counts.deals)} deals</span>
+        <button class="text-button nav-jump" data-view="pipeline">Open Pipeline</button>
       </div>
       <div class="pipeline">
         ${data.pipeline
@@ -1518,24 +1520,24 @@ async function renderDashboard() {
           .join("")}
       </div>
     </div>
-    ${startTodayPanel(data.start_today)}
-    <div class="band">
+    <div class="band dashboard-secondary-work">
       <div class="band-header">
         <h3>Follow Up</h3>
         <button class="text-button nav-jump" data-view="followup">Open</button>
       </div>
       ${taskTable(data.upcoming_tasks, true)}
     </div>
-    <div class="band">
+    <div class="band dashboard-secondary-work">
       <div class="band-header">
         <h3>Recently Updated</h3>
       </div>
       ${recordTable(data.recently_updated, "recent")}
     </div>
+    ${productionStatusPanel(data.production_status)}
+    ${startTodayPanel(data.start_today)}
     ${savedViewsSection(data.saved_views || [])}
     ${applicationSegmentSection(data.profile_segments || [])}
     ${cleanupSummarySection(data.cleanup_summary || {})}
-    ${productionStatusPanel(data.production_status)}
   `;
   wireRecordButtons(els.dashboard);
   wireTaskButtons(els.dashboard);
@@ -1669,11 +1671,38 @@ function salesCommandCenterPanel(center) {
   if (!center?.title) return "";
   const metrics = center.metrics || [];
   const tone = center.status === "ready" ? "green" : center.status === "attention" ? "coral" : "gold";
+  const priorityCards = [
+    {
+      label: "Late",
+      value: (center.overdue_tasks || []).length + (center.overdue_deal_followups || []).length,
+      helper: "Overdue tasks and deal follow-ups",
+      view: "followup",
+    },
+    {
+      label: "Today",
+      value: (center.due_today_tasks || []).length + (center.due_today_deal_followups || []).length,
+      helper: "Follow-ups due now",
+      view: "followup",
+    },
+    {
+      label: "No Next Action",
+      value: Number(center.deal_followup_counts?.missing || 0) + (center.missing_next_action_deals || []).length,
+      helper: "Deals that need a dated next step",
+      preset: "deals_no_deal_date",
+    },
+    {
+      label: "Upgrade",
+      value: Number(center.deal_followup_counts?.won_missing_upgrade || 0),
+      helper: "Won deals needing an upgrade path",
+      preset: "deals_won_needs_upgrade",
+    },
+  ];
+  const supportingMetrics = metrics.filter((item) => !["Overdue", "Due Today", "Deal Follow-Ups", "No Deal Date", "Won Needs Upgrade"].includes(item.label || ""));
   return `
     <div class="band sales-command-center ${escapeHtml(center.status || "")}">
       <div class="band-header">
         <div>
-          <h3>${escapeHtml(center.title || "Today Cockpit")}</h3>
+          <h3>${escapeHtml(center.title || "Today")}</h3>
           <p>${escapeHtml(center.message || "")}</p>
         </div>
         <div class="start-today-actions">
@@ -1682,8 +1711,11 @@ function salesCommandCenterPanel(center) {
           <button type="button" class="text-button work-queue-preset" data-preset="active_deals">Active Deals</button>
         </div>
       </div>
+      <div class="sales-command-priority-grid">
+        ${priorityCards.map(salesCommandPriorityCard).join("")}
+      </div>
       <div class="sales-command-metrics">
-        ${metrics.map((item) => `
+        ${supportingMetrics.map((item) => `
           <div class="sales-command-metric">
             <span>${escapeHtml(item.label || "")}</span>
             <strong>${formatNumber(item.value || 0)}</strong>
@@ -1691,29 +1723,46 @@ function salesCommandCenterPanel(center) {
         `).join("")}
       </div>
       <div class="sales-command-grid">
-        ${salesCommandList("Overdue Follow-Ups", center.overdue_tasks || [], "task")}
-        ${salesCommandList("Due Today", center.due_today_tasks || [], "task")}
-        ${salesCommandList("Overdue Deal Follow-Ups", center.overdue_deal_followups || [], "record")}
-        ${salesCommandList("Deals Due Today", center.due_today_deal_followups || [], "record")}
-        ${salesCommandList("Upcoming Deals", center.upcoming_deal_followups || [], "record")}
-        ${salesCommandList("Won Needs Upgrade", center.won_missing_upgrade_deals || [], "record")}
-        ${salesCommandList("Deals Missing Next Action", center.missing_next_action_deals || [], "record")}
-        ${salesCommandList("Stale Active Deals", center.stale_deals || [], "record")}
-        ${salesCommandList("Hot Deals", center.hot_deals || [], "record")}
-        ${salesCommandList("New Leads", center.new_leads || [], "record")}
+        ${salesCommandList("Late Follow-Ups", [...(center.overdue_tasks || []), ...(center.overdue_deal_followups || [])], "mixed", { preset: "deals_overdue", empty: "Nothing is late." })}
+        ${salesCommandList("Due Today", [...(center.due_today_tasks || []), ...(center.due_today_deal_followups || [])], "mixed", { preset: "deals_due_today", empty: "Nothing is due today." })}
+        ${salesCommandList("Needs Next Action", center.missing_next_action_deals || [], "record", { preset: "deals_no_deal_date", empty: "Every active deal has a next action." })}
+        ${salesCommandList("Won Upgrade Follow-Up", center.won_missing_upgrade_deals || [], "record", { preset: "deals_won_needs_upgrade", empty: "Won deals have upgrade paths." })}
+        ${salesCommandList("Recent Purchases", center.recent_purchases || [], "purchase", { empty: "No recent purchases yet." })}
+        ${salesCommandList("New Leads", center.new_leads || [], "record", { preset: "new_leads", empty: "No new leads waiting." })}
       </div>
     </div>
   `;
 }
 
-function salesCommandList(title, rows, mode) {
-  const empty = mode === "task" ? "No follow-ups here." : "Nothing waiting here.";
+function salesCommandPriorityCard(card) {
+  const action = card.preset
+    ? `class="sales-priority-card work-queue-preset" data-preset="${escapeHtml(card.preset)}"`
+    : `class="sales-priority-card nav-jump" data-view="${escapeHtml(card.view || "followup")}"`;
+  return `
+    <button type="button" ${action}>
+      <span>${escapeHtml(card.label)}</span>
+      <strong>${formatNumber(card.value || 0)}</strong>
+      <small>${escapeHtml(card.helper || "")}</small>
+    </button>
+  `;
+}
+
+function salesCommandList(title, rows, mode, options = {}) {
+  const empty = options.empty || (mode === "task" ? "No follow-ups here." : "Nothing waiting here.");
   return `
     <div class="sales-command-list">
-      <h4>${escapeHtml(title)}</h4>
+      <div class="sales-command-list-header">
+        <h4>${escapeHtml(title)}</h4>
+        ${options.preset ? `<button type="button" class="text-button work-queue-preset" data-preset="${escapeHtml(options.preset)}">Open</button>` : ""}
+      </div>
       ${
         rows.length
-          ? rows.map((row) => mode === "task" ? salesCommandTaskRow(row) : salesCommandRecordRow(row)).join("")
+          ? rows.map((row) => {
+              if (mode === "task") return salesCommandTaskRow(row);
+              if (mode === "purchase") return salesCommandPurchaseRow(row);
+              if (mode === "mixed") return row.record_type ? salesCommandTaskRow(row) : salesCommandRecordRow(row);
+              return salesCommandRecordRow(row);
+            }).join("")
           : `<p class="muted">${empty}</p>`
       }
     </div>
@@ -1742,7 +1791,7 @@ function salesCommandTaskRow(task) {
 function salesCommandRecordRow(record) {
   const meta = [
     record.stage_name,
-    record.value ? formatMoney(record.value) : "",
+    record.value ? formatMoney(record.value, record.currency || "USD") : "",
     record.match_context,
   ].filter(Boolean).join(" · ");
   return `
@@ -1752,6 +1801,24 @@ function salesCommandRecordRow(record) {
         <span>${escapeHtml(meta || formatDate(record.updated_at) || "")}</span>
       </div>
       <button type="button" class="text-button record-button" data-type="${escapeHtml(record.type)}" data-id="${escapeHtml(record.source_id)}">Open</button>
+    </div>
+  `;
+}
+
+function salesCommandPurchaseRow(record) {
+  const meta = [
+    record.product_name,
+    record.price_label,
+    record.cart_source,
+    formatDate(record.updated_at),
+  ].filter(Boolean).join(" · ");
+  return `
+    <div class="sales-command-row">
+      <div>
+        <strong>${escapeHtml(record.name || "Purchase")}</strong>
+        <span>${escapeHtml(meta)}</span>
+      </div>
+      ${record.type && record.source_id ? `<button type="button" class="text-button record-button" data-type="${escapeHtml(record.type)}" data-id="${escapeHtml(record.source_id)}">Open</button>` : ""}
     </div>
   `;
 }
@@ -5972,19 +6039,14 @@ function personDetailBody(detail) {
   const record = detail.record || {};
   const fileItems = [...(detail.record_files || []), ...(detail.archive_items || [])];
   const mainSections = [
+    personCommandStrip(detail),
     contactActions(detail, { title: "Contact" }),
-    personPortalSection(detail.portal || null, record.id),
+    personNextStepSection(detail),
+    personConversationSection(detail),
     addressSection(detail, { title: "Addresses" }),
-    addCallLogForm(detail),
-    callLogsSection(detail.call_logs || []),
-    addNoteForm(detail),
-    notesSection(detail.notes || []),
-    addTaskForm(detail),
-    editForm(detail),
-    applicationProfile(detail.application_profile || []),
-    customFields(detail.custom_fields || [], detail.application_profile || []),
-    keyValues(record),
     personTimelineSection(detail.timeline || []),
+    personVaultSection(detail),
+    editForm(detail),
   ]
     .filter(Boolean)
     .join("");
@@ -6002,17 +6064,16 @@ function personDetailBody(detail) {
       sectionClass: "files-section",
     }),
     detailTags(detail, detail.tags || []),
-    recordLifecycleSection(detail),
-    detailQualityPanel(detail),
-    reviewFlagsSection(detail.review_flags || []),
+    personPortalSection(detail.portal || null, record.id),
     linkedResources(detail.linked_resources || []),
+    recordLifecycleSection(detail),
+    reviewFlagsSection(detail.review_flags || []),
     detail.company ? linkSection("Company", [detail.company], "company") : "",
     detail.possible_person ? linkSection("Possible Match", [detail.possible_person], "person") : "",
     detail.contact ? linkSection("Contact", [detail.contact], "person") : "",
     detail.organization ? linkSection("Organization", [detail.organization], "company") : "",
     detail.people?.length ? linkSection("People", detail.people, "person") : "",
     detail.deals?.length ? linkSection("Deals", detail.deals, "deal") : "",
-    ownerSection(detail.owner),
   ]
     .filter(Boolean)
     .join("");
@@ -6027,6 +6088,109 @@ function personDetailBody(detail) {
         </div>
       </div>
     </div>
+  `;
+}
+
+function personCommandStrip(detail) {
+  const record = detail.record || {};
+  const tasks = (detail.tasks || []).filter((task) => !task.completed);
+  const topTask = [...tasks].sort((a, b) => String(a.due_date || "9999-12-31").localeCompare(String(b.due_date || "9999-12-31")))[0] || null;
+  const timelineEvent = (detail.timeline || [])[0] || null;
+  const factItems = [
+    detail.purchases?.length ? `${formatNumber(detail.purchases.length)} purchase${detail.purchases.length === 1 ? "" : "s"}` : "",
+    detail.record_files?.length || detail.archive_items?.length ? `${formatNumber((detail.record_files || []).length + (detail.archive_items || []).length)} file${((detail.record_files || []).length + (detail.archive_items || []).length) === 1 ? "" : "s"}` : "",
+    detail.tags?.length ? `${formatNumber(detail.tags.length)} tag${detail.tags.length === 1 ? "" : "s"}` : "",
+  ].filter(Boolean);
+  const nextLabel = topTask
+    ? `${topTask.due_date ? `${formatDate(topTask.due_date)} · ` : ""}${topTask.content || "Follow up"}`
+    : "No open task";
+  const lastLabel = timelineEvent
+    ? `${timelineEvent.label || labelize(timelineEvent.event_type || "activity")} · ${formatDateTime(timelineEvent.occurred_at || "")}`
+    : "No recent history";
+  const owner = detail.owner?.name || record.owner_name || "";
+  return `
+    <div class="detail-section person-command-strip">
+      <div class="person-command-card primary">
+        <span>Next</span>
+        <strong>${escapeHtml(nextLabel)}</strong>
+      </div>
+      <div class="person-command-card">
+        <span>Last Touch</span>
+        <strong>${escapeHtml(lastLabel)}</strong>
+      </div>
+      <div class="person-command-card">
+        <span>Stored Intel</span>
+        <strong>${escapeHtml(factItems.length ? factItems.join(" · ") : "Ready for detail")}</strong>
+        ${owner ? `<small>Owner: ${escapeHtml(owner)}</small>` : ""}
+      </div>
+    </div>
+  `;
+}
+
+function personNextStepSection(detail) {
+  const openTasks = (detail.tasks || []).filter((task) => !task.completed);
+  const nextTask = [...openTasks].sort((a, b) => String(a.due_date || "9999-12-31").localeCompare(String(b.due_date || "9999-12-31")))[0] || null;
+  const nextMeta = nextTask?.due_date ? `Due ${formatDate(nextTask.due_date)}` : "No due date";
+  return `
+    <div class="detail-section person-action-section">
+      <div class="inline-header person-section-heading">
+        <div>
+          <h3>Next Step</h3>
+          <p class="muted">${openTasks.length ? `${formatNumber(openTasks.length)} open task${openTasks.length === 1 ? "" : "s"}` : "No open tasks yet."}</p>
+        </div>
+      </div>
+      ${
+        nextTask
+          ? `<div class="person-next-task-card">
+              <span>${escapeHtml(nextMeta)}</span>
+              <strong>${escapeHtml(nextTask.content || "Follow up")}</strong>
+            </div>`
+          : `<div class="person-next-task-card empty">
+              <span>Clear</span>
+              <strong>No next step is currently set.</strong>
+            </div>`
+      }
+      ${addTaskForm(detail)}
+    </div>
+  `;
+}
+
+function personConversationSection(detail) {
+  return `
+    <div class="detail-section person-conversation-section">
+      <div class="inline-header person-section-heading">
+        <div>
+          <h3>Conversation</h3>
+          <p class="muted">Calls and internal notes for this person.</p>
+        </div>
+      </div>
+      ${addCallLogForm(detail)}
+      ${callLogsSection(detail.call_logs || [])}
+      ${addNoteForm(detail)}
+      ${notesSection(detail.notes || [])}
+    </div>
+  `;
+}
+
+function personVaultSection(detail) {
+  const record = detail.record || {};
+  const profile = applicationProfile(detail.application_profile || []);
+  const custom = customFields(detail.custom_fields || [], detail.application_profile || []);
+  const raw = keyValues(record);
+  const quality = detailQualityPanel(detail);
+  const owner = ownerSection(detail.owner);
+  const body = [profile, custom, quality, owner, raw].filter(Boolean).join("");
+  if (!body) return "";
+  return `
+    <details class="detail-section person-vault-section">
+      <summary>
+        <span>Profile Store</span>
+        <strong>Source, owner, custom fields, and raw record details</strong>
+      </summary>
+      <div class="person-vault-body">
+        ${body}
+      </div>
+    </details>
   `;
 }
 

@@ -3227,6 +3227,92 @@ button {
   color: var(--muted);
 }
 
+.portal-module-grid {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.portal-module-tile {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  padding: 12px;
+}
+
+.portal-module-tile span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.portal-module-tile strong {
+  font-size: 22px;
+  line-height: 1;
+}
+
+.portal-safety-note {
+  margin: 10px 0 0;
+}
+
+.portal-control-row {
+  align-items: end;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  margin-top: 12px;
+}
+
+.portal-entry-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: 12px;
+}
+
+.portal-entry-panel {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 12px;
+}
+
+.portal-entry-panel h4 {
+  margin: 0;
+  font-size: 13px;
+}
+
+.portal-mini-list {
+  display: grid;
+  gap: 6px;
+}
+
+.portal-mini-list .muted {
+  margin: 0;
+}
+
+.portal-mini-item {
+  border-bottom: 1px solid var(--line);
+  display: grid;
+  gap: 3px;
+  padding-bottom: 6px;
+}
+
+.portal-mini-item:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.portal-mini-item span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .record-lifecycle-section {
   border-color: #b9d7c2;
 }
@@ -4284,14 +4370,22 @@ button {
 }
 
 .archive-item {
+  align-items: start;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--surface);
   display: grid;
-  gap: 5px;
+  gap: 10px;
+  grid-template-columns: minmax(0, 1fr) auto;
   min-height: 108px;
   padding: 10px;
   scroll-snap-align: start;
+}
+
+.archive-item-main {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
 }
 
 .archive-item a,
@@ -6197,6 +6291,19 @@ button {
 
   .detail-section {
     border-top-color: rgba(60, 60, 67, 0.14);
+  }
+
+  .portal-module-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .portal-control-row,
+  .portal-entry-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .archive-item {
+    grid-template-columns: 1fr;
   }
 
   .detail-panel .band,

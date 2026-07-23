@@ -5973,6 +5973,7 @@ function personDetailBody(detail) {
   const fileItems = [...(detail.record_files || []), ...(detail.archive_items || [])];
   const mainSections = [
     contactActions(detail, { title: "Contact" }),
+    personPortalSection(detail.portal || null, record.id),
     addressSection(detail, { title: "Addresses" }),
     addCallLogForm(detail),
     callLogsSection(detail.call_logs || []),
@@ -5996,6 +5997,8 @@ function personDetailBody(detail) {
       uploadable: true,
       uploadRecordType: detail.type,
       uploadRecordId: detail.record?.source_id,
+      portalShareable: true,
+      portalSharedArchiveItemIds: detail.portal?.shared_archive_item_ids || [],
       sectionClass: "files-section",
     }),
     detailTags(detail, detail.tags || []),
@@ -6021,6 +6024,90 @@ function personDetailBody(detail) {
         </div>
         <div class="person-detail-sidebar">
           ${sidebarSections}
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function personPortalSection(portal, personId) {
+  if (!portal) return "";
+  const modules = portal.modules || [];
+  const status = portal.enabled ? "Active" : "Not Enabled";
+  const selectedStatus = portal.status === "not_enabled" ? "draft" : portal.status || "draft";
+  const nextSteps = portal.next_steps || [];
+  const clientNotes = portal.client_notes || [];
+  const previewUrl = `/portal?person_id=${encodeURIComponent(personId || "")}`;
+  return `
+    <div class="detail-section person-portal-section">
+      <div class="inline-header">
+        <h3>Portal</h3>
+        <span class="pill ${portal.enabled ? "green" : ""}">${escapeHtml(status)}</span>
+      </div>
+      <div class="portal-module-grid">
+        ${modules.map((module) => `
+          <div class="portal-module-tile">
+            <span>${escapeHtml(module.label || "")}</span>
+            <strong>${formatNumber(module.count || 0)}</strong>
+          </div>
+        `).join("")}
+      </div>
+      <p class="muted portal-safety-note">${escapeHtml(portal.safety || "Person-first client-visible portal data only.")}</p>
+      <div class="portal-control-row">
+        <label>
+          <span>Portal Status</span>
+          <select id="portalStatus">
+            ${["draft", "active", "paused", "archived"].map((value) => `<option value="${value}" ${selectedStatus === value ? "selected" : ""}>${escapeHtml(labelize(value))}</option>`).join("")}
+          </select>
+        </label>
+        <button id="savePortalProfileButton" class="text-button" type="button">Save Portal</button>
+        <a class="text-button portal-preview-button" href="${escapeHtml(previewUrl)}" target="_blank" rel="noreferrer">Preview Portal</a>
+      </div>
+      <div class="portal-entry-grid">
+        <div class="portal-entry-panel">
+          <h4>Client Next Steps</h4>
+          <div class="portal-mini-list">
+            ${nextSteps.length ? nextSteps.map((step) => `
+              <div class="portal-mini-item">
+                <strong>${escapeHtml(step.title || "")}</strong>
+                ${step.due_at ? `<span>${escapeHtml(formatDate(step.due_at))}</span>` : ""}
+              </div>
+            `).join("") : `<p class="muted">No client next steps yet.</p>`}
+          </div>
+          <label>
+            <span>Next Step</span>
+            <input id="portalNextStepTitle" type="text" placeholder="Client-visible next step">
+          </label>
+          <label>
+            <span>Due Date</span>
+            <input id="portalNextStepDue" type="date">
+          </label>
+          <textarea id="portalNextStepDetails" class="note-input compact-input" rows="3" placeholder="Optional client-facing details"></textarea>
+          <button id="addPortalNextStepButton" class="text-button" type="button">Add Next Step</button>
+        </div>
+        <div class="portal-entry-panel">
+          <h4>Client Notes</h4>
+          <div class="portal-mini-list">
+            ${clientNotes.length ? clientNotes.map((note) => `
+              <div class="portal-mini-item">
+                <strong>${escapeHtml(note.title || "Client Note")}</strong>
+                <span>${escapeHtml(labelize(note.visibility_status || "draft"))}</span>
+              </div>
+            `).join("") : `<p class="muted">No client notes yet.</p>`}
+          </div>
+          <label>
+            <span>Note Title</span>
+            <input id="portalClientNoteTitle" type="text" placeholder="Optional title">
+          </label>
+          <textarea id="portalClientNoteBody" class="note-input compact-input" rows="4" placeholder="Client-visible note only"></textarea>
+          <label>
+            <span>Visibility</span>
+            <select id="portalClientNoteStatus">
+              <option value="draft">Draft</option>
+              <option value="published">Published</option>
+            </select>
+          </label>
+          <button id="addPortalClientNoteButton" class="text-button" type="button">Add Client Note</button>
         </div>
       </div>
     </div>
@@ -7312,6 +7399,88 @@ function wireDetailForms(detail) {
       });
     });
   }
+
+  const portalProfileButton = document.querySelector("#savePortalProfileButton");
+  if (portalProfileButton && detail.type === "person") {
+    portalProfileButton.addEventListener("click", async () => {
+      const status = document.querySelector("#portalStatus")?.value || "draft";
+      await runDetailAction(
+        portalProfileButton,
+        { progress: "Saving portal", success: "Portal saved", failure: "Portal save failed" },
+        async () => {
+          const updated = await postJson("/api/save_portal_profile", {
+            person_id: detail.record.source_id,
+            status,
+          });
+          renderDetail(updated.detail);
+        }
+      );
+    });
+  }
+
+  const portalNextStepButton = document.querySelector("#addPortalNextStepButton");
+  if (portalNextStepButton && detail.type === "person") {
+    portalNextStepButton.addEventListener("click", async () => {
+      const title = document.querySelector("#portalNextStepTitle")?.value.trim() || "";
+      const dueAt = document.querySelector("#portalNextStepDue")?.value.trim() || "";
+      const details = document.querySelector("#portalNextStepDetails")?.value.trim() || "";
+      if (!title) return;
+      await runDetailAction(
+        portalNextStepButton,
+        { progress: "Adding next step", success: "Next step added", failure: "Next step add failed" },
+        async () => {
+          const updated = await postJson("/api/add_portal_next_step", {
+            person_id: detail.record.source_id,
+            title,
+            due_at: dueAt,
+            details,
+          });
+          renderDetail(updated.detail);
+        }
+      );
+    });
+  }
+
+  const portalClientNoteButton = document.querySelector("#addPortalClientNoteButton");
+  if (portalClientNoteButton && detail.type === "person") {
+    portalClientNoteButton.addEventListener("click", async () => {
+      const title = document.querySelector("#portalClientNoteTitle")?.value.trim() || "";
+      const body = document.querySelector("#portalClientNoteBody")?.value.trim() || "";
+      const visibilityStatus = document.querySelector("#portalClientNoteStatus")?.value || "draft";
+      if (!body) return;
+      await runDetailAction(
+        portalClientNoteButton,
+        { progress: "Adding client note", success: "Client note added", failure: "Client note add failed" },
+        async () => {
+          const updated = await postJson("/api/add_portal_client_note", {
+            person_id: detail.record.source_id,
+            title,
+            body,
+            visibility_status: visibilityStatus,
+          });
+          renderDetail(updated.detail);
+        }
+      );
+    });
+  }
+
+  document.querySelectorAll(".portal-document-share-button").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const shared = button.dataset.shared === "true";
+      await runDetailAction(
+        button,
+        { progress: shared ? "Unsharing document" : "Sharing document", success: shared ? "Document unshared" : "Document shared", failure: "Document share failed" },
+        async () => {
+          const updated = await postJson("/api/set_portal_document_share", {
+            person_id: Number(button.dataset.personId),
+            archive_item_id: Number(button.dataset.archiveItemId),
+            shared: !shared,
+          });
+          renderDetail(updated.detail);
+        }
+      );
+    });
+  });
 
   const callLogButton = document.querySelector("#addCallLogButton");
   if (callLogButton) {
@@ -9531,6 +9700,8 @@ function linkedResources(resources) {
 
 function archiveItems(items, options = {}) {
   const canUpload = Boolean(options.uploadable && options.uploadRecordType && options.uploadRecordId);
+  const canShareToPortal = Boolean(options.portalShareable && options.uploadRecordType === "person" && options.uploadRecordId);
+  const sharedIds = new Set((options.portalSharedArchiveItemIds || []).map((id) => String(id)));
   if (!items.length && !canUpload) return "";
   const orderedItems = [...items].sort((a, b) => {
     const aTime = Date.parse(a.occurred_at || a.updated_at || a.created_at || "") || 0;
@@ -9563,10 +9734,19 @@ function archiveItems(items, options = {}) {
                       ? `<a href="${escapeHtml(item.url)}" target="_blank" rel="noreferrer">${escapeHtml(item.title || item.label)}</a>`
                       : `<strong>${escapeHtml(item.title || item.label)}</strong>`;
                   const meta = [formatDate(item.occurred_at), item.size_label].filter(Boolean).join(" · ");
+                  const itemId = item.source_id || item.id || "";
+                  const isPortalDocument = String(item.item_type || "") === "document";
+                  const isShared = sharedIds.has(String(itemId));
+                  const portalButton = canShareToPortal && isPortalDocument && itemId
+                    ? `<button class="text-button portal-document-share-button" type="button" data-person-id="${escapeHtml(options.uploadRecordId)}" data-archive-item-id="${escapeHtml(itemId)}" data-shared="${isShared ? "true" : "false"}">${isShared ? "Unshare" : "Share"}</button>`
+                    : "";
                   return `
                     <div class="archive-item">
-                      ${title}
-                      ${meta ? `<small>${escapeHtml(meta)}</small>` : ""}
+                      <div class="archive-item-main">
+                        ${title}
+                        ${meta ? `<small>${escapeHtml(meta)}</small>` : ""}
+                      </div>
+                      ${portalButton}
                     </div>
                   `;
                 })

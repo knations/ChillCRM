@@ -8,6 +8,7 @@ import base64
 import csv
 import hashlib
 import hmac
+import html
 import io
 import json
 import mimetypes
@@ -1255,6 +1256,69 @@ def ensure_runtime_schema(db_path: Path) -> None:
 
             CREATE INDEX IF NOT EXISTS idx_app_passkeys_user
             ON app_passkeys(app_user_id, created_at DESC);
+
+            CREATE TABLE IF NOT EXISTS portal_profiles (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                person_id INTEGER NOT NULL UNIQUE,
+                status TEXT NOT NULL DEFAULT 'draft',
+                display_name TEXT,
+                company_id INTEGER,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                archived_at TEXT
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_portal_profiles_person
+            ON portal_profiles(person_id, status);
+
+            CREATE TABLE IF NOT EXISTS portal_shared_documents (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                person_id INTEGER NOT NULL,
+                archive_item_id INTEGER,
+                record_file_id INTEGER,
+                title TEXT NOT NULL,
+                visibility_status TEXT NOT NULL DEFAULT 'draft',
+                shared_at TEXT,
+                shared_by_user_id INTEGER,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                archived_at TEXT
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_portal_shared_documents_person
+            ON portal_shared_documents(person_id, visibility_status, updated_at DESC);
+
+            CREATE TABLE IF NOT EXISTS portal_next_steps (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                person_id INTEGER NOT NULL,
+                title TEXT NOT NULL,
+                details TEXT,
+                due_at TEXT,
+                status TEXT NOT NULL DEFAULT 'open',
+                sort_order INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                archived_at TEXT
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_portal_next_steps_person
+            ON portal_next_steps(person_id, status, sort_order, due_at);
+
+            CREATE TABLE IF NOT EXISTS portal_client_notes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                person_id INTEGER NOT NULL,
+                title TEXT,
+                body TEXT NOT NULL,
+                visibility_status TEXT NOT NULL DEFAULT 'draft',
+                published_at TEXT,
+                published_by_user_id INTEGER,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                archived_at TEXT
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_portal_client_notes_person
+            ON portal_client_notes(person_id, visibility_status, updated_at DESC);
             """
         )
         columns = {row[1] for row in conn.execute("PRAGMA table_info(review_flags)")}
@@ -1318,6 +1382,10 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             "/api/update_note",
             "/api/update_call_log",
             "/api/add_task",
+            "/api/save_portal_profile",
+            "/api/add_portal_next_step",
+            "/api/add_portal_client_note",
+            "/api/set_portal_document_share",
             "/api/update_task",
             "/api/copy_imported_task_to_local",
             "/api/link_archive_item",
@@ -1345,6 +1413,8 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         "create_edit_records": frozenset({"owner", "admin", "staff"}),
         "edit_addresses_tags": frozenset({"owner", "admin", "staff"}),
         "notes_tasks_followups": frozenset({"owner", "admin", "staff"}),
+        "manage_person_portal": frozenset({"owner", "admin", "staff"}),
+        "preview_portal_experience": frozenset({"owner", "admin", "staff"}),
         "archive_review_status": frozenset({"owner", "admin", "staff"}),
         "link_archive_item": frozenset({"owner", "admin"}),
         "resolve_cleanup_flags": frozenset({"owner", "admin"}),
@@ -1413,6 +1483,10 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         "/api/update_note": "notes_tasks_followups",
         "/api/update_call_log": "notes_tasks_followups",
         "/api/add_task": "notes_tasks_followups",
+        "/api/save_portal_profile": "manage_person_portal",
+        "/api/add_portal_next_step": "manage_person_portal",
+        "/api/add_portal_client_note": "manage_person_portal",
+        "/api/set_portal_document_share": "manage_person_portal",
         "/api/update_task": "notes_tasks_followups",
         "/api/copy_imported_task_to_local": "notes_tasks_followups",
         "/api/complete_task": "notes_tasks_followups",
@@ -1894,6 +1968,8 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             return
 
     def permission_action_for_get(self, path: str) -> str | None:
+        if path.startswith("/portal"):
+            return "preview_portal_experience"
         if path.startswith("/reports/"):
             return "view_dashboard_reports"
         return self.get_permission_actions.get(path)
@@ -2638,7 +2714,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             return False
         if path.startswith("/static/"):
             return False
-        return path.startswith("/api/") or path.startswith("/reports/")
+        return path.startswith("/api/") or path.startswith("/reports/") or path.startswith("/portal")
 
     def should_require_auth_for_post(self, path: str) -> bool:
         if not self.auth_required_enabled():
@@ -3507,6 +3583,8 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                 self.send_permission_denied(path, self.permission_action_for_get(path), auth_user)
             elif path == "/":
                 self.send_file(APP_DIR / "static" / "index.html")
+            elif path == "/portal" or path.startswith("/portal/"):
+                self.send_portal_preview(params)
             elif path.startswith("/static/"):
                 self.send_file(APP_DIR / path.lstrip("/"))
             elif path == "/api/summary":
@@ -3694,6 +3772,14 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                 self.send_json(self.update_call_log(payload, auth_user, action_key))
             elif path == "/api/add_task":
                 self.send_json(self.add_task(payload, auth_user, action_key))
+            elif path == "/api/save_portal_profile":
+                self.send_json(self.save_portal_profile(payload, auth_user, action_key))
+            elif path == "/api/add_portal_next_step":
+                self.send_json(self.add_portal_next_step(payload, auth_user, action_key))
+            elif path == "/api/add_portal_client_note":
+                self.send_json(self.add_portal_client_note(payload, auth_user, action_key))
+            elif path == "/api/set_portal_document_share":
+                self.send_json(self.set_portal_document_share(payload, auth_user, action_key))
             elif path == "/api/update_task":
                 self.send_json(self.update_task(payload, auth_user, action_key))
             elif path == "/api/copy_imported_task_to_local":
@@ -17974,12 +18060,14 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         linked_resources = self.linked_resources_for(conn, "person", record_id)
         record_files = self.record_files_for(conn, "person", record_id)
         archive_items = self.imported_archive_for(conn, "person", record_id)
+        portal = self.portal_summary_for_person(conn, record_id)
         return {
             "type": "person",
             "record": self.clean_record_with_quality("people", {**record, "kind": "person", "source_id": record_id}),
             "lifecycle": self.record_lifecycle_for(conn, "person", record_id),
             "provenance": self.record_provenance(conn, "person", record_id, record),
             "profile_image": self.public_profile_image(self.active_profile_image_row(conn, "person", record_id)),
+            "portal": portal,
             "edit_options": self.edit_options(conn, "person"),
             "owner": self.owner_for(conn, record.get("owner_user_id")),
             "company": company,
@@ -22437,6 +22525,432 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         ).fetchone()
         return row is not None
 
+    def ensure_portal_schema(self, conn: Any) -> None:
+        if self.hosted_postgres_adapter_enabled():
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS portal_profiles (
+                    id bigint GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+                    person_id bigint NOT NULL UNIQUE,
+                    status text NOT NULL DEFAULT 'draft',
+                    display_name text,
+                    company_id bigint,
+                    created_at timestamptz NOT NULL DEFAULT now(),
+                    updated_at timestamptz NOT NULL DEFAULT now(),
+                    archived_at timestamptz
+                )
+                """
+            )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS portal_shared_documents (
+                    id bigint GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+                    person_id bigint NOT NULL,
+                    archive_item_id bigint,
+                    record_file_id bigint,
+                    title text NOT NULL,
+                    visibility_status text NOT NULL DEFAULT 'draft',
+                    shared_at timestamptz,
+                    shared_by_user_id bigint REFERENCES app_users(id),
+                    created_at timestamptz NOT NULL DEFAULT now(),
+                    updated_at timestamptz NOT NULL DEFAULT now(),
+                    archived_at timestamptz
+                )
+                """
+            )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS portal_next_steps (
+                    id bigint GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+                    person_id bigint NOT NULL,
+                    title text NOT NULL,
+                    details text,
+                    due_at timestamptz,
+                    status text NOT NULL DEFAULT 'open',
+                    sort_order bigint NOT NULL DEFAULT 0,
+                    created_at timestamptz NOT NULL DEFAULT now(),
+                    updated_at timestamptz NOT NULL DEFAULT now(),
+                    archived_at timestamptz
+                )
+                """
+            )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS portal_client_notes (
+                    id bigint GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+                    person_id bigint NOT NULL,
+                    title text,
+                    body text NOT NULL,
+                    visibility_status text NOT NULL DEFAULT 'draft',
+                    published_at timestamptz,
+                    published_by_user_id bigint REFERENCES app_users(id),
+                    created_at timestamptz NOT NULL DEFAULT now(),
+                    updated_at timestamptz NOT NULL DEFAULT now(),
+                    archived_at timestamptz
+                )
+                """
+            )
+        else:
+            conn.executescript(
+                """
+                CREATE TABLE IF NOT EXISTS portal_profiles (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    person_id INTEGER NOT NULL UNIQUE,
+                    status TEXT NOT NULL DEFAULT 'draft',
+                    display_name TEXT,
+                    company_id INTEGER,
+                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    archived_at TEXT
+                );
+
+                CREATE TABLE IF NOT EXISTS portal_shared_documents (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    person_id INTEGER NOT NULL,
+                    archive_item_id INTEGER,
+                    record_file_id INTEGER,
+                    title TEXT NOT NULL,
+                    visibility_status TEXT NOT NULL DEFAULT 'draft',
+                    shared_at TEXT,
+                    shared_by_user_id INTEGER,
+                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    archived_at TEXT
+                );
+
+                CREATE TABLE IF NOT EXISTS portal_next_steps (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    person_id INTEGER NOT NULL,
+                    title TEXT NOT NULL,
+                    details TEXT,
+                    due_at TEXT,
+                    status TEXT NOT NULL DEFAULT 'open',
+                    sort_order INTEGER NOT NULL DEFAULT 0,
+                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    archived_at TEXT
+                );
+
+                CREATE TABLE IF NOT EXISTS portal_client_notes (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    person_id INTEGER NOT NULL,
+                    title TEXT,
+                    body TEXT NOT NULL,
+                    visibility_status TEXT NOT NULL DEFAULT 'draft',
+                    published_at TEXT,
+                    published_by_user_id INTEGER,
+                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    archived_at TEXT
+                );
+                """
+            )
+        conn.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_portal_profiles_person
+            ON portal_profiles(person_id, status)
+            """
+        )
+        conn.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_portal_shared_documents_person
+            ON portal_shared_documents(person_id, visibility_status, updated_at DESC)
+            """
+        )
+        conn.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_portal_next_steps_person
+            ON portal_next_steps(person_id, status, sort_order, due_at)
+            """
+        )
+        conn.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_portal_client_notes_person
+            ON portal_client_notes(person_id, visibility_status, updated_at DESC)
+            """
+        )
+
+    def portal_summary_for_person(self, conn: Any, person_id: int) -> dict[str, Any]:
+        self.ensure_portal_schema(conn)
+        profile = row_to_dict(
+            conn.execute(
+                """
+                SELECT id, person_id, status, display_name, company_id, created_at, updated_at, archived_at
+                FROM portal_profiles
+                WHERE person_id = ?
+                LIMIT 1
+                """,
+                (person_id,),
+            ).fetchone()
+        )
+        document_count = int(
+            conn.execute(
+                """
+                SELECT count(*)
+                FROM portal_shared_documents
+                WHERE person_id = ? AND coalesce(visibility_status, '') != 'archived'
+                """,
+                (person_id,),
+            ).fetchone()[0]
+            or 0
+        )
+        next_step_count = int(
+            conn.execute(
+                """
+                SELECT count(*)
+                FROM portal_next_steps
+                WHERE person_id = ? AND coalesce(status, '') != 'archived'
+                """,
+                (person_id,),
+            ).fetchone()[0]
+            or 0
+        )
+        client_note_count = int(
+            conn.execute(
+                """
+                SELECT count(*)
+                FROM portal_client_notes
+                WHERE person_id = ? AND coalesce(visibility_status, '') != 'archived'
+                """,
+                (person_id,),
+            ).fetchone()[0]
+            or 0
+        )
+        published_note_count = int(
+            conn.execute(
+                """
+                SELECT count(*)
+                FROM portal_client_notes
+                WHERE person_id = ? AND visibility_status = 'published'
+                """,
+                (person_id,),
+            ).fetchone()[0]
+            or 0
+        )
+        next_steps = rows_to_dicts(
+            conn.execute(
+                """
+                SELECT id AS source_id, title, details, due_at, status, sort_order, created_at, updated_at
+                FROM portal_next_steps
+                WHERE person_id = ? AND coalesce(status, '') != 'archived'
+                ORDER BY sort_order, due_at, updated_at DESC
+                LIMIT 10
+                """,
+                (person_id,),
+            ).fetchall()
+        )
+        client_notes = rows_to_dicts(
+            conn.execute(
+                """
+                SELECT id AS source_id, title, body, visibility_status, published_at, created_at, updated_at
+                FROM portal_client_notes
+                WHERE person_id = ? AND coalesce(visibility_status, '') != 'archived'
+                ORDER BY coalesce(published_at, updated_at) DESC, id DESC
+                LIMIT 10
+                """,
+                (person_id,),
+            ).fetchall()
+        )
+        shared_documents = rows_to_dicts(
+            conn.execute(
+                """
+                SELECT id AS source_id, archive_item_id, record_file_id, title, visibility_status,
+                       shared_at, shared_by_user_id, created_at, updated_at
+                FROM portal_shared_documents
+                WHERE person_id = ? AND coalesce(visibility_status, '') != 'archived'
+                ORDER BY coalesce(shared_at, updated_at) DESC, id DESC
+                LIMIT 50
+                """,
+                (person_id,),
+            ).fetchall()
+        )
+        return {
+            "enabled": bool(profile and profile.get("status") == "active"),
+            "status": profile.get("status") if profile else "not_enabled",
+            "profile": profile,
+            "scope": "person",
+            "modules": [
+                {"key": "shared_documents", "label": "Shared Documents", "count": document_count},
+                {"key": "next_steps", "label": "Client Next Steps", "count": next_step_count},
+                {"key": "client_notes", "label": "Client Notes", "count": client_note_count},
+            ],
+            "counts": {
+                "shared_documents": document_count,
+                "next_steps": next_step_count,
+                "client_notes": client_note_count,
+                "published_client_notes": published_note_count,
+            },
+            "shared_documents": shared_documents,
+            "shared_archive_item_ids": [
+                int(row["archive_item_id"])
+                for row in shared_documents
+                if row.get("archive_item_id") is not None
+            ],
+            "next_steps": next_steps,
+            "client_notes": client_notes,
+            "safety": "Person-first, client-visible data only. Internal notes, calls, tasks, archive items, and audit records stay private by default.",
+        }
+
+    def portal_preview_enabled(self) -> bool:
+        return env_flag("CHILLPORTAL_ENABLED", False)
+
+    def html_escape(self, value: Any) -> str:
+        return html.escape("" if value is None else str(value), quote=True)
+
+    def portal_preview_date(self, value: Any) -> str:
+        text = self.clean_optional(value)
+        if not text:
+            return ""
+        return text[:10]
+
+    def send_portal_preview(self, params: dict[str, list[str]]) -> None:
+        if not self.portal_preview_enabled():
+            self.send_text(
+                "ChillPortal preview is disabled. Set CHILLPORTAL_ENABLED=true in a local or approved staging environment to preview it.",
+                404,
+            )
+            return
+        try:
+            person_id = self.optional_int((params.get("person_id") or [""])[0])
+        except ValueError:
+            self.send_text("Use a numeric Person id for ?person_id=<id>.", 400)
+            return
+        if not person_id:
+            self.send_text("Add ?person_id=<id> to preview a Person portal.", 400)
+            return
+        with self.db() as conn:
+            self.ensure_portal_schema(conn)
+            person = row_to_dict(
+                conn.execute(
+                    """
+                    SELECT id, name, email, phone
+                    FROM people
+                    WHERE id = ?
+                    LIMIT 1
+                    """,
+                    (person_id,),
+                ).fetchone()
+            )
+            if not person:
+                self.send_text("Person not found.", 404)
+                return
+            portal = self.portal_summary_for_person(conn, person_id)
+        self.send_text(self.portal_preview_html(person, portal), content_type="text/html")
+
+    def portal_preview_html(self, person: dict[str, Any], portal: dict[str, Any]) -> str:
+        name = self.html_escape((portal.get("profile") or {}).get("display_name") or person.get("name") or "Client")
+        email = self.html_escape(person.get("email") or "")
+        phone = self.html_escape(person.get("phone") or "")
+        status = self.html_escape(portal.get("status") or "not_enabled")
+        is_active = bool(portal.get("enabled"))
+        documents = portal.get("shared_documents") or []
+        next_steps = portal.get("next_steps") or []
+        client_notes = [
+            note
+            for note in (portal.get("client_notes") or [])
+            if str(note.get("visibility_status") or "").lower() == "published"
+        ]
+        document_cards = "".join(
+            f"""
+            <article class="portal-card">
+              <a href="/api/archive_file?id={self.html_escape(doc.get('archive_item_id'))}" target="_blank" rel="noreferrer">{self.html_escape(doc.get('title') or 'Shared document')}</a>
+              <p>Shared {self.html_escape(self.portal_preview_date(doc.get('shared_at') or doc.get('updated_at')) or 'recently')}</p>
+            </article>
+            """
+            for doc in documents
+            if doc.get("archive_item_id")
+        )
+        next_step_cards = "".join(
+            f"""
+            <article class="portal-card">
+              <strong>{self.html_escape(step.get('title') or 'Next step')}</strong>
+              {f"<p>Due {self.html_escape(self.portal_preview_date(step.get('due_at')))}</p>" if step.get('due_at') else ""}
+              {f"<p>{self.html_escape(step.get('details'))}</p>" if step.get('details') else ""}
+            </article>
+            """
+            for step in next_steps
+        )
+        note_cards = "".join(
+            f"""
+            <article class="portal-card">
+              <strong>{self.html_escape(note.get('title') or 'Client note')}</strong>
+              <p>{self.html_escape(note.get('body'))}</p>
+            </article>
+            """
+            for note in client_notes
+        )
+        return f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ChillPortal Preview</title>
+  <style>
+    :root {{
+      color-scheme: light;
+      --ink: #292622;
+      --muted: #787269;
+      --line: #ded7cc;
+      --surface: #fffdf9;
+      --panel: #f7f2ea;
+      --green: #2f8a62;
+    }}
+    * {{ box-sizing: border-box; }}
+    body {{
+      margin: 0;
+      background: var(--surface);
+      color: var(--ink);
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", sans-serif;
+      line-height: 1.35;
+    }}
+    main {{ width: min(980px, calc(100% - 32px)); margin: 0 auto; padding: 32px 0 56px; }}
+    header {{ display: flex; justify-content: space-between; gap: 18px; align-items: flex-start; padding: 16px 0 28px; border-bottom: 1px solid var(--line); }}
+    h1 {{ margin: 0; font-size: clamp(34px, 7vw, 64px); letter-spacing: 0; }}
+    h2 {{ margin: 0 0 14px; font-size: 18px; text-transform: uppercase; color: var(--muted); }}
+    p {{ margin: 6px 0 0; color: var(--muted); font-size: 18px; }}
+    a {{ color: inherit; text-decoration-thickness: 1px; text-underline-offset: 4px; }}
+    .pill {{ border-radius: 999px; background: #eee8df; padding: 8px 14px; color: var(--muted); font-weight: 700; white-space: nowrap; }}
+    .pill.active {{ background: #dff2e8; color: var(--green); }}
+    .grid {{ display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; margin-top: 28px; }}
+    section {{ margin-top: 34px; }}
+    .portal-card {{ border: 1px solid var(--line); border-radius: 8px; background: white; padding: 18px; min-height: 112px; }}
+    .portal-card strong, .portal-card a {{ display: block; font-size: 20px; font-weight: 750; }}
+    .empty {{ border: 1px dashed var(--line); border-radius: 8px; background: var(--panel); padding: 18px; }}
+    .notice {{ margin-top: 20px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--muted); }}
+    @media (max-width: 760px) {{
+      main {{ width: min(100% - 24px, 560px); padding-top: 18px; }}
+      header {{ display: block; }}
+      .pill {{ display: inline-block; margin-top: 16px; }}
+      .grid {{ grid-template-columns: 1fr; }}
+    }}
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <div>
+        <h1>{name}</h1>
+        <p>{email}{' · ' if email and phone else ''}{phone}</p>
+      </div>
+      <span class="pill {'active' if is_active else ''}">{'Active Portal' if is_active else f'Portal {status}'}</span>
+    </header>
+    <div class="notice">Preview only. Client login, invitations, notifications, and production portal access are not enabled here.</div>
+    <section>
+      <h2>Next Steps</h2>
+      <div class="grid">{next_step_cards or '<div class="empty">No client next steps yet.</div>'}</div>
+    </section>
+    <section>
+      <h2>Shared Documents</h2>
+      <div class="grid">{document_cards or '<div class="empty">No shared documents yet.</div>'}</div>
+    </section>
+    <section>
+      <h2>Client Notes</h2>
+      <div class="grid">{note_cards or '<div class="empty">No published client notes yet.</div>'}</div>
+    </section>
+  </main>
+</body>
+</html>"""
+
     def normalize_profile_image_type(self, content_type: Any) -> str:
         normalized = str(content_type or "").split(";", 1)[0].strip().lower()
         if normalized == "image/jpg":
@@ -24499,6 +25013,10 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             "tasks",
             "local_addresses",
             "custom_field_values",
+            "portal_profiles",
+            "portal_shared_documents",
+            "portal_next_steps",
+            "portal_client_notes",
         }:
             raise ValueError(f"Unsupported hosted primary key table: {table_name}")
         row = conn.execute(f"SELECT COALESCE(max(id), 0) + 1 AS next_id FROM {table_name}").fetchone()
@@ -24781,6 +25299,309 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             ),
         )
         return note_id if note_id is not None else conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+
+    def clean_portal_person_id(self, payload: dict[str, Any]) -> int:
+        person_id = self.optional_int(payload.get("person_id") or payload.get("id"))
+        if not person_id:
+            raise ValueError("Choose a Person before updating Portal settings.")
+        if not self.record_exists("person", person_id):
+            raise ValueError(f"Person {person_id} not found.")
+        return person_id
+
+    def save_portal_profile(
+        self,
+        payload: dict[str, Any],
+        actor_user: dict[str, Any] | None = None,
+        permission_action: str | None = "manage_person_portal",
+    ) -> dict[str, Any]:
+        person_id = self.clean_portal_person_id(payload)
+        requested_status = str(payload.get("status") or "").strip().lower()
+        enabled = bool(payload.get("enabled"))
+        status = requested_status or ("active" if enabled else "draft")
+        if status not in {"draft", "active", "paused", "archived"}:
+            raise ValueError("Portal status must be draft, active, paused, or archived.")
+        display_name = self.clean_optional(payload.get("display_name"))
+        backup_path = self.create_backup(f"before_portal_profile_person_{person_id}")
+        timestamp = now_iso()
+        with self.db() as conn:
+            self.ensure_portal_schema(conn)
+            person = row_to_dict(conn.execute("SELECT id, name, company_id FROM people WHERE id = ?", (person_id,)).fetchone())
+            if not person:
+                raise ValueError(f"Person {person_id} not found.")
+            display_name = display_name or self.clean_optional(person.get("name")) or f"Person {person_id}"
+            company_id = person.get("company_id")
+            existing = row_to_dict(conn.execute("SELECT * FROM portal_profiles WHERE person_id = ?", (person_id,)).fetchone())
+            if existing:
+                conn.execute(
+                    """
+                    UPDATE portal_profiles
+                    SET status = ?, display_name = ?, company_id = ?, updated_at = ?,
+                        archived_at = CASE WHEN ? = 'archived' THEN ? ELSE NULL END
+                    WHERE person_id = ?
+                    """,
+                    (status, display_name, company_id, timestamp, status, timestamp, person_id),
+                )
+                old_value = existing.get("status")
+            else:
+                portal_id = self.next_hosted_primary_key(conn, "portal_profiles")
+                id_column = "id, " if portal_id is not None else ""
+                id_placeholder = "?, " if portal_id is not None else ""
+                conn.execute(
+                    f"""
+                    INSERT INTO portal_profiles (
+                        {id_column}person_id, status, display_name, company_id, created_at, updated_at,
+                        archived_at
+                    )
+                    VALUES ({id_placeholder}?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        *((portal_id,) if portal_id is not None else ()),
+                        person_id,
+                        status,
+                        display_name,
+                        company_id,
+                        timestamp,
+                        timestamp,
+                        timestamp if status == "archived" else None,
+                    ),
+                )
+                old_value = None
+            self.insert_audit_log(
+                conn,
+                action="save_portal_profile",
+                record_type="person",
+                record_id=person_id,
+                field_name="portal_status",
+                old_value=old_value,
+                new_value=status,
+                note=f"Backup: {backup_path.name}; Person-first portal profile updated.",
+                actor_user=actor_user,
+                permission_action=permission_action,
+            )
+            conn.commit()
+        return {"ok": True, "backup": str(backup_path), "detail": self.record_detail({"type": ["person"], "id": [str(person_id)]})}
+
+    def add_portal_next_step(
+        self,
+        payload: dict[str, Any],
+        actor_user: dict[str, Any] | None = None,
+        permission_action: str | None = "manage_person_portal",
+    ) -> dict[str, Any]:
+        person_id = self.clean_portal_person_id(payload)
+        title = str(payload.get("title") or "").strip()
+        details = self.clean_optional(payload.get("details"))
+        due_at = self.clean_optional(payload.get("due_at"))
+        if not title:
+            raise ValueError("Client next step title is required.")
+        backup_path = self.create_backup(f"before_portal_next_step_person_{person_id}")
+        timestamp = now_iso()
+        with self.db() as conn:
+            self.ensure_portal_schema(conn)
+            next_step_id = self.next_hosted_primary_key(conn, "portal_next_steps")
+            id_column = "id, " if next_step_id is not None else ""
+            id_placeholder = "?, " if next_step_id is not None else ""
+            sort_row = conn.execute(
+                "SELECT COALESCE(max(sort_order), 0) + 1 AS next_sort FROM portal_next_steps WHERE person_id = ?",
+                (person_id,),
+            ).fetchone()
+            sort_order = int(sort_row["next_sort"] if sort_row else 1)
+            conn.execute(
+                f"""
+                INSERT INTO portal_next_steps (
+                    {id_column}person_id, title, details, due_at, status, sort_order, created_at, updated_at
+                )
+                VALUES ({id_placeholder}?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    *((next_step_id,) if next_step_id is not None else ()),
+                    person_id,
+                    title,
+                    details,
+                    due_at,
+                    "open",
+                    sort_order,
+                    timestamp,
+                    timestamp,
+                ),
+            )
+            self.insert_audit_log(
+                conn,
+                action="add_portal_next_step",
+                record_type="person",
+                record_id=person_id,
+                field_name="portal_next_step",
+                old_value=None,
+                new_value=title,
+                note=f"Backup: {backup_path.name}; client-visible next step added.",
+                actor_user=actor_user,
+                permission_action=permission_action,
+            )
+            conn.commit()
+        return {"ok": True, "backup": str(backup_path), "detail": self.record_detail({"type": ["person"], "id": [str(person_id)]})}
+
+    def add_portal_client_note(
+        self,
+        payload: dict[str, Any],
+        actor_user: dict[str, Any] | None = None,
+        permission_action: str | None = "manage_person_portal",
+    ) -> dict[str, Any]:
+        person_id = self.clean_portal_person_id(payload)
+        title = self.clean_optional(payload.get("title"))
+        body = str(payload.get("body") or "").strip()
+        visibility_status = str(payload.get("visibility_status") or "draft").strip().lower()
+        if not body:
+            raise ValueError("Client note body is required.")
+        if visibility_status not in {"draft", "published"}:
+            raise ValueError("Client note status must be draft or published.")
+        backup_path = self.create_backup(f"before_portal_client_note_person_{person_id}")
+        timestamp = now_iso()
+        with self.db() as conn:
+            self.ensure_portal_schema(conn)
+            note_id = self.next_hosted_primary_key(conn, "portal_client_notes")
+            id_column = "id, " if note_id is not None else ""
+            id_placeholder = "?, " if note_id is not None else ""
+            conn.execute(
+                f"""
+                INSERT INTO portal_client_notes (
+                    {id_column}person_id, title, body, visibility_status, published_at,
+                    published_by_user_id, created_at, updated_at
+                )
+                VALUES ({id_placeholder}?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    *((note_id,) if note_id is not None else ()),
+                    person_id,
+                    title,
+                    body,
+                    visibility_status,
+                    timestamp if visibility_status == "published" else None,
+                    actor_user.get("id") if actor_user else None,
+                    timestamp,
+                    timestamp,
+                ),
+            )
+            self.insert_audit_log(
+                conn,
+                action="add_portal_client_note",
+                record_type="person",
+                record_id=person_id,
+                field_name="portal_client_note",
+                old_value=None,
+                new_value=title or body[:100],
+                note=f"Backup: {backup_path.name}; separate client-visible note added.",
+                actor_user=actor_user,
+                permission_action=permission_action,
+            )
+            conn.commit()
+        return {"ok": True, "backup": str(backup_path), "detail": self.record_detail({"type": ["person"], "id": [str(person_id)]})}
+
+    def set_portal_document_share(
+        self,
+        payload: dict[str, Any],
+        actor_user: dict[str, Any] | None = None,
+        permission_action: str | None = "manage_person_portal",
+    ) -> dict[str, Any]:
+        person_id = self.clean_portal_person_id(payload)
+        archive_item_id = self.optional_int(payload.get("archive_item_id") or payload.get("file_id"))
+        shared = bool(payload.get("shared"))
+        if not archive_item_id:
+            raise ValueError("Choose a file before updating Portal sharing.")
+        backup_path = self.create_backup(f"before_portal_document_share_person_{person_id}")
+        timestamp = now_iso()
+        with self.db() as conn:
+            self.ensure_portal_schema(conn)
+            item = row_to_dict(
+                conn.execute(
+                    """
+                    SELECT id, title, record_type, record_id, item_type, status
+                    FROM imported_archive_items
+                    WHERE id = ? AND item_type = 'document'
+                    LIMIT 1
+                    """,
+                    (archive_item_id,),
+                ).fetchone()
+            )
+            if not item:
+                raise ValueError("Document not found.")
+            if item.get("record_type") != "person" or int(item.get("record_id") or 0) != person_id:
+                raise ValueError("Only documents already attached to this Person can be shared.")
+            existing = row_to_dict(
+                conn.execute(
+                    """
+                    SELECT *
+                    FROM portal_shared_documents
+                    WHERE person_id = ? AND archive_item_id = ?
+                    ORDER BY id DESC
+                    LIMIT 1
+                    """,
+                    (person_id, archive_item_id),
+                ).fetchone()
+            )
+            next_status = "shared" if shared else "archived"
+            if existing:
+                conn.execute(
+                    """
+                    UPDATE portal_shared_documents
+                    SET title = ?, visibility_status = ?, shared_at = CASE WHEN ? = 'shared' THEN ? ELSE shared_at END,
+                        shared_by_user_id = CASE WHEN ? = 'shared' THEN ? ELSE shared_by_user_id END,
+                        updated_at = ?, archived_at = CASE WHEN ? = 'archived' THEN ? ELSE NULL END
+                    WHERE id = ?
+                    """,
+                    (
+                        self.clean_optional(item.get("title")) or f"Document {archive_item_id}",
+                        next_status,
+                        next_status,
+                        timestamp,
+                        next_status,
+                        actor_user.get("id") if actor_user else None,
+                        timestamp,
+                        next_status,
+                        timestamp,
+                        existing["id"],
+                    ),
+                )
+                old_value = existing.get("visibility_status")
+            else:
+                document_id = self.next_hosted_primary_key(conn, "portal_shared_documents")
+                id_column = "id, " if document_id is not None else ""
+                id_placeholder = "?, " if document_id is not None else ""
+                conn.execute(
+                    f"""
+                    INSERT INTO portal_shared_documents (
+                        {id_column}person_id, archive_item_id, record_file_id, title, visibility_status,
+                        shared_at, shared_by_user_id, created_at, updated_at, archived_at
+                    )
+                    VALUES ({id_placeholder}?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        *((document_id,) if document_id is not None else ()),
+                        person_id,
+                        archive_item_id,
+                        None,
+                        self.clean_optional(item.get("title")) or f"Document {archive_item_id}",
+                        next_status,
+                        timestamp if shared else None,
+                        actor_user.get("id") if actor_user else None,
+                        timestamp,
+                        timestamp,
+                        timestamp if not shared else None,
+                    ),
+                )
+                old_value = None
+            self.insert_audit_log(
+                conn,
+                action="set_portal_document_share",
+                record_type="person",
+                record_id=person_id,
+                field_name="portal_shared_document",
+                old_value=old_value,
+                new_value=next_status,
+                note=f"Backup: {backup_path.name}; archive_item_id={archive_item_id}",
+                actor_user=actor_user,
+                permission_action=permission_action,
+            )
+            conn.commit()
+        return {"ok": True, "backup": str(backup_path), "detail": self.record_detail({"type": ["person"], "id": [str(person_id)]})}
 
     def add_note(self, payload: dict[str, Any], actor_user: dict[str, Any] | None = None, permission_action: str | None = "notes_tasks_followups") -> dict[str, Any]:
         record_type = str(payload.get("type", "")).lower()

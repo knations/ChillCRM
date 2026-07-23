@@ -2,6 +2,16 @@
 
 Local Zendesk Sell migration and CRM project.
 
+## ChillPortal
+
+ChillPortal is now represented as an internal-only CHILLCRM foundation for a
+future Person-first client portal. The local app can prepare Portal status,
+shared documents, client next steps, and separate client-visible notes from a
+Person record. A disabled-by-default staff preview is available at
+`/portal?person_id=<id>` only when `CHILLPORTAL_ENABLED=true`, but there is not
+yet a client login, invitation flow, storage provider change, or production
+cutover.
+
 ## Current Status
 
 - Zendesk Sell API access verified.
@@ -207,6 +217,25 @@ This requires `ZENDESK_SELL_ACCESS_TOKEN` to be set in the terminal environment.
 - `logs/`: Runtime logs if needed.
 - `backups/`: Timestamped SQLite backups.
 - `exports/`: Timestamped CSV exports from the local CRM.
+
+## ChillPortal
+
+ChillPortal is reserved as the future client-facing dashboard that stays
+separate from the internal CHILLCRM operator workspace. The approved MVP scope
+is a Person-first portal with Shared Documents, Client Next Steps, and separate
+client-visible notes only. The current repository contains only a disabled
+configuration scaffold and documentation:
+
+- `crm_app/portal_config.py`: route, role, permission, and feature-flag names.
+- `config/chillportal.env.example`: placeholder-only environment names.
+- `docs/CHILLPORTAL.md`: portal scope, unknowns, and approval gates.
+- `docs/PORTAL_CONFIG.md`: config map and rollback notes.
+- `docs/ACCESS.md`: internal CRM versus client portal access boundary.
+- `docs/PROJECT_MAP.md`: ownership map between CHILLCRM and ChillPortal.
+- `docs/PORTAL_SCHEMA_PLAN.md`: Person-first schema blueprint.
+
+This scaffold does not create client-facing routes, database tables, provider
+integrations, invitations, access changes, or production data changes.
 
 ## Key Files
 

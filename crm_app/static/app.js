@@ -115,6 +115,8 @@ const state = {
   mobileDetailReturnLabel: "",
 };
 
+const REMEMBERED_LOGIN_EMAIL_KEY = "chillcrm.rememberedLoginEmail";
+
 const els = {
   status: document.querySelector("#statusText"),
   environmentBadge: document.querySelector("#environmentBadge"),
@@ -139,6 +141,9 @@ const els = {
   authOverlay: document.querySelector("#authOverlay"),
   authLoginForm: document.querySelector("#authLoginForm"),
   authMessage: document.querySelector("#authMessage"),
+  rememberedLoginRow: document.querySelector("#rememberedLoginRow"),
+  rememberedLoginText: document.querySelector("#rememberedLoginText"),
+  clearRememberedLoginButton: document.querySelector("#clearRememberedLoginButton"),
   passkeyLoginButton: document.querySelector("#passkeyLoginButton"),
   ownerRecoveryOpen: document.querySelector("#ownerRecoveryOpen"),
   ownerRecoveryOverlay: document.querySelector("#ownerRecoveryOverlay"),
@@ -152,6 +157,50 @@ const els = {
   searchForm: document.querySelector("#globalSearchForm"),
   searchClear: document.querySelector("#globalSearchClear"),
 };
+
+function rememberedLoginEmail() {
+  try {
+    return String(window.localStorage.getItem(REMEMBERED_LOGIN_EMAIL_KEY) || "").trim();
+  } catch {
+    return "";
+  }
+}
+
+function saveRememberedLoginEmail(email) {
+  const normalized = String(email || "").trim().toLowerCase();
+  if (!normalized) return;
+  try {
+    window.localStorage.setItem(REMEMBERED_LOGIN_EMAIL_KEY, normalized);
+  } catch {
+    // Remembering the email is only a convenience; auth must still work without storage.
+  }
+}
+
+function clearRememberedLoginEmail() {
+  try {
+    window.localStorage.removeItem(REMEMBERED_LOGIN_EMAIL_KEY);
+  } catch {
+    // Ignore storage errors so login remains available.
+  }
+}
+
+function shouldRememberLoginEmail() {
+  return Boolean(els.authLoginForm?.querySelector('input[name="remember_email"]')?.checked);
+}
+
+function applyRememberedLoginEmail({ force = false } = {}) {
+  const email = rememberedLoginEmail();
+  const emailInput = els.authLoginForm?.querySelector('input[name="email"]');
+  const rememberInput = els.authLoginForm?.querySelector('input[name="remember_email"]');
+  if (rememberInput) rememberInput.checked = true;
+  if (emailInput && email && (force || !emailInput.value)) {
+    emailInput.value = email;
+  }
+  if (els.rememberedLoginRow && els.rememberedLoginText) {
+    els.rememberedLoginRow.hidden = !email;
+    els.rememberedLoginText.textContent = email ? `Remembered on this device: ${email}` : "";
+  }
+}
 
 function captureInputFocus(inputId) {
   const active = document.activeElement;
@@ -718,8 +767,14 @@ function showAuthOverlay(auth = state.auth || {}) {
     return;
   }
   els.authOverlay.hidden = false;
+  applyRememberedLoginEmail();
   const emailInput = els.authLoginForm?.querySelector('input[name="email"]');
-  if (emailInput && !emailInput.value) emailInput.focus();
+  const passwordInput = els.authLoginForm?.querySelector('input[name="password"]');
+  if (emailInput && !emailInput.value) {
+    emailInput.focus();
+  } else {
+    passwordInput?.focus();
+  }
 }
 
 function showOwnerRecoveryOverlay(open) {
@@ -875,6 +930,7 @@ async function loginWithPasskey(button) {
       "/api/auth/passkey/login/verify",
       passkeyCredentialPayload(credential, options.challenge_token, "login")
     );
+    if (shouldRememberLoginEmail()) saveRememberedLoginEmail(email);
     setAuthState(result.auth);
     renderAuthControl();
     showAuthOverlay(state.auth);
@@ -11449,6 +11505,12 @@ els.authLoginForm?.addEventListener("submit", async (event) => {
       email: form.get("email"),
       password: form.get("password"),
     });
+    if (form.get("remember_email")) {
+      saveRememberedLoginEmail(form.get("email"));
+    } else {
+      clearRememberedLoginEmail();
+      applyRememberedLoginEmail({ force: true });
+    }
     setAuthState(result.auth);
     renderAuthControl();
     showAuthOverlay(state.auth);
@@ -11466,6 +11528,14 @@ els.ownerRecoveryOpen?.addEventListener("click", () => {
 
 els.passkeyLoginButton?.addEventListener("click", async (event) => {
   await loginWithPasskey(event.currentTarget);
+});
+
+els.clearRememberedLoginButton?.addEventListener("click", () => {
+  clearRememberedLoginEmail();
+  const emailInput = els.authLoginForm?.querySelector('input[name="email"]');
+  if (emailInput) emailInput.value = "";
+  applyRememberedLoginEmail({ force: true });
+  emailInput?.focus();
 });
 
 els.ownerRecoveryForm?.addEventListener("submit", async (event) => {

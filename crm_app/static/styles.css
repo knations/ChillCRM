@@ -289,6 +289,56 @@ button {
   font-weight: 700;
 }
 
+.remembered-login-row {
+  align-items: center;
+  background: var(--surface-soft);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--muted);
+  display: flex;
+  font-size: 12px;
+  gap: 10px;
+  justify-content: space-between;
+  line-height: 1.35;
+  margin: -2px 0 12px;
+  min-height: 38px;
+  padding: 8px 10px;
+}
+
+.remembered-login-row[hidden] {
+  display: none;
+}
+
+.auth-panel .link-button {
+  background: transparent;
+  border: 0;
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 800;
+  min-height: 0;
+  padding: 0;
+  width: auto;
+}
+
+.remember-login-toggle {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  grid-template-columns: auto 1fr;
+  margin: -2px 0 12px;
+}
+
+.auth-panel .remember-login-toggle input {
+  height: auto;
+  width: auto;
+}
+
+.remember-login-toggle span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
 .auth-panel input {
   width: 100%;
   height: 42px;

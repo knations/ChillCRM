@@ -83,9 +83,17 @@
           <span>Email</span>
           <input name="email" type="email" autocomplete="email" required>
         </label>
+        <div id="rememberedLoginRow" class="remembered-login-row" hidden>
+          <span id="rememberedLoginText"></span>
+          <button id="clearRememberedLoginButton" type="button" class="link-button">Not you?</button>
+        </div>
         <label>
           <span>Password</span>
           <input name="password" type="password" autocomplete="current-password" required>
+        </label>
+        <label class="remember-login-toggle">
+          <input name="remember_email" type="checkbox" checked>
+          <span>Remember this email on this device</span>
         </label>
         <p id="authMessage" class="auth-message"></p>
         <button type="submit">Sign In</button>

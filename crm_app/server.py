@@ -3939,15 +3939,23 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         settings = self.clean_saved_view_settings(list_type, payload.get("settings") or {})
         settings_json = json.dumps(settings, ensure_ascii=False, sort_keys=True)
         with self.db() as conn:
+            view_id = self.next_hosted_primary_key(conn, "local_list_views")
+            id_column = "id, " if view_id is not None else ""
+            id_placeholder = "?, " if view_id is not None else ""
             conn.execute(
-                """
-                INSERT INTO local_list_views (list_type, name, settings_json, updated_at)
-                VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+                f"""
+                INSERT INTO local_list_views ({id_column}list_type, name, settings_json, updated_at)
+                VALUES ({id_placeholder}?, ?, ?, CURRENT_TIMESTAMP)
                 ON CONFLICT(list_type, name) DO UPDATE SET
                     settings_json = excluded.settings_json,
                     updated_at = CURRENT_TIMESTAMP
                 """,
-                (list_type, name, settings_json),
+                (
+                    *((view_id,) if view_id is not None else ()),
+                    list_type,
+                    name,
+                    settings_json,
+                ),
             )
             conn.commit()
             row = row_to_dict(
@@ -21652,12 +21660,23 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                     (decision, note, timestamp, group_type, group_key),
                 )
             else:
+                decision_id = self.next_hosted_primary_key(conn, "cleanup_group_decisions")
+                id_column = "id, " if decision_id is not None else ""
+                id_placeholder = "?, " if decision_id is not None else ""
                 conn.execute(
-                    """
-                    INSERT INTO cleanup_group_decisions (group_type, group_key, decision, note, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?)
+                    f"""
+                    INSERT INTO cleanup_group_decisions ({id_column}group_type, group_key, decision, note, created_at, updated_at)
+                    VALUES ({id_placeholder}?, ?, ?, ?, ?, ?)
                     """,
-                    (group_type, group_key, decision, note, timestamp, timestamp),
+                    (
+                        *((decision_id,) if decision_id is not None else ()),
+                        group_type,
+                        group_key,
+                        decision,
+                        note,
+                        timestamp,
+                        timestamp,
+                    ),
                 )
             self.insert_audit_log(
                 conn,
@@ -25132,6 +25151,9 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             "tasks",
             "local_addresses",
             "custom_field_values",
+            "review_flags",
+            "local_list_views",
+            "cleanup_group_decisions",
             "portal_profiles",
             "portal_shared_documents",
             "portal_next_steps",
@@ -25277,15 +25299,19 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         )
         lead_id = hosted_id if hosted_id is not None else conn.execute("SELECT last_insert_rowid()").fetchone()[0]
         if possible_person_id:
+            flag_id = self.next_hosted_primary_key(conn, "review_flags")
+            id_column = "id, " if flag_id is not None else ""
+            id_placeholder = "?, " if flag_id is not None else ""
             conn.execute(
-                """
+                f"""
                 INSERT INTO review_flags (
-                    flag_type, severity, record_type, record_id, related_record_type,
+                    {id_column}flag_type, severity, record_type, record_id, related_record_type,
                     related_record_id, flag_key, description
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES ({id_placeholder}?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
+                    *((flag_id,) if flag_id is not None else ()),
                     "lead_person_email_overlap",
                     "medium",
                     "lead",

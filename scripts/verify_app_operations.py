@@ -203,6 +203,25 @@ def main() -> int:
             )(),
             "local_addresses",
         ) == 75
+        for table_name, expected_id in [
+            ("review_flags", 76),
+            ("local_list_views", 77),
+            ("cleanup_group_decisions", 78),
+        ]:
+            assert runtime_handler.next_hosted_primary_key(
+                type(
+                    "ProbeConn",
+                    (),
+                    {
+                        "execute": lambda self, sql, expected_id=expected_id: type(
+                            "ProbeCursor",
+                            (),
+                            {"fetchone": lambda self: {"next_id": expected_id}},
+                        )()
+                    },
+                )(),
+                table_name,
+            ) == expected_id
         os.environ["CRM_ENV"] = "staging"
         assert runtime_handler.runtime_context()["environment"] == "staging"
         os.environ["APP_BASE_URL"] = "https://chillcrm.app"
@@ -2238,6 +2257,32 @@ def main() -> int:
             raise AssertionError("Expected invalid deal create to fail")
         except ValueError as exc:
             assert "Person 999999999 not found" in str(exc)
+        overlap_email = "operations-lead-overlap@example.test"
+        overlap_person = handler.create_record(
+            {
+                "type": "person",
+                "fields": {"name": "Operations Lead Overlap Person", "email": overlap_email},
+            }
+        )
+        overlap_lead = handler.create_record(
+            {
+                "type": "lead",
+                "fields": {"name": "Operations Lead Overlap Lead", "email": overlap_email},
+            }
+        )
+        assert overlap_lead["detail"]["record"]["possible_person_id"] == overlap_person["detail"]["record"]["source_id"]
+        with sqlite3.connect(test_db) as conn:
+            overlap_flag = conn.execute(
+                """
+                SELECT id, flag_type, record_type, record_id, related_record_type, related_record_id, flag_key
+                FROM review_flags
+                WHERE record_type = 'lead' AND record_id = ?
+                """,
+                (overlap_lead["detail"]["record"]["source_id"],),
+            ).fetchone()
+        assert overlap_flag is not None
+        assert overlap_flag["flag_type"] == "lead_person_email_overlap"
+        assert overlap_flag["related_record_id"] == overlap_person["detail"]["record"]["source_id"]
         tagged = handler.update_tags(
             {
                 "type": "person",

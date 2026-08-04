@@ -2402,6 +2402,16 @@ def main() -> int:
         saved_address_map = {address["address_key"]: address for address in saved_new_addresses["detail"]["addresses"]}
         assert saved_address_map["address"]["line1"] == "123 New Person Lane"
         assert saved_address_map["billing_address"]["line1"] == "456 Billing Person Road"
+        saved_new_task = handler.add_task(
+            {
+                "type": "person",
+                "id": new_address_person_id,
+                "content": "Follow up with newly added person",
+                "due_date": "2026-08-12",
+            }
+        )
+        assert saved_new_task["ok"] is True
+        assert any(task["content"] == "Follow up with newly added person" for task in saved_new_task["detail"]["tasks"])
 
         noted = handler.add_note(
             {

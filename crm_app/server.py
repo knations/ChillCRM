@@ -26055,18 +26055,38 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         backup_path = self.create_backup(f"before_task_{record_type}_{record_id}")
         timestamp = now_iso()
         with self.db() as conn:
+            task_id = self.next_hosted_primary_key(conn, "tasks")
+            id_column = "id, " if task_id is not None else ""
+            id_placeholder = "?, " if task_id is not None else ""
             conn.execute(
-                """
+                f"""
                 INSERT INTO tasks (
-                    zendesk_task_id, record_type, record_id, owner_user_id, creator_user_id,
+                    {id_column}zendesk_task_id, record_type, record_id, owner_user_id, creator_user_id,
                     content, completed, completed_at, due_date, remind_at, overdue,
                     created_at, updated_at, source_json
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES ({id_placeholder}?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (None, record_type, record_id, None, None, content, 0, None, due_date, remind_at, 0, timestamp, timestamp, "{}"),
+                (
+                    *((task_id,) if task_id is not None else ()),
+                    None,
+                    record_type,
+                    record_id,
+                    None,
+                    None,
+                    content,
+                    0,
+                    None,
+                    due_date,
+                    remind_at,
+                    0,
+                    timestamp,
+                    timestamp,
+                    "{}",
+                ),
             )
-            task_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+            if task_id is None:
+                task_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
             self.insert_audit_log(
                 conn,
                 action="add_task",
@@ -26165,16 +26185,20 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             "original_due_date": task["due_date"],
         }
         with self.db() as conn:
+            local_task_id = self.next_hosted_primary_key(conn, "tasks")
+            id_column = "id, " if local_task_id is not None else ""
+            id_placeholder = "?, " if local_task_id is not None else ""
             conn.execute(
-                """
+                f"""
                 INSERT INTO tasks (
-                    zendesk_task_id, record_type, record_id, owner_user_id, creator_user_id,
+                    {id_column}zendesk_task_id, record_type, record_id, owner_user_id, creator_user_id,
                     content, completed, completed_at, due_date, remind_at, overdue,
                     created_at, updated_at, source_json
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES ({id_placeholder}?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
+                    *((local_task_id,) if local_task_id is not None else ()),
                     None,
                     record_type,
                     record_id,
@@ -26191,7 +26215,8 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                     json.dumps(source_payload, ensure_ascii=False),
                 ),
             )
-            local_task_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+            if local_task_id is None:
+                local_task_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
             self.insert_audit_log(
                 conn,
                 action="copy_imported_task_to_local",

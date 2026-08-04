@@ -5,6 +5,7 @@ const state = {
   listTagId: "",
   listTagSearch: "",
   listOwnerUserId: "",
+  listOperatorAvatar: "",
   listProfileField: "",
   listProfileValue: "",
   listSort: {
@@ -4314,6 +4315,11 @@ function peopleLifecycleFilterControls(data = {}) {
   return `<button class="text-button people-lifecycle-toggle ${showingAll ? "active" : ""}" id="peopleLifecycleToggle" type="button" data-next="${showingAll ? "active" : "all"}">${escapeHtml(label)}</button>`;
 }
 
+function peopleOperatorAvatarFilterControl() {
+  if (state.listType !== "people") return "";
+  return `<input id="listOperatorAvatar" type="search" value="${escapeHtml(state.listOperatorAvatar)}" placeholder="Operator Avatar" aria-label="Filter by Operator Avatar" autocomplete="off">`;
+}
+
 function provenanceFilterLabel(value) {
   return {
     imported: "Imported from Zendesk",
@@ -4359,6 +4365,7 @@ function currentListSettings() {
     q: state.q,
     tag_id: state.listTagId,
     tag_search: state.listTagSearch,
+    operator_avatar: state.listType === "people" ? state.listOperatorAvatar : "",
     status_field: statusFilter.field,
     status_value: statusFilter.value,
     owner_user_id: ownerFilterSupported(state.listType) ? state.listOwnerUserId : "",
@@ -4380,6 +4387,7 @@ function applyListSettings(settings = {}) {
   state.q = settings.q || "";
   state.listTagId = settings.tag_id || "";
   state.listTagSearch = settings.tag_id ? "" : settings.tag_search || "";
+  state.listOperatorAvatar = state.listType === "people" ? settings.operator_avatar || "" : "";
   state.listStatusFilters[state.listType] = {
     field: settings.status_field || "",
     value: settings.status_value || "",
@@ -4420,6 +4428,7 @@ function resetCurrentListView() {
   state.listTagId = "";
   state.listTagSearch = "";
   state.listOwnerUserId = "";
+  state.listOperatorAvatar = "";
   state.listProfileField = "";
   state.listProfileValue = "";
   state.listStatusFilters[state.listType] = { field: "", value: "" };
@@ -4589,7 +4598,7 @@ async function fetchListTagSuggestions(query) {
 
 async function renderList() {
   setStatus(`Loading ${listTitles[state.listType]}`);
-  const focusState = captureInputFocus("listSearch") || captureInputFocus("listTagSearch");
+  const focusState = captureInputFocus("listSearch") || captureInputFocus("listOperatorAvatar") || captureInputFocus("listTagSearch");
   state.mobileDetailReturnLabel = listTitles[state.listType] || "List";
   const simplifiedPeopleFilters = state.listType === "people";
   if (simplifiedPeopleFilters) {
@@ -4615,6 +4624,7 @@ async function renderList() {
     direction: sort.direction,
   });
   if (state.listType === "people") params.set("lifecycle", lifecycle);
+  if (state.listType === "people" && state.listOperatorAvatar) params.set("operator_avatar", state.listOperatorAvatar);
   if (dealQueue) params.set("deal_queue", dealQueue);
   if (state.listTagId) params.set("tag_id", state.listTagId);
   if (statusFilter.field && statusFilter.value) {
@@ -4666,6 +4676,7 @@ async function renderList() {
   const selectedProvenance = (data.provenance_options || []).find((item) => item.value === data.provenance);
   const selectedDealQueue = dealQuickFilterOptions().find(([value]) => value === (data.deal_queue || ""));
   const lifecycleSummary = state.listType === "people" ? (data.lifecycle_filter === "all" ? " · Includes inactive" : " · Active only") : "";
+  const operatorAvatarSummary = state.listType === "people" && data.operator_avatar ? ` · Operator Avatar: ${escapeHtml(data.operator_avatar)}` : "";
   const selectedDateField = (data.date_options || []).find((item) => item.field === data.date_field);
   const dateRangeText = data.date_from && data.date_to
     ? `${data.date_from} to ${data.date_to}`
@@ -4679,7 +4690,7 @@ async function renderList() {
     <div class="section-header">
       <div>
         <h2>${escapeHtml(listTitles[state.listType])}</h2>
-        <p>${formatNumber(data.total)} records${lifecycleSummary}${selectedDealQueue && selectedDealQueue[0] ? ` · Queue: ${escapeHtml(selectedDealQueue[1])}` : ""}${selectedTag ? ` tagged ${escapeHtml(selectedTag.display_name)}` : ""}${selectedOwner ? ` · Owner: ${escapeHtml(selectedOwner.label)}` : ""}${selectedQualityIssue ? ` · Quality: ${escapeHtml(selectedQualityIssue.label)}` : ""}${selectedProvenance ? ` · Source: ${escapeHtml(selectedProvenance.label)}` : ""}${selectedStatusValue ? ` · ${escapeHtml(selectedStatusField.label)}: ${escapeHtml(selectedStatusValue.value)}` : ""}${selectedProfileValue ? ` · ${escapeHtml(state.listProfileField)}: ${escapeHtml(selectedProfileValue.value)}` : ""}${dateSummary}</p>
+        <p>${formatNumber(data.total)} records${lifecycleSummary}${operatorAvatarSummary}${selectedDealQueue && selectedDealQueue[0] ? ` · Queue: ${escapeHtml(selectedDealQueue[1])}` : ""}${selectedTag ? ` tagged ${escapeHtml(selectedTag.display_name)}` : ""}${selectedOwner ? ` · Owner: ${escapeHtml(selectedOwner.label)}` : ""}${selectedQualityIssue ? ` · Quality: ${escapeHtml(selectedQualityIssue.label)}` : ""}${selectedProvenance ? ` · Source: ${escapeHtml(selectedProvenance.label)}` : ""}${selectedStatusValue ? ` · ${escapeHtml(selectedStatusField.label)}: ${escapeHtml(selectedStatusValue.value)}` : ""}${selectedProfileValue ? ` · ${escapeHtml(state.listProfileField)}: ${escapeHtml(selectedProfileValue.value)}` : ""}${dateSummary}</p>
       </div>
       <button class="text-button" id="newRecordButton">New</button>
     </div>
@@ -4688,6 +4699,7 @@ async function renderList() {
         ${savedViewControls(savedViews)}
         <input id="listSearch" type="search" value="${escapeHtml(state.q)}" placeholder="Filter ${escapeHtml(listTitles[state.listType].toLowerCase())}">
         ${peopleLifecycleFilterControls(data)}
+        ${peopleOperatorAvatarFilterControl()}
         ${tagSearchControl(tagSuggestions, selectedTag)}
         ${ownerFilterControls(data.owner_options || [])}
         ${simplifiedPeopleFilters ? "" : listProvenanceFilterControls(data.provenance_options || [])}
@@ -4718,6 +4730,7 @@ async function renderList() {
   const listTagSuggestions = document.querySelector("#listTagSuggestions");
   const listTagClear = document.querySelector("#listTagClear");
   const peopleLifecycleToggle = document.querySelector("#peopleLifecycleToggle");
+  const listOperatorAvatar = document.querySelector("#listOperatorAvatar");
   const listOwnerFilter = document.querySelector("#listOwnerFilter");
   const listProvenanceFilter = document.querySelector("#listProvenanceFilter");
   const listQualityIssue = document.querySelector("#listQualityIssue");
@@ -4868,6 +4881,17 @@ async function renderList() {
       state.listLifecycleFilters.people = peopleLifecycleToggle.dataset.next === "all" ? "all" : "active";
       state.page = 1;
       renderList();
+    });
+  }
+  if (listOperatorAvatar) {
+    listOperatorAvatar.addEventListener("input", () => {
+      state.listOperatorAvatar = listOperatorAvatar.value.trim();
+      window.clearTimeout(state.debounce);
+      state.debounce = window.setTimeout(() => {
+        clearSelectedSavedView();
+        state.page = 1;
+        renderList();
+      }, 220);
     });
   }
   if (listOwnerFilter) {

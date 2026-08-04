@@ -4018,6 +4018,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         status_field = self.clean_optional(settings.get("status_field"))
         status_value = self.clean_optional(settings.get("status_value"))
         status_field, status_value = self.normalize_list_status_filter(list_type, status_field, status_value)
+        operator_avatar = self.clean_optional(settings.get("operator_avatar")) if list_type == "people" else None
         profile_field = self.clean_optional(settings.get("profile_field"))
         profile_value = self.clean_optional(settings.get("profile_value"))
         if list_type not in {"people", "leads"} or profile_field not in APPLICATION_PROFILE_FILTER_FIELDS or not profile_value:
@@ -4036,6 +4037,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         return {
             "q": str(settings.get("q") or "").strip(),
             "tag_id": str(settings.get("tag_id") or "").strip(),
+            "operator_avatar": operator_avatar or "",
             "status_field": status_field or "",
             "status_value": status_value or "",
             "profile_field": profile_field or "",
@@ -7067,6 +7069,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         for key in [
             "q",
             "tag_id",
+            "operator_avatar",
             "status_field",
             "status_value",
             "profile_field",
@@ -7446,6 +7449,9 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         owner_user_id = self.optional_int((params.get("owner_user_id", [""])[0] or "").strip())
         if record_type not in {"people", "companies", "leads"}:
             owner_user_id = None
+        operator_avatar = self.clean_optional(params.get("operator_avatar", [""])[0] if params.get("operator_avatar") else "")
+        if record_type != "people":
+            operator_avatar = None
         quality_issue = self.clean_optional(params.get("quality_issue", [""])[0] if params.get("quality_issue") else "")
         quality_issue = self.normalize_list_quality_issue(record_type, quality_issue)
         provenance_filter = self.normalize_list_provenance_filter(params.get("provenance", [""])[0] if params.get("provenance") else "")
@@ -7476,6 +7482,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                     status_field,
                     status_value,
                     owner_user_id,
+                    operator_avatar,
                     quality_issue,
                     provenance_filter,
                     lifecycle_filter,
@@ -7530,6 +7537,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             "status_options": status_options,
             "owner_user_id": owner_user_id,
             "owner_options": owner_options,
+            "operator_avatar": operator_avatar or "",
             "quality_issue": quality_issue,
             "quality_options": quality_options,
             "provenance": provenance_filter,
@@ -7991,6 +7999,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         status_field: str | None,
         status_value: str | None,
         owner_user_id: int | None,
+        operator_avatar: str | None,
         quality_issue: str | None,
         provenance_filter: str | None,
         lifecycle_filter: str | None,
@@ -8030,6 +8039,20 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         if owner_user_id:
             clauses.append("people.owner_user_id = ?")
             values.append(owner_user_id)
+        if operator_avatar:
+            clauses.append(
+                """
+                EXISTS (
+                    SELECT 1
+                    FROM custom_field_values cfv
+                    WHERE cfv.record_type = 'person'
+                      AND cfv.record_id = people.id
+                      AND lower(cfv.field_name) = lower('OPERATOR AVATAR')
+                      AND lower(coalesce(cfv.field_value, '')) LIKE lower(?)
+                )
+                """
+            )
+            values.append(f"%{operator_avatar}%")
         self.apply_list_quality_filter("people", clauses, quality_issue)
         self.apply_list_provenance_filter("people", clauses, provenance_filter)
         self.apply_people_lifecycle_filter(conn, clauses, lifecycle_filter)

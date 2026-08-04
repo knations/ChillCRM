@@ -3531,6 +3531,35 @@ button {
   margin-bottom: 0;
 }
 
+.detail-header-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.detail-header-meta div {
+  align-items: center;
+  background: var(--surface-soft);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: inline-flex;
+  gap: 8px;
+  min-height: 34px;
+  padding: 0 10px;
+}
+
+.detail-header-meta span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.detail-header-meta strong {
+  font-size: 13px;
+}
+
 .detail-title-row {
   align-items: start;
   display: grid;
@@ -4346,6 +4375,26 @@ button {
   margin: 0;
   overflow-wrap: anywhere;
   white-space: pre-wrap;
+}
+
+.operator-avatar-section {
+  background: var(--surface);
+}
+
+.operator-avatar-field {
+  display: grid;
+  gap: 6px;
+}
+
+.operator-avatar-field span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.operator-avatar-field input {
+  width: 100%;
 }
 
 .purchases-section {

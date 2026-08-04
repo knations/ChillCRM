@@ -5931,9 +5931,12 @@ function renderDetail(detail) {
   state.currentCleanupGroup = null;
   const record = detail.record;
   const subtitle = [record.email, formatPhoneDisplay(record.phone), formatPhoneDisplay(record.mobile), record.stage_name].filter(Boolean).join(" · ");
+  const operatorAvatar = detail.type === "person" ? personOperatorAvatar(detail) : "";
   els.detail.innerHTML = `
     <div class="detail-content">
-      ${detailHeader(record.name || "(blank)", subtitle || detail.type, detail)}
+      ${detailHeader(record.name || "(blank)", subtitle || detail.type, detail, {
+        headerMeta: operatorAvatar ? [{ label: "Operator Avatar", value: operatorAvatar }] : [],
+      })}
       <div id="detailActionError" class="form-error" hidden></div>
       ${detail.type === "person" ? personDetailBody(detail) : detail.type === "deal" ? dealDetailBody(detail) : defaultDetailBody(detail)}
     </div>
@@ -6350,6 +6353,29 @@ function personConversationSection(detail) {
   `;
 }
 
+function personOperatorAvatar(detail) {
+  return (
+    (detail.custom_fields || []).find((field) => String(field.field_name || "").trim().toLowerCase() === "operator avatar")?.field_value || ""
+  ).trim();
+}
+
+function personOperatorAvatarSection(detail) {
+  if (detail?.type !== "person") return "";
+  const avatarName = personOperatorAvatar(detail);
+  return `
+    <div class="detail-section operator-avatar-section">
+      <div class="inline-header">
+        <h3>Operator Avatar</h3>
+        <button class="text-button" id="saveOperatorAvatarButton" type="button">Save</button>
+      </div>
+      <label class="operator-avatar-field">
+        <span>OPERATOR AVATAR</span>
+        <input id="operatorAvatarInput" type="text" value="${escapeHtml(avatarName)}" placeholder="Name">
+      </label>
+    </div>
+  `;
+}
+
 function personVaultSection(detail) {
   const record = detail.record || {};
   const profile = applicationProfile(detail.application_profile || []);
@@ -6357,7 +6383,8 @@ function personVaultSection(detail) {
   const raw = keyValues(record);
   const quality = detailQualityPanel(detail);
   const owner = ownerSection(detail.owner);
-  const body = [profile, custom, quality, owner, raw].filter(Boolean).join("");
+  const operatorAvatar = personOperatorAvatarSection(detail);
+  const body = [operatorAvatar, profile, custom, quality, owner, raw].filter(Boolean).join("");
   if (!body) return "";
   return `
     <details class="detail-section person-vault-section">
@@ -6564,6 +6591,7 @@ function timelineEventClass(type) {
 function detailHeader(title, subtitle, detail = null, options = {}) {
   const mobileBackLabel = options.mobileBackLabel || mobileDetailBackLabel(detail);
   const hasProfileImageControl = detail?.type === "person";
+  const headerMeta = Array.isArray(options.headerMeta) ? options.headerMeta.filter((item) => item?.value) : [];
   const closeButton = detail
     ? `<button class="detail-close-button" type="button" aria-label="Close contact view" title="Close contact view">×</button>`
     : "";
@@ -6585,6 +6613,20 @@ function detailHeader(title, subtitle, detail = null, options = {}) {
             }
           </div>
           <div class="detail-subtitle">${escapeHtml(subtitle || "")}</div>
+          ${
+            headerMeta.length
+              ? `<div class="detail-header-meta">
+                  ${headerMeta
+                    .map((item) => `
+                      <div>
+                        <span>${escapeHtml(item.label || "")}</span>
+                        <strong>${escapeHtml(item.value || "")}</strong>
+                      </div>
+                    `)
+                    .join("")}
+                </div>`
+              : ""
+          }
         </div>
       </div>
     </div>
@@ -7763,6 +7805,26 @@ function wireDetailForms(detail) {
     tagsButton.addEventListener("click", async () => {
       const editor = document.querySelector("#tagEditor");
       await saveDetailTags(detail, editor.value, tagsButton, { progress: "Saving tags", success: "Tags saved", failure: "Tag save failed" });
+    });
+  }
+
+  const operatorAvatarButton = document.querySelector("#saveOperatorAvatarButton");
+  if (operatorAvatarButton && detail.type === "person") {
+    operatorAvatarButton.addEventListener("click", async () => {
+      const input = document.querySelector("#operatorAvatarInput");
+      await runDetailAction(
+        operatorAvatarButton,
+        { progress: "Saving avatar", success: "Avatar saved", failure: "Avatar save failed" },
+        async () => {
+          const updated = await postJson("/api/update_person_operator_avatar", {
+            id: detail.record.source_id,
+            operator_avatar: input?.value.trim() || "",
+          });
+          renderDetail(updated.detail);
+          await refreshCurrentListForDetail(updated.detail);
+          if (state.view === "activity") await renderActivity();
+        }
+      );
     });
   }
 
@@ -10105,7 +10167,7 @@ function formatProfileValue(field) {
 
 function customFields(fields, applicationFields = []) {
   const promoted = new Set(applicationFields.map((field) => field.field_name));
-  const remaining = fields.filter((field) => !promoted.has(field.field_name));
+  const remaining = fields.filter((field) => !promoted.has(field.field_name) && String(field.field_name || "").trim().toLowerCase() !== "operator avatar");
   if (!remaining.length) return "";
   return `
     <div class="detail-section">

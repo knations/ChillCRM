@@ -10334,7 +10334,6 @@ function tasksSection(tasks, options = {}) {
                 <input class="task-edit-due" type="date" value="${escapeHtml(taskDateInputValue(task.due_date))}">
               </label>
               <div class="task-line">
-                <div class="muted">${task.completed ? "Completed" : "Open"} · ${escapeHtml(task.task_source_label || "Imported")} ${task.due_date ? `· ${formatDate(task.due_date)}` : ""}</div>
                 <button class="text-button save-task-button" data-id="${task.source_id}">Save</button>
                 ${taskActionButton(task)}
               </div>

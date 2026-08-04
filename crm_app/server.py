@@ -98,7 +98,6 @@ LIST_SORT_OPTIONS = {
         "status": ("coalesce(people.customer_status, people.prospect_status)", "coalesce(people.customer_status, people.prospect_status) COLLATE NOCASE", "people.name COLLATE NOCASE"),
         "customer_status": ("people.customer_status", "people.customer_status COLLATE NOCASE", "people.name COLLATE NOCASE"),
         "prospect_status": ("people.prospect_status", "people.prospect_status COLLATE NOCASE", "people.name COLLATE NOCASE"),
-        "owner": ("u.name", "u.name COLLATE NOCASE", "people.name COLLATE NOCASE"),
         "created_at": ("people.created_at", "people.created_at", "people.name COLLATE NOCASE"),
         "updated_at": ("people.updated_at", "people.updated_at", "people.name COLLATE NOCASE"),
     },
@@ -198,7 +197,6 @@ LIST_QUALITY_ISSUES = {
         {"issue": "missing_contact", "label": "No email or phone/mobile"},
         {"issue": "missing_email", "label": "Missing email"},
         {"issue": "missing_phone", "label": "Missing phone/mobile"},
-        {"issue": "missing_owner", "label": "Missing owner"},
     ],
     "companies": [
         {"issue": "missing_contact", "label": "No email or phone"},
@@ -6771,7 +6769,6 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                 "records_missing_owner": conn.execute(
                     """
                     SELECT
-                      (SELECT count(*) FROM people WHERE owner_user_id IS NULL) +
                       (SELECT count(*) FROM companies WHERE owner_user_id IS NULL) +
                       (SELECT count(*) FROM leads WHERE owner_user_id IS NULL)
                     """
@@ -7447,7 +7444,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             profile_field = None
             profile_value = None
         owner_user_id = self.optional_int((params.get("owner_user_id", [""])[0] or "").strip())
-        if record_type not in {"people", "companies", "leads"}:
+        if record_type not in {"companies", "leads"}:
             owner_user_id = None
         operator_avatar = self.clean_optional(params.get("operator_avatar", [""])[0] if params.get("operator_avatar") else "")
         if record_type != "people":
@@ -7863,8 +7860,6 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                 clauses.append("coalesce(trim(people.email), '') = ''")
             elif quality_issue == "missing_phone":
                 clauses.append("coalesce(trim(people.phone), '') = '' AND coalesce(trim(people.mobile), '') = ''")
-            elif quality_issue == "missing_owner":
-                clauses.append("people.owner_user_id IS NULL")
         elif record_type == "companies":
             if quality_issue == "missing_contact":
                 clauses.append("coalesce(trim(companies.email), '') = '' AND coalesce(trim(companies.phone), '') = ''")
@@ -7956,9 +7951,9 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         return options
 
     def list_owner_filter_options(self, conn: sqlite3.Connection, record_type: str) -> list[dict[str, Any]]:
-        if record_type not in {"people", "companies", "leads"}:
+        if record_type not in {"companies", "leads"}:
             return []
-        table = {"people": "people", "companies": "companies", "leads": "leads"}[record_type]
+        table = {"companies": "companies", "leads": "leads"}[record_type]
         return rows_to_dicts(
             conn.execute(
                 f"""
@@ -8476,8 +8471,6 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                     issues.append({"issue": "missing_email", "label": "Missing email", "tone": "gold"})
                 if blank(record.get("phone")) and blank(record.get("mobile")):
                     issues.append({"issue": "missing_phone", "label": "Missing phone", "tone": "gold"})
-            if record.get("owner_user_id") is None:
-                issues.append({"issue": "missing_owner", "label": "Missing owner", "tone": "gold"})
         elif record_type == "companies":
             if blank(record.get("email")) and blank(record.get("phone")):
                 issues.append({"issue": "missing_contact", "label": "No contact", "tone": "coral"})
@@ -17652,25 +17645,6 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                 ),
             )
             add_rows(
-                "person_missing_owner",
-                "Person has no owner",
-                rows_to_dicts(
-                    conn.execute(
-                        """
-                        SELECT 'person' AS record_type, p.id AS record_id, p.name AS record_name,
-                               p.email, coalesce(nullif(p.phone, ''), p.mobile) AS phone,
-                               NULL AS owner_name,
-                               coalesce(nullif(p.customer_status, ''), nullif(p.prospect_status, ''), '') AS status_or_stage,
-                               p.updated_at,
-                               'No owner assigned' AS detail
-                        FROM people p
-                        WHERE p.owner_user_id IS NULL
-                        ORDER BY p.updated_at DESC, p.name COLLATE NOCASE
-                        """
-                    ).fetchall()
-                ),
-            )
-            add_rows(
                 "company_missing_owner",
                 "Company has no owner",
                 rows_to_dicts(
@@ -25725,7 +25699,6 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                 "mobile",
                 "company_id",
                 "title",
-                "owner_user_id",
                 "customer_status",
                 "prospect_status",
             }

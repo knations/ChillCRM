@@ -263,7 +263,6 @@ const listSortOptions = {
     ["email", "Email"],
     ["phone", "Phone"],
     ["status", "Status"],
-    ["owner", "Owner"],
     ["customer_status", "Customer Status"],
     ["prospect_status", "Prospect Status"],
   ],
@@ -304,7 +303,6 @@ const listQualityIssueLabels = {
     missing_contact: "No email or phone/mobile",
     missing_email: "Missing email",
     missing_phone: "Missing phone/mobile",
-    missing_owner: "Missing owner",
   },
   companies: {
     missing_contact: "No email or phone",
@@ -4100,7 +4098,7 @@ function profileFilterSupported(listType) {
 }
 
 function ownerFilterSupported(listType) {
-  return ["people", "companies", "leads"].includes(listType);
+  return ["companies", "leads"].includes(listType);
 }
 
 function ownerFilterControls(ownerOptions = []) {
@@ -5048,7 +5046,7 @@ async function renderCreateForm(listType) {
 }
 
 function createFields(type) {
-  if (type === "person") return ["name", "first_name", "last_name", "email", "phone", "mobile", "company_id", "title", "owner_user_id", "customer_status", "prospect_status"];
+  if (type === "person") return ["name", "first_name", "last_name", "email", "phone", "mobile", "company_id", "title", "customer_status", "prospect_status"];
   if (type === "company") return ["name", "email", "phone", "website", "owner_user_id", "customer_status", "prospect_status"];
   if (type === "lead") return ["name", "first_name", "last_name", "organization_name", "email", "phone", "mobile", "status", "owner_user_id"];
   if (type === "deal") return ["name", "person_id", "company_id", "stage_id", "value", "currency", "hot", "estimated_close_date"];
@@ -6365,19 +6363,20 @@ function personOperatorAvatarSection(detail) {
 
 function personVaultSection(detail) {
   const record = detail.record || {};
+  const rawRecord = { ...record };
+  delete rawRecord.owner_user_id;
   const profile = applicationProfile(detail.application_profile || []);
   const custom = customFields(detail.custom_fields || [], detail.application_profile || []);
-  const raw = keyValues(record);
+  const raw = keyValues(rawRecord);
   const quality = detailQualityPanel(detail);
-  const owner = ownerSection(detail.owner);
   const operatorAvatar = personOperatorAvatarSection(detail);
-  const body = [operatorAvatar, profile, custom, quality, owner, raw].filter(Boolean).join("");
+  const body = [operatorAvatar, profile, custom, quality, raw].filter(Boolean).join("");
   if (!body) return "";
   return `
     <details class="detail-section person-vault-section">
       <summary>
         <span>Profile Store</span>
-        <strong>Source, owner, custom fields, and raw record details</strong>
+        <strong>Source, custom fields, and raw record details</strong>
       </summary>
       <div class="person-vault-body">
         ${body}
@@ -7258,7 +7257,7 @@ function editForm(detail) {
 }
 
 function editableFields(type) {
-  if (type === "person") return ["name", "first_name", "last_name", "email", "phone", "mobile", "company_id", "title", "owner_user_id", "customer_status", "prospect_status"];
+  if (type === "person") return ["name", "first_name", "last_name", "email", "phone", "mobile", "company_id", "title", "customer_status", "prospect_status"];
   if (type === "company") return ["name", "email", "phone", "website", "owner_user_id", "customer_status", "prospect_status"];
   if (type === "lead") return ["name", "first_name", "last_name", "organization_name", "email", "phone", "mobile", "status", "owner_user_id"];
   if (type === "deal") return ["name", "person_id", "company_id", "stage_id", "value", "currency", "hot", "estimated_close_date"];

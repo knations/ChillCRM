@@ -122,6 +122,7 @@ const els = {
   environmentBadge: document.querySelector("#environmentBadge"),
   shell: document.querySelector(".app-shell"),
   dashboard: document.querySelector("#dashboardView"),
+  ownerBrief: document.querySelector("#ownerBriefView"),
   migrationStatus: document.querySelector("#migrationStatusView"),
   pipeline: document.querySelector("#pipelineView"),
   list: document.querySelector("#listView"),
@@ -507,7 +508,10 @@ function formatMoney(value, currency = "USD") {
 
 function formatDate(value) {
   if (!value) return "";
-  const date = new Date(value);
+  const plainDate = String(value).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  const date = plainDate
+    ? new Date(Number(plainDate[1]), Number(plainDate[2]) - 1, Number(plainDate[3]))
+    : new Date(value);
   if (Number.isNaN(date.getTime())) return value;
   return date.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
 }
@@ -738,6 +742,11 @@ function currentUserCanManageUsers() {
   return currentUserRoles().has("owner");
 }
 
+function currentUserCanViewOwnerBrief() {
+  if (!state.auth?.auth_required) return true;
+  return currentUserRoles().has("owner");
+}
+
 function currentUserCanEditTags() {
   if (!state.auth?.auth_required) return true;
   return ["owner", "admin", "staff"].some((role) => currentUserRoles().has(role));
@@ -748,7 +757,14 @@ function updateOwnerNavigation() {
   document.querySelectorAll(".owner-only-nav").forEach((button) => {
     button.hidden = !canManageUsers;
   });
+  const canViewOwnerBrief = currentUserCanViewOwnerBrief();
+  document.querySelectorAll(".owner-brief-nav").forEach((button) => {
+    button.hidden = !canViewOwnerBrief;
+  });
   if (!canManageUsers && state.view === "users") {
+    state.view = "dashboard";
+  }
+  if (!canViewOwnerBrief && state.view === "ownerBrief") {
     state.view = "dashboard";
   }
 }
@@ -1015,6 +1031,9 @@ async function runDetailAction(button, labels, action) {
 
 function setView(view) {
   closeMobileDetailView();
+  if (view === "ownerBrief" && !currentUserCanViewOwnerBrief()) {
+    view = "dashboard";
+  }
   if (view === "users" && !currentUserCanManageUsers()) {
     view = "dashboard";
   }
@@ -1029,6 +1048,7 @@ function setView(view) {
     ? els.list
     : {
         dashboard: els.dashboard,
+        ownerBrief: els.ownerBrief,
         migrationStatus: els.migrationStatus,
         pipeline: els.pipeline,
         tags: els.tags,
@@ -1045,6 +1065,8 @@ function setView(view) {
   updateRecordWorkspaceForView(view);
   if (view === "migrationStatus") {
     renderMigrationStatus();
+  } else if (view === "ownerBrief") {
+    renderOwnerBrief();
   } else if (view === "pipeline") {
     renderPipelineBoard();
   } else if (["people", "companies", "leads", "deals"].includes(view)) {
@@ -1103,6 +1125,7 @@ function viewDisplayLabel(view = state.view) {
     listTitles[view] ||
     {
       dashboard: "Dashboard",
+      ownerBrief: "Owner Brief",
       migrationStatus: "Status",
       pipeline: "Pipeline",
       tags: "Tags",
@@ -1604,6 +1627,99 @@ async function renderDashboard() {
   wireCleanupSummaryButtons(els.dashboard);
   wireProfileSegmentButtons(els.dashboard);
   setStatus("Ready");
+}
+
+async function renderOwnerBrief() {
+  setStatus("Loading owner brief");
+  state.mobileDetailReturnLabel = "Owner Brief";
+  const data = await fetchJson("/api/owner_brief");
+  els.ownerBrief.innerHTML = `
+    <div class="section-header owner-brief-header">
+      <div>
+        <h2>${escapeHtml(data.title || "Owner Brief")}</h2>
+        <p>${escapeHtml(data.subtitle || "This week action brief.")}</p>
+      </div>
+      <span class="pill">${escapeHtml(data.week_of ? `Week of ${formatDate(data.week_of)}` : "This Week")}</span>
+    </div>
+    <div class="owner-brief-source">
+      <div>
+        <strong>${escapeHtml(data.source?.label || "CRM action layer")}</strong>
+        <span>${escapeHtml(data.source?.drive_feed === "pending_connection" ? "Google Drive transcript feed pending connection" : "Drive feed connected")}</span>
+      </div>
+      ${data.source?.drive_folder_url ? `<a class="text-button" href="${escapeHtml(data.source.drive_folder_url)}" target="_blank" rel="noreferrer">Open Drive</a>` : ""}
+    </div>
+    <div class="owner-brief-metrics">
+      ${(data.metrics || []).map((item) => metric(item.label, item.value)).join("")}
+    </div>
+    <div class="owner-brief-sections">
+      ${(data.sections || []).map(ownerBriefSection).join("")}
+    </div>
+  `;
+  wireRecordButtons(els.ownerBrief);
+  wireOwnerBriefButtons(els.ownerBrief);
+  setStatus("Ready");
+}
+
+function ownerBriefSection(section) {
+  const items = section.items || [];
+  return `
+    <section class="owner-brief-section ${items.length ? "" : "empty"}">
+      <div class="band-header">
+        <div>
+          <h3>${escapeHtml(section.title || "Section")}</h3>
+          ${section.summary ? `<p>${escapeHtml(section.summary)}</p>` : ""}
+        </div>
+        <span class="muted">${formatNumber(items.length)}</span>
+      </div>
+      ${
+        items.length
+          ? `<div class="owner-brief-card-list">${items.map(ownerBriefCard).join("")}</div>`
+          : `<p class="muted owner-brief-empty">Nothing needs action here right now.</p>`
+      }
+    </section>
+  `;
+}
+
+function ownerBriefCard(item) {
+  const tone = item.tone || "neutral";
+  const meta = item.meta || [];
+  const recordType = item.record_type || "";
+  const recordId = item.record_id || "";
+  const canOpen = Boolean(recordType && recordId);
+  return `
+    <article class="owner-brief-card ${escapeHtml(tone)}">
+      <div class="owner-brief-card-main">
+        <div>
+          <span class="owner-brief-tone">${escapeHtml(labelize(tone))}</span>
+          <h4>${escapeHtml(item.title || "Brief item")}</h4>
+          <p>${escapeHtml(item.detail || "")}</p>
+        </div>
+        ${item.owner ? `<span class="owner-brief-owner">${escapeHtml(item.owner)}</span>` : ""}
+      </div>
+      ${meta.length ? `<div class="owner-brief-meta">${meta.map((part) => `<span>${escapeHtml(part)}</span>`).join("")}</div>` : ""}
+      <div class="owner-brief-actions">
+        ${
+          canOpen
+            ? `<button type="button" class="text-button record-button" data-type="${escapeHtml(recordType)}" data-id="${escapeHtml(recordId)}">${escapeHtml(item.action || "Open")}</button>`
+            : `<span class="muted">${escapeHtml(item.action || "Review")}</span>`
+        }
+        ${item.detail ? `<button type="button" class="text-button owner-brief-copy" data-copy="${escapeHtml(item.detail)}">Copy</button>` : ""}
+      </div>
+    </article>
+  `;
+}
+
+function wireOwnerBriefButtons(root) {
+  root.querySelectorAll(".owner-brief-copy").forEach((button) => {
+    button.addEventListener("click", async () => {
+      try {
+        await copyTextToClipboard(button.dataset.copy || "");
+        setStatus("Copied");
+      } catch (error) {
+        setStatus(error.message || "Copy failed");
+      }
+    });
+  });
 }
 
 async function renderPipelineBoard() {

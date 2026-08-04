@@ -802,6 +802,163 @@ button {
   margin-top: 14px;
 }
 
+.owner-brief-header .pill {
+  align-self: flex-start;
+}
+
+.owner-brief-source {
+  align-items: center;
+  background: #fbfaf7;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  margin-bottom: 14px;
+  padding: 12px 14px;
+}
+
+.owner-brief-source div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.owner-brief-source strong,
+.owner-brief-source span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.owner-brief-source span {
+  color: var(--muted);
+}
+
+.owner-brief-metrics {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-bottom: 14px;
+}
+
+.owner-brief-sections {
+  display: grid;
+  gap: 14px;
+}
+
+.owner-brief-section {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.owner-brief-section .band-header {
+  border-bottom: 1px solid var(--line);
+}
+
+.owner-brief-section .band-header p {
+  color: var(--muted);
+  margin: 5px 0 0;
+}
+
+.owner-brief-card-list {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+}
+
+.owner-brief-card {
+  background: #fffdf9;
+  border: 1px solid var(--line);
+  border-left: 4px solid #cfc6b7;
+  border-radius: 8px;
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 12px;
+}
+
+.owner-brief-card.attention,
+.owner-brief-card.risk {
+  border-left-color: #d87861;
+}
+
+.owner-brief-card.win {
+  border-left-color: #4f9b6a;
+}
+
+.owner-brief-card.decision {
+  border-left-color: #c9963e;
+}
+
+.owner-brief-card.quiet {
+  border-left-color: #8d8275;
+}
+
+.owner-brief-card.summary {
+  border-left-color: #2f7a54;
+}
+
+.owner-brief-card-main {
+  align-items: start;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.owner-brief-card-main > div {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.owner-brief-tone,
+.owner-brief-owner {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.owner-brief-card h4 {
+  font-size: 18px;
+  line-height: 1.15;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.owner-brief-card p {
+  color: var(--muted);
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.owner-brief-meta,
+.owner-brief-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.owner-brief-meta span {
+  background: var(--surface-soft);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 12px;
+  padding: 4px 8px;
+}
+
+.owner-brief-actions .text-button {
+  min-height: 34px;
+}
+
+.owner-brief-empty {
+  margin: 0;
+  padding: 14px;
+}
+
 .deal-next-action-panel {
   border-color: #d8cdbb;
 }
@@ -6147,6 +6304,24 @@ button {
 
   .sales-command-metrics {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .owner-brief-source,
+  .owner-brief-card-main {
+    align-items: stretch;
+    grid-template-columns: 1fr;
+  }
+
+  .owner-brief-source {
+    flex-direction: column;
+  }
+
+  .owner-brief-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .owner-brief-card-list {
+    padding: 10px;
   }
 
   .dashboard-snapshot-grid {

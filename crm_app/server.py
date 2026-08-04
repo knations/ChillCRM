@@ -1426,6 +1426,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         "manual_backup": frozenset({"owner", "admin", "migration_operator"}),
         "restore_backup": frozenset({"owner"}),
         "manage_users_roles": frozenset({"owner"}),
+        "view_owner_brief": frozenset({"owner"}),
         "change_own_password": frozenset({"owner", "admin", "staff", "read_only", "migration_operator"}),
         "hosted_cutover": frozenset({"owner", "migration_operator"}),
         "inbound_purchase_webhook": frozenset({"owner", "admin"}),
@@ -1433,6 +1434,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
     }
     get_permission_actions = {
         "/api/summary": "view_dashboard_reports",
+        "/api/owner_brief": "view_owner_brief",
         "/api/migration_status": "view_dashboard_reports",
         "/api/production_gates": "view_dashboard_reports",
         "/api/project_decisions": "view_dashboard_reports",
@@ -3612,6 +3614,8 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                 self.send_file(APP_DIR / path.lstrip("/"))
             elif path == "/api/summary":
                 self.send_json(self.summary())
+            elif path == "/api/owner_brief":
+                self.send_json(self.owner_brief())
             elif path == "/api/migration_status":
                 self.send_json(self.migration_status())
             elif path == "/api/production_gates":
@@ -4993,6 +4997,244 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             "hot_deals": hot_deals,
             "new_leads": new_leads,
             "recent_purchases": recent_purchases,
+        }
+
+    def owner_brief_card(
+        self,
+        title: str,
+        detail: str,
+        *,
+        tone: str = "neutral",
+        owner: str = "",
+        action: str = "",
+        record_type: str = "",
+        record_id: Any = None,
+        person_name: str = "",
+        meta: list[Any] | None = None,
+    ) -> dict[str, Any]:
+        return {
+            "title": title,
+            "detail": detail,
+            "tone": tone,
+            "owner": owner,
+            "action": action,
+            "record_type": record_type,
+            "record_id": record_id,
+            "person_name": person_name,
+            "meta": [str(item) for item in (meta or []) if self.clean_optional(item)],
+        }
+
+    def owner_brief(self) -> dict[str, Any]:
+        today = date.today()
+        latest_monday = today - timedelta(days=today.weekday())
+        stale_cutoff = (today - timedelta(days=30)).isoformat()
+        with self.db() as conn:
+            sales = self.sales_command_center()
+            overdue_tasks = self.task_rows(conn, "overdue", 8, 0)
+            due_today_tasks = self.task_rows(conn, "due_today", 8, 0)
+            recent_purchases = self.recent_purchase_rows(conn, limit=8)
+            stale_deals = sales.get("stale_deals") or []
+            quiet_people = rows_to_dicts(
+                conn.execute(
+                    """
+                    SELECT p.id AS source_id, p.name, p.email, p.phone, p.updated_at,
+                           coalesce(lrl.lifecycle_status, 'active') AS lifecycle_status
+                    FROM people p
+                    LEFT JOIN local_record_lifecycle lrl
+                      ON lrl.record_type = 'person'
+                     AND lrl.record_id = p.id
+                    WHERE coalesce(lrl.lifecycle_status, 'active') != 'inactive'
+                      AND p.updated_at IS NOT NULL
+                      AND p.updated_at < ?
+                    ORDER BY p.updated_at ASC, p.name COLLATE NOCASE
+                    LIMIT 8
+                    """,
+                    (stale_cutoff,),
+                ).fetchall()
+            )
+
+        task_cards = [
+            self.owner_brief_card(
+                task.get("content") or "Follow-up",
+                f"{task.get('record_name') or labelize(task.get('record_type') or 'record')} needs follow-up.",
+                tone="attention",
+                owner="Kevin / Alicia",
+                action="Open task record",
+                record_type=task.get("record_type") or "",
+                record_id=task.get("record_id"),
+                person_name=task.get("record_name") or "",
+                meta=[task.get("due_date") and f"Due {task.get('due_date')}", task.get("task_source_label")],
+            )
+            for task in (overdue_tasks + due_today_tasks)[:8]
+        ]
+        purchase_cards = [
+            self.owner_brief_card(
+                purchase.get("name") or "Recent purchase",
+                purchase.get("match_context") or purchase.get("product_name") or "Purchase activity received.",
+                tone="win",
+                owner="Alicia",
+                action="Celebrate or confirm next step",
+                record_type=purchase.get("type") or "person",
+                record_id=purchase.get("source_id"),
+                person_name=purchase.get("name") or "",
+                meta=[purchase.get("updated_at"), purchase.get("cart_source")],
+            )
+            for purchase in recent_purchases[:6]
+        ]
+        risk_cards = [
+            self.owner_brief_card(
+                deal.get("name") or "Stale deal",
+                deal.get("match_context") or "No recent movement.",
+                tone="risk",
+                owner="Kevin",
+                action="Decide next sales action",
+                record_type="deal",
+                record_id=deal.get("source_id"),
+                person_name=deal.get("name") or "",
+                meta=[deal.get("stage_name"), deal.get("updated_at")],
+            )
+            for deal in stale_deals[:5]
+        ]
+        risk_cards.extend(
+            self.owner_brief_card(
+                person.get("name") or "Quiet member",
+                "No recent CRM movement. Decide whether this deserves a personal touch.",
+                tone="quiet",
+                owner="Kevin / Alicia",
+                action="Check relationship state",
+                record_type="person",
+                record_id=person.get("source_id"),
+                person_name=person.get("name") or "",
+                meta=[person.get("updated_at"), person.get("email")],
+            )
+            for person in quiet_people[:5]
+        )
+
+        missing_followup = int((sales.get("deal_followup_counts") or {}).get("missing") or 0)
+        won_missing_upgrade = int((sales.get("deal_followup_counts") or {}).get("won_missing_upgrade") or 0)
+        open_questions = []
+        if missing_followup:
+            open_questions.append(
+                self.owner_brief_card(
+                    "Which deals need a follow-up date?",
+                    f"{missing_followup} deal{'s' if missing_followup != 1 else ''} still need a Follow Up date.",
+                    tone="decision",
+                    owner="Kevin",
+                    action="Review Pipeline",
+                    record_type="",
+                    record_id=None,
+                    meta=["Pipeline hygiene"],
+                )
+            )
+        if won_missing_upgrade:
+            open_questions.append(
+                self.owner_brief_card(
+                    "Which won clients should be upgraded?",
+                    f"{won_missing_upgrade} won deal{'s' if won_missing_upgrade != 1 else ''} need an Upgrade To choice.",
+                    tone="decision",
+                    owner="Kevin",
+                    action="Choose upgrade path",
+                    record_type="",
+                    record_id=None,
+                    meta=["Family Mastermind / Renewal / Other"],
+                )
+            )
+
+        top_attention = len(task_cards) + len(risk_cards)
+        top_wins = len(purchase_cards)
+        sections = [
+            {
+                "key": "latest_monday_brief",
+                "title": "Latest Monday Brief",
+                "summary": "CRM-derived action view until the Google Drive transcript feed is connected.",
+                "items": [
+                    self.owner_brief_card(
+                        "This Week Action Brief",
+                        f"{top_attention} attention item{'s' if top_attention != 1 else ''}, {top_wins} win signal{'s' if top_wins != 1 else ''}, and {len(open_questions)} Kevin decision queue item{'s' if len(open_questions) != 1 else ''}.",
+                        tone="summary",
+                        owner="Kevin / Alicia",
+                        action="Review below",
+                        meta=[f"Week of {latest_monday.isoformat()}", "Mobile-first"],
+                    )
+                ],
+            },
+            {
+                "key": "alicia_brief",
+                "title": "Alicia Brief",
+                "summary": "Care, support, and operational follow-through.",
+                "items": purchase_cards[:3] + task_cards[:3],
+            },
+            {
+                "key": "kevin_commitments",
+                "title": "Kevin Commitments",
+                "summary": "Strategic follow-through and sales decisions.",
+                "items": task_cards[:5],
+            },
+            {
+                "key": "alicia_action_items",
+                "title": "Alicia Action Items",
+                "summary": "Touchpoints and support loops worth moving this week.",
+                "items": purchase_cards[:4],
+            },
+            {
+                "key": "member_signals",
+                "title": "Member Wins / Risks / Signals",
+                "summary": "Wins to celebrate and quiet/risk signals to review.",
+                "items": (purchase_cards + risk_cards)[:10],
+            },
+            {
+                "key": "suggested_followups",
+                "title": "Suggested Follow-Ups",
+                "summary": "Editable prompts for the people most worth touching.",
+                "items": (task_cards + purchase_cards + risk_cards)[:8],
+            },
+            {
+                "key": "open_questions",
+                "title": "Open Questions for Kevin",
+                "summary": "Decision points blocking cleaner execution.",
+                "items": open_questions,
+            },
+            {
+                "key": "deferred_reports",
+                "title": "Desktop / Weekly Report",
+                "summary": "These belong in the fuller report, not the mobile cockpit.",
+                "items": [
+                    self.owner_brief_card(
+                        "Decisions Made",
+                        "Show here after transcript review/import is connected and Kevin approves decisions.",
+                        tone="reference",
+                        owner="Kevin",
+                        action="Connect Drive feed",
+                    ),
+                    self.owner_brief_card(
+                        "Product / Content / Sales Ideas",
+                        "Keep idea volume in the weekly report or desktop archive so the mobile CRM stays action-first.",
+                        tone="reference",
+                        owner="Kevin / Alicia",
+                        action="Review in full brief",
+                    ),
+                ],
+            },
+        ]
+        return {
+            "ok": True,
+            "title": "Owner Brief",
+            "subtitle": "This Week Action Brief for Kevin and Alicia.",
+            "week_of": latest_monday.isoformat(),
+            "generated_at": now_iso(),
+            "source": {
+                "mode": "crm_state",
+                "label": "CRM action layer",
+                "drive_feed": "pending_connection",
+                "drive_folder_url": os.environ.get("CHILLCRM_OWNER_BRIEF_DRIVE_FOLDER_URL", "").strip(),
+            },
+            "metrics": [
+                {"label": "Attention", "value": top_attention},
+                {"label": "Wins", "value": top_wins},
+                {"label": "Kevin Decisions", "value": len(open_questions)},
+                {"label": "Follow-Ups", "value": len(task_cards)},
+            ],
+            "sections": sections,
         }
 
     def recent_purchase_rows(self, conn: Any, limit: int = 6) -> list[dict[str, Any]]:

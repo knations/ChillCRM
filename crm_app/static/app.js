@@ -6231,7 +6231,7 @@ function personDetailBody(detail) {
     .filter(Boolean)
     .join("");
   const sidebarSections = [
-    tasksSection(detail.tasks || [], { title: "Task List" }),
+    tasksSection(detail.tasks || [], { title: "Task List", compact: true }),
     purchasesSection(detail.purchases || []),
     archiveItems(fileItems, {
       title: "Files",
@@ -10321,25 +10321,38 @@ function notesSection(notes) {
 function tasksSection(tasks, options = {}) {
   if (!tasks.length) return "";
   const sectionTitle = options.title || "Tasks";
+  const compact = Boolean(options.compact);
   return `
-    <div class="detail-section">
+    <div class="detail-section ${compact ? "compact-task-section" : ""}">
       <h3>${escapeHtml(sectionTitle)}</h3>
       ${tasks
-        .map((task) => `
-          <div class="note task-edit-card">
-            <textarea class="task-edit-content note-input compact-input" rows="3">${escapeHtml(task.content || "")}</textarea>
-            <div class="task-edit-row">
-              <label>
-                <span>Due</span>
-                <input class="task-edit-due" type="date" value="${escapeHtml(taskDateInputValue(task.due_date))}">
-              </label>
-              <div class="task-line">
-                <button class="text-button save-task-button" data-id="${task.source_id}">Save</button>
-                ${taskActionButton(task)}
+        .map((task) =>
+          compact
+            ? `
+              <div class="note compact-task-card">
+                <p>${escapeHtml(task.content || "Task")}</p>
+                <div class="compact-task-footer">
+                  ${task.due_date ? `<span>${escapeHtml(formatDate(task.due_date))}</span>` : ""}
+                  ${taskActionButton(task)}
+                </div>
               </div>
-            </div>
-          </div>
-        `)
+            `
+            : `
+              <div class="note task-edit-card">
+                <textarea class="task-edit-content note-input compact-input" rows="3">${escapeHtml(task.content || "")}</textarea>
+                <div class="task-edit-row">
+                  <label>
+                    <span>Due</span>
+                    <input class="task-edit-due" type="date" value="${escapeHtml(taskDateInputValue(task.due_date))}">
+                  </label>
+                  <div class="task-line">
+                    <button class="text-button save-task-button" data-id="${task.source_id}">Save</button>
+                    ${taskActionButton(task)}
+                  </div>
+                </div>
+              </div>
+            `
+        )
         .join("")}
     </div>
   `;

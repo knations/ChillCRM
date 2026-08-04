@@ -4144,6 +4144,34 @@ button {
   gap: 10px;
 }
 
+.compact-task-section {
+  display: grid;
+  gap: 8px;
+}
+
+.compact-task-card {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+}
+
+.compact-task-card p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.compact-task-footer {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+.compact-task-footer span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .review-flag {
   border: 1px solid var(--line);
   border-radius: 8px;

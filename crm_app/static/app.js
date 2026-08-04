@@ -4575,6 +4575,12 @@ function addTagNameToEditorValue(value, tagName) {
   return tagEditorValueFromNames([...current, tagName.trim()]);
 }
 
+function removeTagNameFromEditorValue(value, tagName) {
+  const normalized = String(tagName || "").trim().toLowerCase();
+  if (!normalized) return tagEditorValueFromNames(tagNamesFromEditorValue(value));
+  return tagEditorValueFromNames(tagNamesFromEditorValue(value).filter((tag) => tag.toLowerCase() !== normalized));
+}
+
 async function fetchListTagSuggestions(query) {
   const params = new URLSearchParams({ page_size: "100" });
   if (query) params.set("q", query);
@@ -7760,6 +7766,20 @@ function wireDetailForms(detail) {
     });
   }
 
+  document.querySelectorAll(".person-tag-remove-button").forEach((button) => {
+    button.addEventListener("click", () => {
+      const editor = document.querySelector("#tagEditor");
+      if (!editor) return;
+      const tagSection = button.closest(".detail-section");
+      editor.value = removeTagNameFromEditorValue(editor.value, button.dataset.tag || "");
+      button.closest(".person-tag-chip")?.remove();
+      if (!tagSection?.querySelector(".person-tag-chip")) {
+        tagSection?.querySelector(".tag-list")?.insertAdjacentHTML("beforeend", `<span class="muted">No tags saved.</span>`);
+      }
+      setStatus("Tag staged for removal. Save to apply.");
+    });
+  });
+
   const noteButton = document.querySelector("#addNoteButton");
   if (noteButton) {
     noteButton.addEventListener("click", async () => {
@@ -9848,6 +9868,20 @@ function personTagPicker(detail) {
 
 function detailTags(detail, tags) {
   const canAddPersonTag = detail?.type === "person";
+  const tagItems = tags.length
+    ? tags
+        .map((tag) => `
+          <span class="tag person-tag-chip">
+            <span>${escapeHtml(tag)}</span>
+            ${
+              canAddPersonTag
+                ? `<button class="person-tag-remove-button" type="button" data-tag="${escapeHtml(tag)}" title="Remove ${escapeHtml(tag)}" aria-label="Remove ${escapeHtml(tag)}">×</button>`
+                : ""
+            }
+          </span>
+        `)
+        .join("")
+    : `<span class="muted">No tags saved.</span>`;
   return `
     <div class="detail-section">
       <div class="inline-header">
@@ -9857,7 +9891,7 @@ function detailTags(detail, tags) {
           <button class="text-button" id="saveTagsButton" type="button">Save</button>
         </div>
       </div>
-      <div class="tag-list">${tags.length ? tags.map((tag) => `<span class="tag">${escapeHtml(tag)}</span>`).join("") : `<span class="muted">No tags saved.</span>`}</div>
+      <div class="tag-list">${tagItems}</div>
       ${personTagPicker(detail)}
       <input id="tagEditor" type="hidden" value="${escapeHtml(tags.join(", "))}">
     </div>

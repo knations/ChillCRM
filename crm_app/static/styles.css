@@ -4986,12 +4986,37 @@ button {
 .tag {
   display: inline-flex;
   align-items: center;
+  gap: 6px;
   min-height: 26px;
   border-radius: 8px;
   padding: 0 9px;
   background: #f1eee7;
   color: var(--ink);
   font-size: 12px;
+}
+
+.person-tag-remove-button {
+  align-items: center;
+  appearance: none;
+  background: transparent;
+  border: 0;
+  border-radius: 999px;
+  color: var(--muted);
+  cursor: pointer;
+  display: inline-flex;
+  font: inherit;
+  height: 18px;
+  justify-content: center;
+  line-height: 1;
+  padding: 0;
+  width: 18px;
+}
+
+.person-tag-remove-button:hover,
+.person-tag-remove-button:focus-visible {
+  background: rgba(154, 56, 38, 0.12);
+  color: var(--danger);
+  outline: none;
 }
 
 .compact-tags {
@@ -6898,6 +6923,10 @@ button {
 
   .app-shell.mobile-detail-open .person-tag-picker .text-button {
     width: 100%;
+  }
+
+  .app-shell.mobile-detail-open .person-tag-remove-button {
+    display: none;
   }
 
   .app-shell.mobile-detail-open .edit-grid,

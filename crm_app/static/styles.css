@@ -3097,50 +3097,12 @@ button {
   grid-template-columns: minmax(0, 1.45fr) minmax(300px, 0.85fr);
 }
 
-.person-command-strip {
-  background: #fffdf8;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  display: grid;
-  gap: 10px;
-  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr) minmax(0, 1fr);
-  padding: 12px;
-}
-
-.person-command-card {
-  background: var(--surface);
-  border: 1px solid rgba(214, 206, 193, 0.78);
-  border-radius: 8px;
-  display: grid;
-  gap: 6px;
-  min-height: 104px;
-  min-width: 0;
-  padding: 14px;
-}
-
-.person-command-card.primary {
-  border-color: #b7d7c5;
-  background: #f2fbf6;
-}
-
-.person-command-card span,
 .person-vault-section summary span {
   color: var(--muted);
   font-size: 12px;
   font-weight: 800;
   letter-spacing: 0;
   text-transform: uppercase;
-}
-
-.person-command-card strong {
-  font-size: 18px;
-  line-height: 1.25;
-  overflow-wrap: anywhere;
-}
-
-.person-command-card small {
-  color: var(--muted);
-  font-size: 12px;
 }
 
 .person-action-section,
@@ -5922,8 +5884,7 @@ button {
   }
 
   .person-detail-overview,
-  .person-detail-layout,
-  .person-command-strip {
+  .person-detail-layout {
     grid-template-columns: 1fr;
   }
 

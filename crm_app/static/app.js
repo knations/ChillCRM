@@ -6220,7 +6220,6 @@ function personDetailBody(detail) {
   const record = detail.record || {};
   const fileItems = [...(detail.record_files || []), ...(detail.archive_items || [])];
   const mainSections = [
-    personCommandStrip(detail),
     contactActions(detail, { title: "Contact" }),
     personNextStepSection(detail),
     personConversationSection(detail),
@@ -6267,42 +6266,6 @@ function personDetailBody(detail) {
         <div class="person-detail-sidebar">
           ${sidebarSections}
         </div>
-      </div>
-    </div>
-  `;
-}
-
-function personCommandStrip(detail) {
-  const record = detail.record || {};
-  const tasks = (detail.tasks || []).filter((task) => !task.completed);
-  const topTask = [...tasks].sort((a, b) => String(a.due_date || "9999-12-31").localeCompare(String(b.due_date || "9999-12-31")))[0] || null;
-  const timelineEvent = (detail.timeline || [])[0] || null;
-  const factItems = [
-    detail.purchases?.length ? `${formatNumber(detail.purchases.length)} purchase${detail.purchases.length === 1 ? "" : "s"}` : "",
-    detail.record_files?.length || detail.archive_items?.length ? `${formatNumber((detail.record_files || []).length + (detail.archive_items || []).length)} file${((detail.record_files || []).length + (detail.archive_items || []).length) === 1 ? "" : "s"}` : "",
-    detail.tags?.length ? `${formatNumber(detail.tags.length)} tag${detail.tags.length === 1 ? "" : "s"}` : "",
-  ].filter(Boolean);
-  const nextLabel = topTask
-    ? `${topTask.due_date ? `${formatDate(topTask.due_date)} · ` : ""}${topTask.content || "Follow up"}`
-    : "No open task";
-  const lastLabel = timelineEvent
-    ? `${timelineEvent.label || labelize(timelineEvent.event_type || "activity")} · ${formatDateTime(timelineEvent.occurred_at || "")}`
-    : "No recent history";
-  const owner = detail.owner?.name || record.owner_name || "";
-  return `
-    <div class="detail-section person-command-strip">
-      <div class="person-command-card primary">
-        <span>Next</span>
-        <strong>${escapeHtml(nextLabel)}</strong>
-      </div>
-      <div class="person-command-card">
-        <span>Last Touch</span>
-        <strong>${escapeHtml(lastLabel)}</strong>
-      </div>
-      <div class="person-command-card">
-        <span>Stored Intel</span>
-        <strong>${escapeHtml(factItems.length ? factItems.join(" · ") : "Ready for detail")}</strong>
-        ${owner ? `<small>Owner: ${escapeHtml(owner)}</small>` : ""}
       </div>
     </div>
   `;

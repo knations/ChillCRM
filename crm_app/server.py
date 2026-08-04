@@ -24161,15 +24161,19 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                         ),
                     )
                 else:
+                    address_id = self.next_hosted_primary_key(conn, "local_addresses")
+                    id_column = "id, " if address_id is not None else ""
+                    id_placeholder = "?, " if address_id is not None else ""
                     conn.execute(
-                        """
+                        f"""
                         INSERT INTO local_addresses (
-                            record_type, record_id, address_key, label, line1, line2,
+                            {id_column}record_type, record_id, address_key, label, line1, line2,
                             city, state, postal_code, country, source, created_at, updated_at
                         )
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'local', ?, ?)
+                        VALUES ({id_placeholder}?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'local', ?, ?)
                         """,
                         (
+                            *((address_id,) if address_id is not None else ()),
                             record_type,
                             record_id,
                             change["address_key"],

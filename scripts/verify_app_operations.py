@@ -2361,6 +2361,47 @@ def main() -> int:
         assert any(row["type"] == "person" and row["source_id"] == 2 for row in address_search)
         imported_address_search = handler.search({"q": ["Chicago"]})["results"]
         assert any(row.get("match_context", "").startswith("Primary Address") for row in imported_address_search)
+        new_address_person = handler.create_record(
+            {
+                "type": "person",
+                "fields": {
+                    "name": "Operations Blank Address Person",
+                    "email": "operations-blank-address@example.test",
+                },
+            }
+        )
+        new_address_person_id = new_address_person["detail"]["record"]["source_id"]
+        assert any(address["address_key"] == "address" for address in new_address_person["detail"]["addresses"])
+        assert any(address["address_key"] == "billing_address" for address in new_address_person["detail"]["addresses"])
+        saved_new_addresses = handler.update_addresses(
+            {
+                "type": "person",
+                "id": new_address_person_id,
+                "addresses": [
+                    {
+                        "address_key": "address",
+                        "line1": "123 New Person Lane",
+                        "line2": "Suite A",
+                        "city": "Address City",
+                        "state": "OH",
+                        "postal_code": "43215",
+                        "country": "USA",
+                    },
+                    {
+                        "address_key": "billing_address",
+                        "line1": "456 Billing Person Road",
+                        "line2": "",
+                        "city": "Billing City",
+                        "state": "TX",
+                        "postal_code": "78701",
+                        "country": "USA",
+                    },
+                ],
+            }
+        )
+        saved_address_map = {address["address_key"]: address for address in saved_new_addresses["detail"]["addresses"]}
+        assert saved_address_map["address"]["line1"] == "123 New Person Lane"
+        assert saved_address_map["billing_address"]["line1"] == "456 Billing Person Road"
 
         noted = handler.add_note(
             {

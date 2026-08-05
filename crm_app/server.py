@@ -4127,7 +4127,10 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         raw = self.read_body_text()
         if not raw:
             return {}
-        payload = json.loads(raw)
+        try:
+            payload = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            raise ValueError("Request body must be valid JSON.") from exc
         if not isinstance(payload, dict):
             raise ValueError("Expected a JSON object.")
         return payload
@@ -4138,7 +4141,10 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             return {}
         content_type = str(self.headers.get("Content-Type", "")).lower()
         if "json" in content_type:
-            payload = json.loads(raw)
+            try:
+                payload = json.loads(raw)
+            except json.JSONDecodeError as exc:
+                raise ValueError("Request body must be valid JSON.") from exc
             if not isinstance(payload, dict):
                 raise ValueError("Expected a JSON object.")
             return {str(key): value for key, value in payload.items()}

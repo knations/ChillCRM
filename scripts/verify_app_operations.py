@@ -2083,6 +2083,21 @@ def main() -> int:
                 raise AssertionError("Invalid UTF-8 request body should be rejected.")
             except ValueError as exc:
                 assert "valid UTF-8" in str(exc)
+            body_handler.headers = {"Content-Length": "1"}
+            body_handler.rfile = io.BytesIO(b"{")
+            try:
+                body_handler.read_json_body()
+                raise AssertionError("Malformed JSON body should be rejected.")
+            except ValueError as exc:
+                assert "valid JSON" in str(exc)
+            webhook_handler = server.CRMRequestHandler.__new__(server.CRMRequestHandler)
+            webhook_handler.headers = {"Content-Length": "1", "Content-Type": "application/json"}
+            webhook_handler.rfile = io.BytesIO(b"{")
+            try:
+                webhook_handler.read_webhook_body()
+                raise AssertionError("Malformed JSON webhook should be rejected.")
+            except ValueError as exc:
+                assert "valid JSON" in str(exc)
             assert handler.response_filename('../bad"\r\nname.csv', "export.csv") == "badname.csv"
             assert handler.response_filename("", "export.csv") == "export.csv"
             assert handler.safe_redirect_url("https://example.supabase.co/storage/v1/object/sign/file") == "https://example.supabase.co/storage/v1/object/sign/file"

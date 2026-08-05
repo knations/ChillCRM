@@ -4665,6 +4665,12 @@ def main() -> int:
         production_gates = migration_status["production_gates"]
         assert production_gates["latest_url"].startswith("https://chillcrm-")
         assert production_gates["passed"] >= 15
+        if (production_gates.get("hosted_write_enablement") or {}).get("status") == "hosted_writes_enabled":
+            freshness = production_gates.get("evidence_freshness") or {}
+            assert freshness["readiness_generated_at"]
+            assert freshness["hosted_write_enablement_generated_at"]
+            assert "readiness_needs_hosted_write_reconciliation" in freshness
+            assert freshness["status"] in {"refresh_remote_production_readiness", "current_or_not_applicable"}
         assert production_gates["failed"] == 0
         blocking_gate_keys = {item["key"] for item in production_gates["blocking_gate_items"]}
         redeploy_required = "hosted_deployment_freshness" in blocking_gate_keys

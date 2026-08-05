@@ -4368,6 +4368,19 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         summary = next((row for row in readiness_rows if row.get("row_type") == "summary"), {})
         remaining_summary = next((row for row in remaining_rows if row.get("row_type") == "summary"), {})
         enablement_summary = next((row for row in enablement_rows if row.get("row_type") == "summary"), {})
+        readiness_generated_at = summary.get("generated_at") or ""
+        enablement_generated_at = enablement_summary.get("generated_at") or ""
+        readiness_needs_hosted_write_reconciliation = (
+            enablement_summary.get("status") == "hosted_writes_enabled"
+            and bool(readiness_generated_at)
+            and bool(enablement_generated_at)
+            and (summary.get("production_gate") or "") != "pass"
+        )
+        readiness_newer_than_write_enablement = (
+            bool(readiness_generated_at)
+            and bool(enablement_generated_at)
+            and readiness_generated_at > enablement_generated_at
+        )
         blocking_gates = [
             {
                 "key": row.get("key") or "",
@@ -4444,6 +4457,15 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                 "remote_write_lock": enablement_summary.get("remote_write_lock") or "",
                 "source_of_truth": enablement_summary.get("source_of_truth") or "",
                 "report": "/reports/hosted_write_enablement.md",
+            },
+            "evidence_freshness": {
+                "readiness_generated_at": readiness_generated_at,
+                "hosted_write_enablement_generated_at": enablement_generated_at,
+                "readiness_newer_than_write_enablement": readiness_newer_than_write_enablement,
+                "readiness_needs_hosted_write_reconciliation": readiness_needs_hosted_write_reconciliation,
+                "status": "refresh_remote_production_readiness"
+                if readiness_needs_hosted_write_reconciliation
+                else "current_or_not_applicable",
             },
             "reports": {
                 "readiness": "/reports/remote_production_readiness.md",

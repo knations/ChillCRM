@@ -400,7 +400,7 @@ def main() -> int:
     assert "def send_static_file" in server_py
     assert 'request_path.removeprefix("/static/")' in server_py
     assert "static_root not in target.parents" in server_py
-    assert 'app.js?v=20260805-security-hardening-1' in index_html
+    assert 'app.js?v=20260805-security-hardening-2' in index_html
     assert '"private, max-age=300, must-revalidate"' in server_py
     assert '"public, max-age=31536000, immutable"' not in server_py
     assert "def should_write_response_body" in server_py

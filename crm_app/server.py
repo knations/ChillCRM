@@ -34,6 +34,33 @@ from pathlib import Path
 from typing import Any
 
 try:
+    from crm_app.database import (
+        POSTGRES_ADAPTER_VALUES,
+        PostgresCompatConnection,
+        PostgresCompatRow,
+        hosted_postgres_adapter_enabled_from_env,
+        postgres_parameters_for_sql,
+        postgres_ssl_context,
+        postgres_statement_timeout_ms,
+        translate_sqlite_parameters,
+        translate_sqlite_sql_for_postgres,
+    )
+    from crm_app import runtime_health
+except ImportError:  # pragma: no cover - supports direct local execution
+    from database import (  # type: ignore
+        POSTGRES_ADAPTER_VALUES,
+        PostgresCompatConnection,
+        PostgresCompatRow,
+        hosted_postgres_adapter_enabled_from_env,
+        postgres_parameters_for_sql,
+        postgres_ssl_context,
+        postgres_statement_timeout_ms,
+        translate_sqlite_parameters,
+        translate_sqlite_sql_for_postgres,
+    )
+    import runtime_health  # type: ignore
+
+try:
     from cryptography.exceptions import InvalidSignature
     from cryptography.hazmat.primitives import hashes
     from cryptography.hazmat.primitives.asymmetric import ec
@@ -518,7 +545,6 @@ CLEANUP_POLICY_LANES = {
     },
 }
 URL_RE = re.compile(r"https?://[^\s<>'\"]+")
-POSTGRES_ADAPTER_VALUES = {"postgres", "hosted_postgres", "supabase"}
 AUTH_COOKIE_NAME = "chillcrm_session"
 AUTH_LOGIN_MAX_FAILURES = 6
 AUTH_LOGIN_FAILURE_WINDOW_SECONDS = 10 * 60
@@ -545,121 +571,6 @@ MAX_JSON_BODY_BYTES = 5_000_000
 
 class RequestBodyTooLarge(ValueError):
     pass
-
-
-def postgres_statement_timeout_ms() -> int:
-    raw = os.environ.get("CHILLCRM_POSTGRES_STATEMENT_TIMEOUT_MS", "").strip()
-    try:
-        timeout_ms = int(raw) if raw else 8_000
-    except ValueError:
-        timeout_ms = 8_000
-    return max(1_000, min(timeout_ms, 60_000))
-
-
-class PostgresCompatRow(dict):
-    """Small row wrapper that behaves like sqlite3.Row for current app code."""
-
-    @staticmethod
-    def normalize_value(value: Any) -> Any:
-        if isinstance(value, (dict, list)):
-            return json.dumps(value, ensure_ascii=False, sort_keys=True)
-        return value
-
-    def __init__(self, columns: list[str], values: tuple[Any, ...]):
-        normalized_values = tuple(self.normalize_value(value) for value in values)
-        super().__init__(zip(columns, normalized_values))
-        self._values = normalized_values
-
-    def __getitem__(self, key: Any) -> Any:
-        if isinstance(key, int):
-            return self._values[key]
-        return super().__getitem__(key)
-
-
-class PostgresCompatCursor:
-    def __init__(self, cursor: Any):
-        self.cursor = cursor
-        self.columns = [column[0] for column in (cursor.description or [])]
-
-    def _row(self, values: tuple[Any, ...] | None) -> PostgresCompatRow | None:
-        if values is None:
-            return None
-        return PostgresCompatRow(self.columns, values)
-
-    def fetchone(self) -> PostgresCompatRow | None:
-        return self._row(self.cursor.fetchone())
-
-    def fetchall(self) -> list[PostgresCompatRow]:
-        return [self._row(row) for row in self.cursor.fetchall()]
-
-    def close(self) -> None:
-        self.cursor.close()
-
-    def __iter__(self) -> Any:
-        for row in self.cursor:
-            yield self._row(row)
-
-
-class PostgresCompatConnection:
-    def __init__(self, database_url: str, ssl_root_cert: str = ""):
-        try:
-            import pg8000.dbapi as pg
-        except ImportError as exc:
-            raise RuntimeError("pg8000 is required for the hosted Postgres adapter.") from exc
-        parsed = urllib.parse.urlparse(database_url)
-        if not parsed.hostname:
-            raise ValueError("DATABASE_URL is missing a hostname.")
-        database = (parsed.path or "/postgres").lstrip("/") or "postgres"
-        self.conn = pg.connect(
-            user=urllib.parse.unquote(parsed.username or ""),
-            password=urllib.parse.unquote(parsed.password or ""),
-            host=parsed.hostname,
-            port=parsed.port or 5432,
-            database=database,
-            ssl_context=postgres_ssl_context(ssl_root_cert),
-            timeout=10,
-        )
-        cursor = self.conn.cursor()
-        try:
-            cursor.execute("SET search_path TO crm, public")
-            cursor.execute(f"SET statement_timeout TO {postgres_statement_timeout_ms()}")
-            cursor.execute("SET idle_in_transaction_session_timeout TO 10000")
-        finally:
-            cursor.close()
-
-    def execute(self, sql: str, parameters: Any = ()) -> PostgresCompatCursor:
-        cursor = self.conn.cursor()
-        cursor.execute(translate_sqlite_sql_for_postgres(sql), postgres_parameters_for_sql(sql, parameters))
-        return PostgresCompatCursor(cursor)
-
-    def commit(self) -> None:
-        self.conn.commit()
-
-    def rollback(self) -> None:
-        self.conn.rollback()
-
-    def close(self) -> None:
-        self.conn.close()
-
-    def __enter__(self) -> "PostgresCompatConnection":
-        return self
-
-    def __exit__(self, exc_type: Any, exc: Any, traceback: Any) -> None:
-        try:
-            if exc_type:
-                self.rollback()
-        finally:
-            self.close()
-
-
-def postgres_ssl_context(ssl_root_cert: str = "") -> ssl.SSLContext:
-    return ssl.create_default_context(cafile=ssl_root_cert or None)
-
-
-def hosted_postgres_adapter_enabled_from_env() -> bool:
-    database_url_configured = bool(os.environ.get("DATABASE_URL", "").strip())
-    adapter = os.environ.get("CHILLCRM_DATABASE_ADAPTER") or os.environ.get("CRM_DATABASE_ADAPTER") or ""
-    return database_url_configured and adapter.strip().lower() in POSTGRES_ADAPTER_VALUES
 
 
 def env_flag(name: str, default: bool = False) -> bool:
@@ -903,97 +814,6 @@ def verify_es256_signature(public_key_cose: bytes, signature: bytes, signed_data
     except (InvalidSignature, TypeError, ValueError):
         pass
     raise ValueError("Passkey signature was not valid.")
-
-
-def translate_sqlite_sql_for_postgres(sql: str) -> str:
-    translated, _ = translate_sqlite_parameters(sql)
-    translated = re.sub(r"\s+COLLATE\s+NOCASE\b", "", translated, flags=re.IGNORECASE)
-    translated = re.sub(r"\bLIKE\b", "ILIKE", translated, flags=re.IGNORECASE)
-    translated = re.sub(
-        r"(?<!CAST\()(?P<field>\b(?:[A-Za-z_][A-Za-z0-9_]*\.)?source_json)\s+(?P<operator>NOT\s+ILIKE|ILIKE)\b",
-        lambda match: f"CAST({match.group('field')} AS TEXT) {match.group('operator')}",
-        translated,
-        flags=re.IGNORECASE,
-    )
-    translated = re.sub(r"\bifnull\s*\(", "coalesce(", translated, flags=re.IGNORECASE)
-    translated = translated.replace("round(sum(d.value), 2)", "round((sum(d.value))::numeric, 2)")
-    translated = translated.replace("printf('%.0f', d.value)", "to_char(d.value, 'FM999999999999990')")
-    translated = translated.replace("CASE WHEN t.completed THEN", "CASE WHEN t.completed <> 0 THEN")
-    translated = translated.replace("CASE WHEN completed THEN", "CASE WHEN completed <> 0 THEN")
-    translated = translated.replace(
-        "json_array_length(source_json, '$.associated_deal_ids')",
-        "jsonb_array_length(coalesce(source_json::jsonb -> 'associated_deal_ids', '[]'::jsonb))",
-    )
-    translated = translated.replace(
-        "group_concat(DISTINCT ta.record_type)",
-        "string_agg(DISTINCT ta.record_type::text, ',')",
-    )
-    translated = translated.replace(
-        "group_concat(DISTINCT ta.resource_type)",
-        "string_agg(DISTINCT ta.resource_type::text, ',')",
-    )
-    translated = translated.replace(
-        "group_concat(DISTINCT coalesce(t.display_name, ta.source_name, t.normalized_name))",
-        "string_agg(DISTINCT coalesce(t.display_name, ta.source_name, t.normalized_name)::text, ',')",
-    )
-    translated = re.sub(
-        r"json_extract\(([^,]+),\s*'\$\.([A-Za-z0-9_]+)'\)",
-        lambda match: f"({match.group(1).strip()}::jsonb ->> '{match.group(2)}')",
-        translated,
-        flags=re.IGNORECASE,
-    )
-    translated = re.sub(r"\bdate\s*\(\s*'now'\s*,\s*'\+7 days'\s*\)", "(CURRENT_DATE + INTERVAL '7 days')::date", translated, flags=re.IGNORECASE)
-    translated = re.sub(r"\bdate\s*\(\s*'now'\s*,\s*'-14 days'\s*\)", "(CURRENT_DATE - INTERVAL '14 days')::date", translated, flags=re.IGNORECASE)
-    translated = re.sub(r"\bdate\s*\(\s*'now'\s*\)", "CURRENT_DATE", translated, flags=re.IGNORECASE)
-    translated = re.sub(r"\bdate\s*\(\s*([A-Za-z_][A-Za-z0-9_.]*)\s*\)", r"CAST(\1 AS date)", translated, flags=re.IGNORECASE)
-    translated = re.sub(r"\bdatetime\s*\(\s*'now'\s*\)", "CURRENT_TIMESTAMP", translated, flags=re.IGNORECASE)
-    translated = re.sub(r"\bSELECT\s+last_insert_rowid\s*\(\s*\)", "SELECT lastval()", translated, flags=re.IGNORECASE)
-    return translated
-
-
-def postgres_parameters_for_sql(sql: str, parameters: Any) -> Any:
-    _, named_parameter_order = translate_sqlite_parameters(sql)
-    if isinstance(parameters, dict):
-        return [parameters[name] for name in named_parameter_order]
-    return parameters
-
-
-def translate_sqlite_parameters(sql: str) -> tuple[str, list[str]]:
-    result: list[str] = []
-    named_parameter_order: list[str] = []
-    index = 0
-    quote: str | None = None
-    while index < len(sql):
-        char = sql[index]
-        if quote:
-            result.append(char)
-            if char == quote:
-                if index + 1 < len(sql) and sql[index + 1] == quote:
-                    result.append(sql[index + 1])
-                    index += 1
-                else:
-                    quote = None
-            index += 1
-            continue
-        if char in {"'", '"'}:
-            quote = char
-            result.append(char)
-            index += 1
-            continue
-        if char == "?":
-            result.append("%s")
-            index += 1
-            continue
-        if char == ":" and (index == 0 or sql[index - 1] != ":"):
-            name_match = re.match(r":([A-Za-z_][A-Za-z0-9_]*)", sql[index:])
-            if name_match:
-                result.append("%s")
-                named_parameter_order.append(name_match.group(1))
-                index += len(name_match.group(0))
-                continue
-        result.append(char)
-        index += 1
-    return "".join(result), named_parameter_order
 
 
 def row_to_dict(row: sqlite3.Row | None) -> dict[str, Any] | None:
@@ -1556,18 +1376,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         return value in {"1", "true", "yes", "on", "locked"}
 
     def remote_write_lock_status(self) -> dict[str, Any]:
-        enabled = self.remote_write_lock_enabled()
-        return {
-            "enabled": enabled,
-            "mode": "locked" if enabled else "unlocked",
-            "env_var": "REMOTE_WRITE_LOCK",
-            "locked_post_paths": sorted(self.write_locked_post_paths),
-            "message": (
-                "Remote write lock is enabled; POST writes are blocked for staging validation."
-                if enabled
-                else "Remote write lock is off; CRM writes are available."
-            ),
-        }
+        return runtime_health.remote_write_lock_status(self.remote_write_lock_enabled(), self.write_locked_post_paths)
 
     def local_write_freeze_requested(self) -> bool:
         return env_flag("CHILLCRM_LOCAL_WRITE_FREEZE") or env_flag("LOCAL_WRITE_FREEZE")
@@ -1576,30 +1385,11 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         return self.local_write_freeze_requested() and not self.hosted_postgres_adapter_enabled()
 
     def local_write_freeze_status(self) -> dict[str, Any]:
-        requested = self.local_write_freeze_requested()
-        hosted_adapter_enabled = self.hosted_postgres_adapter_enabled()
-        enabled = requested and not hosted_adapter_enabled
-        if enabled:
-            mode = "frozen"
-            message = "Local write freeze is enabled; CRM mutations are blocked for final cutover packaging."
-        elif requested and hosted_adapter_enabled:
-            mode = "ignored_hosted_adapter"
-            message = "Local write freeze is requested but ignored while the hosted Postgres adapter is active."
-        else:
-            mode = "unfrozen"
-            message = "Local write freeze is off; CRM writes are available."
-        return {
-            "enabled": enabled,
-            "requested": requested,
-            "mode": mode,
-            "env_var": "CHILLCRM_LOCAL_WRITE_FREEZE",
-            "fallback_env_var": "LOCAL_WRITE_FREEZE",
-            "applies_to": "local_sqlite",
-            "ignored_when_hosted_postgres_adapter_enabled": True,
-            "locked_post_paths": sorted(self.local_write_freeze_post_paths),
-            "allowed_post_paths": ["/api/backup"],
-            "message": message,
-        }
+        return runtime_health.local_write_freeze_status(
+            self.local_write_freeze_requested(),
+            self.hosted_postgres_adapter_enabled(),
+            self.local_write_freeze_post_paths,
+        )
 
     def bulk_package_exports_enabled(self) -> bool:
         value = os.environ.get("EXPORT_PACKAGE_ENABLED")
@@ -1608,18 +1398,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         return value.strip().lower() not in {"0", "false", "no", "off", "locked", "disabled"}
 
     def bulk_package_export_status(self) -> dict[str, Any]:
-        enabled = self.bulk_package_exports_enabled()
-        return {
-            "enabled": enabled,
-            "mode": "enabled" if enabled else "locked",
-            "env_var": "EXPORT_PACKAGE_ENABLED",
-            "blocked_get_paths": ["/api/export_package", "/api/export_document_files_package"],
-            "message": (
-                "Bulk package exports are enabled."
-                if enabled
-                else "Bulk package exports are locked until permissions and staging validation are approved."
-            ),
-        }
+        return runtime_health.bulk_package_export_status(self.bulk_package_exports_enabled())
 
     def document_file_access_enabled(self) -> bool:
         value = os.environ.get("DOCUMENT_FILE_ACCESS_ENABLED")
@@ -1628,18 +1407,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         return value.strip().lower() not in {"0", "false", "no", "off", "locked", "disabled"}
 
     def document_file_access_status(self) -> dict[str, Any]:
-        enabled = self.document_file_access_enabled()
-        return {
-            "enabled": enabled,
-            "mode": "enabled" if enabled else "locked",
-            "env_var": "DOCUMENT_FILE_ACCESS_ENABLED",
-            "blocked_get_paths": ["/api/archive_file"],
-            "message": (
-                "Recovered document file access is enabled."
-                if enabled
-                else "Recovered document file access is locked until private storage and permissions are approved."
-            ),
-        }
+        return runtime_health.document_file_access_status(self.document_file_access_enabled())
 
     def supabase_url(self) -> str:
         return os.environ.get("CHILLCRM_SUPABASE_URL", "").strip().rstrip("/")
@@ -3073,49 +2841,18 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         database_url_configured = bool(os.environ.get("DATABASE_URL", "").strip())
         hosted_adapter_enabled = self.hosted_postgres_adapter_enabled()
         app_base_url_configured = bool(os.environ.get("APP_BASE_URL", "").strip())
-        lock = self.remote_write_lock_status()
-        local_freeze = self.local_write_freeze_status()
-        bulk_exports = self.bulk_package_export_status()
-        document_files = self.document_file_access_status()
-        auth_setup = self.auth_setup_status()
-        return {
-            "environment": environment,
-            "environment_label": environment.replace("_", " ").replace("-", " ").title(),
-            "database_mode": "hosted_postgres_adapter_enabled" if hosted_adapter_enabled else "hosted_postgres_configured_adapter_pending" if database_url_configured else "local_sqlite",
-            "database_adapter": "postgres_compat" if hosted_adapter_enabled else "sqlite",
-            "database_adapter_enabled": hosted_adapter_enabled,
-            "database_adapter_env": "CHILLCRM_DATABASE_ADAPTER",
-            "database_url_configured": database_url_configured,
-            "app_base_url_configured": app_base_url_configured,
-            "auth": {
-                "required": auth_setup["required"],
-                "session_secret_configured": auth_setup["session_secret_configured"],
-                "cookie_secure": auth_setup["cookie_secure"],
-            },
-            "health_endpoint": "/health",
-            "api_health_endpoint": "/api/health",
-            "remote_write_lock": {
-                "enabled": lock["enabled"],
-                "mode": lock["mode"],
-            },
-            "local_write_freeze": {
-                "enabled": local_freeze["enabled"],
-                "requested": local_freeze["requested"],
-                "mode": local_freeze["mode"],
-            },
-            "bulk_package_exports": {
-                "enabled": bulk_exports["enabled"],
-                "mode": bulk_exports["mode"],
-            },
-            "document_file_access": {
-                "enabled": document_files["enabled"],
-                "mode": document_files["mode"],
-            },
-            "portal_preview": {
-                "enabled": self.portal_preview_enabled(),
-                "mode": "owner_only" if self.portal_preview_enabled() else "disabled",
-            },
-        }
+        return runtime_health.runtime_context(
+            environment=environment,
+            database_url_configured=database_url_configured,
+            hosted_adapter_enabled=hosted_adapter_enabled,
+            app_base_url_configured=app_base_url_configured,
+            remote_lock=self.remote_write_lock_status(),
+            local_freeze=self.local_write_freeze_status(),
+            bulk_exports=self.bulk_package_export_status(),
+            document_files=self.document_file_access_status(),
+            auth_setup=self.auth_setup_status(),
+            portal_preview_enabled=self.portal_preview_enabled(),
+        )
 
     def database_url(self) -> str:
         return os.environ.get("DATABASE_URL", "").strip()
@@ -3210,24 +2947,11 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         }
 
     def reports_health_check(self, database_url_configured: bool) -> dict[str, Any]:
-        reports_present = REPORTS_DIR.exists() and REPORTS_DIR.is_dir()
-        reports_required = env_flag("CHILLCRM_REPORTS_REQUIRED", default=not database_url_configured)
-        if reports_present:
-            status = "ok"
-            note = "Local report artifacts are available in this runtime."
-        elif reports_required:
-            status = "missing"
-            note = "Report artifacts are required for this runtime and were not found."
-        else:
-            status = "omitted"
-            note = "Report artifacts are private local outputs and are intentionally omitted from hosted source deployments."
-        return {
-            "status": status,
-            "present": reports_present,
-            "required": reports_required,
-            "source": "private_local_artifacts",
-            "note": note,
-        }
+        return runtime_health.reports_health_check(
+            REPORTS_DIR,
+            database_url_configured,
+            env_flag("CHILLCRM_REPORTS_REQUIRED", default=not database_url_configured),
+        )
 
     def health_status(self) -> tuple[dict[str, Any], int]:
         checks: dict[str, dict[str, Any]] = {
@@ -11065,7 +10789,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             "package": {
                 "label": "Complete CRM Package",
                 "url": "/api/export_package",
-                "filename": "local_crm_complete_package.zip",
+                "filename": "chillcrm_complete_package.zip",
                 "description": "Downloads the current CRM data, operational CSV exports, key reports, and project docs in one zip file.",
                 "contents": ["CRM data", "CSV exports", "key reports", "project docs"],
                 "enabled": bulk_export["enabled"],
@@ -11074,7 +10798,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             "document_package": {
                 "label": "Document Files",
                 "url": "/api/export_document_files_package",
-                "filename": "local_crm_document_files.zip",
+                "filename": "chillcrm_document_files.zip",
                 "description": "Downloads CRM document files as one zip file.",
                 "file_count": document_package["file_count"],
                 "bytes": document_package["bytes"],
@@ -11188,7 +10912,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
     def send_document_files_package(self) -> None:
         entries = self.document_file_package_entries()
         stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-        filename = f"local_crm_document_files_{stamp}.zip"
+        filename = f"chillcrm_document_files_{stamp}.zip"
         package_manifest = {
             "generated_at": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
             "source": "CHILLCRM document files",
@@ -11213,7 +10937,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
     def export_package(self) -> dict[str, Any]:
         generated_at = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
         stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-        filename = f"local_crm_complete_package_{stamp}.zip"
+        filename = f"chillcrm_complete_package_{stamp}.zip"
         manifest = self.export_manifest()
         package_manifest: dict[str, Any] = {
             "generated_at": generated_at,

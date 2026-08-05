@@ -16,6 +16,8 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from api.index import handler
+from crm_app import database
+from crm_app import runtime_health
 
 LEGACY_PROVIDER = "Zen" + "desk"
 LEGACY_STATUS = "Migration" + " Status"
@@ -34,6 +36,8 @@ def main() -> int:
     app_js = (PROJECT_ROOT / "crm_app" / "static" / "app.js").read_text(encoding="utf-8")
     index_html = (PROJECT_ROOT / "crm_app" / "static" / "index.html").read_text(encoding="utf-8")
     server_py = (PROJECT_ROOT / "crm_app" / "server.py").read_text(encoding="utf-8")
+    database_py = (PROJECT_ROOT / "crm_app" / "database.py").read_text(encoding="utf-8")
+    runtime_health_py = (PROJECT_ROOT / "crm_app" / "runtime_health.py").read_text(encoding="utf-8")
 
     assert "ChillCRM" in index_html
     assert "Have Fun Get Rich" in index_html
@@ -47,6 +51,13 @@ def main() -> int:
     assert "Document Files" in app_js
     assert "def operations_status" in server_py
     assert 'elif path == "/api/operations_status"' in server_py
+    assert "from crm_app import runtime_health" in server_py
+    assert "from crm_app.database import" in server_py
+    assert "class PostgresCompatConnection" in database_py
+    assert "def runtime_context" in runtime_health_py
+    assert database.postgres_parameters_for_sql("SELECT * FROM people WHERE email LIKE :email", {"email": "%@%"}) == ["%@%"]
+    assert runtime_health.remote_write_lock_status(False, set())["mode"] == "unlocked"
+    assert runtime_health.bulk_package_export_status(True)["mode"] == "enabled"
 
     env_backup = {
         key: os.environ.get(key)
@@ -72,6 +83,7 @@ def main() -> int:
         health_status, health_body = read_url(f"{base_url}/api/health")
         assert health_status == 200
         assert '"ok": true' in health_body
+        assert '"service": "chillcrm"' in health_body
 
         index_status, index_body = read_url(f"{base_url}/")
         assert index_status == 200

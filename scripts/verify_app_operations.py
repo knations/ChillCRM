@@ -46,6 +46,7 @@ def assert_noninteractive_secret_prompt(source: str) -> None:
 def main() -> int:
     app_js = (PROJECT_ROOT / "crm_app" / "static" / "app.js").read_text(encoding="utf-8")
     server_py = (PROJECT_ROOT / "crm_app" / "server.py").read_text(encoding="utf-8")
+    database_py = (PROJECT_ROOT / "crm_app" / "database.py").read_text(encoding="utf-8")
     styles_css = (PROJECT_ROOT / "crm_app" / "static" / "styles.css").read_text(encoding="utf-8")
     index_html = (PROJECT_ROOT / "crm_app" / "static" / "index.html").read_text(encoding="utf-8")
     vercel_env_example = (PROJECT_ROOT / "config" / "chillcrm_vercel.env.example").read_text(encoding="utf-8")
@@ -98,8 +99,9 @@ def main() -> int:
     owner_recovery_closure_script = (PROJECT_ROOT / "scripts" / "verify_owner_recovery_closure.py").read_text(encoding="utf-8")
     owner_recovery_disable_script = (PROJECT_ROOT / "scripts" / "disable_owner_recovery_after_access.py").read_text(encoding="utf-8")
     source_cutover_approval_script = (PROJECT_ROOT / "ops" / "retired_migration_tools" / "record_source_of_truth_cutover_approval.py").read_text(encoding="utf-8")
-    assert "PostgresCompatConnection" in server_py
-    assert "translate_sqlite_sql_for_postgres" in server_py
+    assert "from crm_app.database import" in server_py
+    assert "PostgresCompatConnection" in database_py
+    assert "translate_sqlite_sql_for_postgres" in database_py
     assert "CHILLCRM_DATABASE_ADAPTER" in server_py
     assert "CHILLCRM_LOCAL_WRITE_FREEZE" in server_py
     assert "local_write_freeze_status" in server_py
@@ -3165,7 +3167,7 @@ def main() -> int:
             health_payload, health_status = handler.health_status()
             assert health_status == 200
             assert health_payload["ok"] is True
-            assert health_payload["service"] == "local_crm"
+            assert health_payload["service"] == "chillcrm"
             assert health_payload["checks"]["database"]["status"] == "ok"
             assert health_payload["checks"]["database"]["reachable"] is True
             assert health_payload["checks"]["reports"]["status"] == "ok"
@@ -4674,7 +4676,7 @@ def main() -> int:
         assert len(document_manifest_rows) == document_package["file_count"]
         assert any(row["package_path"].startswith("document_files/") and row["local_file"] for row in document_manifest_rows)
         package = handler.export_package()
-        assert package["filename"].startswith("local_crm_complete_package_")
+        assert package["filename"].startswith("chillcrm_complete_package_")
         assert package["filename"].endswith(".zip")
         assert package["manifest"]["database"]["path"] == "database/local_crm.sqlite"
         with zipfile.ZipFile(io.BytesIO(package["payload"])) as package_zip:

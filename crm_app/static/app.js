@@ -3388,7 +3388,7 @@ function productionGatePanel(gates) {
   const nextOwnerAction = gates.next_owner_action || null;
   const nextOperatorAction = gates.next_operator_action || null;
   const tone = Number(gates.failed || 0) ? "coral" : Number(gates.input_required || 0) ? "gold" : "green";
-  const sourceTruth = gates.source_of_truth === "local_sqlite" ? "Local SQLite" : "Hosted ready for owner cutover review";
+  const sourceTruth = gates.source_of_truth === "local_sqlite" ? "Local data package" : "Hosted production CRM";
   const reportLinks = (links, fallbackUrl = "", fallbackLabel = "Proof Report") => {
     const safeLinks = Array.isArray(links) ? links : [];
     if (safeLinks.length) {

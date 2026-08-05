@@ -1,0 +1,67 @@
+#!/usr/bin/env python3
+"""Verify current CHILLCRM backend module boundaries."""
+
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+import crm_app.database as database
+import crm_app.runtime_health as runtime_health
+import crm_app.server as server
+
+
+def main() -> int:
+    server_py = (PROJECT_ROOT / "crm_app" / "server.py").read_text(encoding="utf-8")
+    database_py = (PROJECT_ROOT / "crm_app" / "database.py").read_text(encoding="utf-8")
+    runtime_health_py = (PROJECT_ROOT / "crm_app" / "runtime_health.py").read_text(encoding="utf-8")
+    app_js = (PROJECT_ROOT / "crm_app" / "static" / "app.js").read_text(encoding="utf-8")
+    index_html = (PROJECT_ROOT / "crm_app" / "static" / "index.html").read_text(encoding="utf-8")
+
+    assert "from crm_app.database import" in server_py
+    assert "from crm_app import runtime_health" in server_py
+    assert "class PostgresCompatConnection" not in server_py
+    assert "def translate_sqlite_sql_for_postgres" not in server_py
+    assert "class PostgresCompatConnection" in database_py
+    assert "def translate_sqlite_sql_for_postgres" in database_py
+    assert "def runtime_context" in runtime_health_py
+    assert "def reports_health_check" in runtime_health_py
+
+    translated = database.translate_sqlite_sql_for_postgres(
+        "SELECT id FROM people WHERE source_json LIKE :needle AND date(updated_at) >= date('now')"
+    )
+    assert "CAST(source_json AS TEXT) ILIKE" in translated
+    assert "CAST(updated_at AS date) >= CURRENT_DATE" in translated
+    assert database.postgres_parameters_for_sql("SELECT * FROM people WHERE email LIKE :email", {"email": "%@%"}) == ["%@%"]
+    assert database.PostgresCompatRow(["id", "name"], (1, "Probe"))[0] == 1
+    assert server.PostgresCompatRow(["id"], (2,))[0] == 2
+
+    assert runtime_health.remote_write_lock_status(False, set())["mode"] == "unlocked"
+    assert runtime_health.bulk_package_export_status(True)["mode"] == "enabled"
+    assert runtime_health.document_file_access_status(True)["mode"] == "enabled"
+
+    active_public_text = "\n".join([app_js, index_html])
+    legacy_provider = "Zen" + "desk"
+    for old_label in [
+        f"{legacy_provider} Snapshot",
+        f"Final {legacy_provider}",
+        "Migration" + " Status",
+        "Complete Local " + "CRM",
+        "Downloaded Document " + "Files",
+    ]:
+        assert old_label not in active_public_text
+    assert "ChillCRM" in index_html
+    assert "Have Fun Get Rich" in index_html
+    assert "chillcrm_complete_package.zip" in server_py
+    assert "chillcrm_document_files.zip" in server_py
+
+    print("CHILLCRM backend boundary verifier passed.")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

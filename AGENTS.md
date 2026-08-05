@@ -12,7 +12,7 @@ Primary users: Kevin, authorized sales operators, client-success users, admins, 
 
 Production environment: `https://chillcrm.app`, served from the GitHub repository `knations/ChillCRM` and deployed through Vercel. Known related service: Cloudflare Worker `chillcrm-ops-pulse`, which monitors `https://chillcrm.app/api/health`, stores snapshots in Cloudflare D1, and serves a private operations dashboard.
 
-Key technologies: Python, Vercel Python serverless entrypoint `api/index.py`, the CRM server in `crm_app/server.py`, vanilla HTML/CSS/JavaScript in `crm_app/static/`, hosted Supabase/Postgres production data access, private Supabase Storage, pg8000, project verification scripts, GitHub, Vercel, and related Cloudflare monitoring services. Agents must inspect the active repository before assuming any runtime details.
+Key technologies: Python, Vercel Python serverless entrypoint `api/index.py`, the CRM server in `crm_app/server.py`, backend support modules in `crm_app/database.py` and `crm_app/runtime_health.py`, vanilla HTML/CSS/JavaScript in `crm_app/static/`, hosted Supabase/Postgres production data access, private Supabase Storage, pg8000, project verification scripts, GitHub, Vercel, and related Cloudflare monitoring services. Agents must inspect the active repository before assuming any runtime details.
 
 ## Agent Operating Style
 
@@ -101,8 +101,10 @@ Agents should:
 
 Expected verification commands:
 
-- `python3 -m py_compile crm_app/server.py api/index.py`
-- `python3 scripts/verify_app_operations.py`
+- `python3 -m py_compile crm_app/server.py crm_app/database.py crm_app/runtime_health.py api/index.py`
+- `python3 scripts/verify_operational_crm.py`
+- `python3 scripts/verify_backend_boundaries.py`
+- `python3 scripts/verify_app_operations.py` only when touching broad workflow behavior or updating legacy operational verifier expectations
 - targeted verification scripts under `scripts/verify_*.py` when the change touches a specific deployment, hosted database, security, backup, or Vercel pathway
 - local manual verification with `python3 crm_app/server.py --host 127.0.0.1 --port 8765 --auto-port` when UI or route behavior changes
 

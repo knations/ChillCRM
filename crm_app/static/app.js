@@ -6883,7 +6883,13 @@ function contactActions(detail, options = {}) {
             <span>${escapeHtml(row.displayValue || row.value)}</span>
           </div>
           <div class="contact-action-buttons">
-            ${row.href ? `<a class="text-button action-link" href="${escapeHtml(row.href)}">${escapeHtml(row.actionLabel)}</a>` : ""}
+            ${
+              row.href && row.key === "email"
+                ? `<button class="text-button gmail-compose-button" type="button" data-gmail-href="${escapeHtml(row.href)}">${escapeHtml(row.actionLabel)}</button>`
+                : row.href
+                  ? `<a class="text-button action-link" href="${escapeHtml(row.href)}">${escapeHtml(row.actionLabel)}</a>`
+                  : ""
+            }
             <button class="text-button contact-copy-button" type="button" data-copy-label="${escapeHtml(row.label)}" data-copy-value="${escapeHtml(row.displayValue || row.value)}">Copy</button>
           </div>
         </div>
@@ -7613,6 +7619,15 @@ function wireDetailForms(detail) {
   wireRecordFileControls(detail);
   wirePersonTagPicker(detail);
   wireArchiveButtons(els.detail);
+
+  document.querySelectorAll(".gmail-compose-button").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const href = button.dataset.gmailHref || "";
+      if (href) window.location.assign(href);
+    });
+  });
 
   document.querySelectorAll(".contact-copy-button").forEach((button) => {
     button.addEventListener("click", async () => {

@@ -12,7 +12,7 @@ Primary users: Kevin, authorized sales operators, client-success users, admins, 
 
 Production environment: `https://chillcrm.app`, served from the GitHub repository `knations/ChillCRM` and deployed through Vercel. Known related service: Cloudflare Worker `chillcrm-ops-pulse`, which monitors `https://chillcrm.app/api/health`, stores snapshots in Cloudflare D1, and serves a private operations dashboard.
 
-Key technologies: Python, Vercel Python serverless entrypoint `api/index.py`, the CRM server in `crm_app/server.py`, backend support modules in `crm_app/auth_tokens.py`, `crm_app/database.py`, `crm_app/exporting.py`, `crm_app/file_assets.py`, `crm_app/request_io.py`, `crm_app/responses.py`, and `crm_app/runtime_health.py`, vanilla HTML/CSS/JavaScript in `crm_app/static/`, hosted Supabase/Postgres production data access, private Supabase Storage, pg8000, project verification scripts, GitHub, Vercel, and related Cloudflare monitoring services. Agents must inspect the active repository before assuming any runtime details.
+Key technologies: Python, Vercel Python serverless entrypoint `api/index.py`, the CRM server in `crm_app/server.py`, backend support modules in `crm_app/access_control.py`, `crm_app/auth_tokens.py`, `crm_app/database.py`, `crm_app/exporting.py`, `crm_app/file_assets.py`, `crm_app/request_io.py`, `crm_app/responses.py`, and `crm_app/runtime_health.py`, vanilla HTML/CSS/JavaScript in `crm_app/static/`, hosted Supabase/Postgres production data access, private Supabase Storage, pg8000, project verification scripts, GitHub, Vercel, and related Cloudflare monitoring services. Agents must inspect the active repository before assuming any runtime details.
 
 ## Agent Operating Style
 
@@ -101,7 +101,7 @@ Agents should:
 
 Expected verification commands:
 
-- `python3 -m py_compile crm_app/server.py crm_app/auth_tokens.py crm_app/database.py crm_app/exporting.py crm_app/file_assets.py crm_app/request_io.py crm_app/responses.py crm_app/runtime_health.py api/index.py`
+- `python3 -m py_compile crm_app/server.py crm_app/access_control.py crm_app/auth_tokens.py crm_app/database.py crm_app/exporting.py crm_app/file_assets.py crm_app/request_io.py crm_app/responses.py crm_app/runtime_health.py api/index.py`
 - `python3 scripts/verify_operational_crm.py`
 - `python3 scripts/verify_backend_boundaries.py`
 - `python3 scripts/verify_current_app_workflows.py`

@@ -8,6 +8,7 @@ These files are the live app surface:
 
 - `api/index.py`
 - `crm_app/server.py`
+- `crm_app/access_control.py`
 - `crm_app/auth_tokens.py`
 - `crm_app/database.py`
 - `crm_app/exporting.py`

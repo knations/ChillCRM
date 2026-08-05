@@ -32,6 +32,7 @@ from pathlib import Path
 from typing import Any
 
 try:
+    from crm_app import access_control
     from crm_app.auth_tokens import (
         b64url_decode,
         b64url_encode,
@@ -58,6 +59,7 @@ try:
     from crm_app import request_io
     from crm_app import responses
 except ImportError:  # pragma: no cover - supports direct local execution
+    import access_control  # type: ignore
     from auth_tokens import (  # type: ignore
         b64url_decode,
         b64url_encode,
@@ -1209,117 +1211,9 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         }
     )
     local_write_freeze_post_paths = frozenset(path for path in write_locked_post_paths if path != "/api/backup")
-    action_role_permissions = {
-        "view_dashboard_reports": frozenset({"owner", "admin", "staff", "read_only", "migration_operator"}),
-        "search_filter_save_views": frozenset({"owner", "admin", "staff"}),
-        "export_csv_reports": frozenset({"owner", "admin", "staff", "migration_operator"}),
-        "export_complete_package": frozenset({"owner", "admin"}),
-        "download_document_files": frozenset({"owner", "admin"}),
-        "create_edit_records": frozenset({"owner", "admin", "staff"}),
-        "edit_addresses_tags": frozenset({"owner", "admin", "staff"}),
-        "notes_tasks_followups": frozenset({"owner", "admin", "staff"}),
-        "manage_person_portal": frozenset({"owner", "admin", "staff"}),
-        "preview_portal_experience": frozenset({"owner"}),
-        "archive_review_status": frozenset({"owner", "admin", "staff"}),
-        "link_archive_item": frozenset({"owner", "admin"}),
-        "resolve_cleanup_flags": frozenset({"owner", "admin"}),
-        "save_cleanup_decision": frozenset({"owner", "admin"}),
-        "merge_duplicate_people": frozenset({"owner", "admin"}),
-        "save_project_decision": frozenset({"owner"}),
-        "manual_backup": frozenset({"owner", "admin", "migration_operator"}),
-        "restore_backup": frozenset({"owner"}),
-        "manage_users_roles": frozenset({"owner"}),
-        "view_owner_brief": frozenset({"owner"}),
-        "change_own_password": frozenset({"owner", "admin", "staff", "read_only", "migration_operator"}),
-        "hosted_cutover": frozenset({"owner", "migration_operator"}),
-        "inbound_purchase_webhook": frozenset({"owner", "admin"}),
-        "inbound_call_recording_webhook": frozenset({"owner", "admin"}),
-    }
-    get_permission_actions = {
-        "/api/summary": "view_dashboard_reports",
-        "/api/owner_brief": "view_owner_brief",
-        "/api/operations_status": "view_dashboard_reports",
-        "/api/production_gates": "view_dashboard_reports",
-        "/api/project_decisions": "view_dashboard_reports",
-        "/api/list": "view_dashboard_reports",
-        "/api/pipeline_board": "view_dashboard_reports",
-        "/api/detail": "view_dashboard_reports",
-        "/api/vcard": "view_dashboard_reports",
-        "/api/tasks": "view_dashboard_reports",
-        "/api/activity": "view_dashboard_reports",
-        "/api/archive": "view_dashboard_reports",
-        "/api/archive_item": "view_dashboard_reports",
-        "/api/tags": "view_dashboard_reports",
-        "/api/custom_fields": "view_dashboard_reports",
-        "/api/linked_resources": "view_dashboard_reports",
-        "/api/profile_filters": "view_dashboard_reports",
-        "/api/create_options": "create_edit_records",
-        "/api/saved_views": "view_dashboard_reports",
-        "/api/export_manifest": "view_dashboard_reports",
-        "/api/export": "export_csv_reports",
-        "/api/export_list": "export_csv_reports",
-        "/api/export_cleanup_groups": "export_csv_reports",
-        "/api/export_package": "export_complete_package",
-        "/api/export_document_files_package": "download_document_files",
-        "/api/archive_file": "download_document_files",
-        "/api/profile_image": "view_dashboard_reports",
-        "/api/record_file": "view_dashboard_reports",
-        "/api/search": "view_dashboard_reports",
-        "/api/cleanup": "view_dashboard_reports",
-        "/api/cleanup_execution_preview": "view_dashboard_reports",
-        "/api/cleanup_groups": "view_dashboard_reports",
-        "/api/review_flags": "view_dashboard_reports",
-        "/api/backups": "manual_backup",
-        "/api/app_users": "manage_users_roles",
-    }
-    post_permission_actions = {
-        "/api/update_record": "create_edit_records",
-        "/api/create_record": "create_edit_records",
-        "/api/set_record_lifecycle": "create_edit_records",
-        "/api/create_tag": "edit_addresses_tags",
-        "/api/rename_tag": "edit_addresses_tags",
-        "/api/delete_tag": "edit_addresses_tags",
-        "/api/update_tags": "edit_addresses_tags",
-        "/api/update_person_operator_avatar": "create_edit_records",
-        "/api/update_deal_sales_profile": "create_edit_records",
-        "/api/update_addresses": "edit_addresses_tags",
-        "/api/upload_profile_image": "create_edit_records",
-        "/api/upload_record_file": "create_edit_records",
-        "/api/remove_profile_image": "create_edit_records",
-        "/api/add_note": "notes_tasks_followups",
-        "/api/add_call_log": "notes_tasks_followups",
-        "/api/update_note": "notes_tasks_followups",
-        "/api/update_call_log": "notes_tasks_followups",
-        "/api/add_task": "notes_tasks_followups",
-        "/api/save_portal_profile": "manage_person_portal",
-        "/api/add_portal_next_step": "manage_person_portal",
-        "/api/update_portal_next_step": "manage_person_portal",
-        "/api/add_portal_client_note": "manage_person_portal",
-        "/api/update_portal_client_note": "manage_person_portal",
-        "/api/set_portal_document_share": "manage_person_portal",
-        "/api/update_task": "notes_tasks_followups",
-        "/api/copy_imported_task_to_local": "notes_tasks_followups",
-        "/api/complete_task": "notes_tasks_followups",
-        "/api/link_archive_item": "link_archive_item",
-        "/api/save_archive_review": "archive_review_status",
-        "/api/resolve_flag": "resolve_cleanup_flags",
-        "/api/save_cleanup_decision": "save_cleanup_decision",
-        "/api/merge_duplicate_people": "merge_duplicate_people",
-        "/api/save_project_decision": "save_project_decision",
-        "/api/webhooks/zapier_purchase": "inbound_purchase_webhook",
-        "/api/webhooks/twilio_recording": "inbound_call_recording_webhook",
-        "/api/save_view": "search_filter_save_views",
-        "/api/delete_view": "search_filter_save_views",
-        "/api/backup": "manual_backup",
-        "/api/restore_backup": "restore_backup",
-        "/api/app_users/save": "manage_users_roles",
-        "/api/app_users/deactivate": "manage_users_roles",
-        "/api/app_users/reactivate": "manage_users_roles",
-        "/api/app_users/set_password": "manage_users_roles",
-        "/api/auth/change_password": "change_own_password",
-        "/api/auth/passkey/register/options": "change_own_password",
-        "/api/auth/passkey/register/verify": "change_own_password",
-    }
+    action_role_permissions = access_control.ACTION_ROLE_PERMISSIONS
+    get_permission_actions = access_control.GET_PERMISSION_ACTIONS
+    post_permission_actions = access_control.POST_PERMISSION_ACTIONS
 
     def log_message(self, format: str, *args: Any) -> None:
         return

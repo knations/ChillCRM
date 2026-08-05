@@ -10,6 +10,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+import crm_app.access_control as access_control
 import crm_app.auth_tokens as auth_tokens
 import crm_app.database as database
 import crm_app.exporting as exporting
@@ -22,6 +23,7 @@ import crm_app.server as server
 
 def main() -> int:
     server_py = (PROJECT_ROOT / "crm_app" / "server.py").read_text(encoding="utf-8")
+    access_control_py = (PROJECT_ROOT / "crm_app" / "access_control.py").read_text(encoding="utf-8")
     auth_tokens_py = (PROJECT_ROOT / "crm_app" / "auth_tokens.py").read_text(encoding="utf-8")
     database_py = (PROJECT_ROOT / "crm_app" / "database.py").read_text(encoding="utf-8")
     exporting_py = (PROJECT_ROOT / "crm_app" / "exporting.py").read_text(encoding="utf-8")
@@ -32,6 +34,7 @@ def main() -> int:
     app_js = (PROJECT_ROOT / "crm_app" / "static" / "app.js").read_text(encoding="utf-8")
     index_html = (PROJECT_ROOT / "crm_app" / "static" / "index.html").read_text(encoding="utf-8")
 
+    assert "from crm_app import access_control" in server_py
     assert "from crm_app.auth_tokens import" in server_py
     assert "from crm_app.database import" in server_py
     assert "from crm_app import exporting" in server_py
@@ -44,6 +47,11 @@ def main() -> int:
     assert "def get_json_route_handlers" in server_py
     assert "def get_csv_route_handlers" in server_py
     assert "def post_json_route_handlers" in server_py
+    assert "ACTION_ROLE_PERMISSIONS" in access_control_py
+    assert "GET_PERMISSION_ACTIONS" in access_control_py
+    assert "POST_PERMISSION_ACTIONS" in access_control_py
+    assert '"/api/detail": "view_dashboard_reports"' in access_control_py
+    assert '"/api/update_record": "create_edit_records"' in access_control_py
     assert "def password_hash" in auth_tokens_py
     assert "def signed_session_token" in auth_tokens_py
     assert "def read_webhook_body" in request_io_py
@@ -71,6 +79,9 @@ def main() -> int:
     assert database.postgres_parameters_for_sql("SELECT * FROM people WHERE email LIKE :email", {"email": "%@%"}) == ["%@%"]
     assert database.PostgresCompatRow(["id", "name"], (1, "Probe"))[0] == 1
     assert server.PostgresCompatRow(["id"], (2,))[0] == 2
+    assert access_control.ACTION_ROLE_PERMISSIONS["manage_users_roles"] == frozenset({"owner"})
+    assert access_control.GET_PERMISSION_ACTIONS["/api/export_manifest"] == "view_dashboard_reports"
+    assert access_control.POST_PERMISSION_ACTIONS["/api/add_call_log"] == "notes_tasks_followups"
 
     assert runtime_health.remote_write_lock_status(False, set())["mode"] == "unlocked"
     assert runtime_health.bulk_package_export_status(True)["mode"] == "enabled"

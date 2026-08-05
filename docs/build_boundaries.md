@@ -9,6 +9,7 @@ These files are the live app surface:
 - `api/index.py`
 - `crm_app/server.py`
 - `crm_app/database.py`
+- `crm_app/request_io.py`
 - `crm_app/runtime_health.py`
 - `crm_app/static/`
 - `requirements.txt`
@@ -28,6 +29,15 @@ These files guide the build but are not CRM data:
 - `.gitignore`
 
 Keep these current enough that a new task can understand the app as an operational CRM.
+
+Current verification defaults:
+
+- `scripts/verify_operational_crm.py`
+- `scripts/verify_backend_boundaries.py`
+- `scripts/verify_current_app_workflows.py`
+- security/deployment verifiers when touching provider, auth, secret, file, or hosted boundaries
+
+`scripts/verify_app_operations.py` is retained as a legacy broad regression harness. Use it when intentionally updating that historical coverage, but do not let retired migration/cutover evidence expectations block current operational CRM work.
 
 ## Operator Tooling
 

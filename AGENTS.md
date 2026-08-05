@@ -104,6 +104,7 @@ Expected verification commands:
 - `python3 -m py_compile crm_app/server.py crm_app/database.py crm_app/runtime_health.py api/index.py`
 - `python3 scripts/verify_operational_crm.py`
 - `python3 scripts/verify_backend_boundaries.py`
+- `python3 scripts/verify_current_app_workflows.py`
 - `python3 scripts/verify_app_operations.py` only when touching broad workflow behavior or updating legacy operational verifier expectations
 - targeted verification scripts under `scripts/verify_*.py` when the change touches a specific deployment, hosted database, security, backup, or Vercel pathway
 - local manual verification with `python3 crm_app/server.py --host 127.0.0.1 --port 8765 --auto-port` when UI or route behavior changes

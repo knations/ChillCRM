@@ -45,7 +45,9 @@ try:
         translate_sqlite_parameters,
         translate_sqlite_sql_for_postgres,
     )
+    from crm_app.request_io import RequestBodyTooLarge
     from crm_app import runtime_health
+    from crm_app import request_io
 except ImportError:  # pragma: no cover - supports direct local execution
     from database import (  # type: ignore
         POSTGRES_ADAPTER_VALUES,
@@ -58,7 +60,9 @@ except ImportError:  # pragma: no cover - supports direct local execution
         translate_sqlite_parameters,
         translate_sqlite_sql_for_postgres,
     )
+    from request_io import RequestBodyTooLarge  # type: ignore
     import runtime_health  # type: ignore
+    import request_io  # type: ignore
 
 try:
     from cryptography.exceptions import InvalidSignature
@@ -567,10 +571,6 @@ PROFILE_IMAGE_ALLOWED_CONTENT_TYPES = {
 PROFILE_IMAGE_MAX_BYTES = 2_500_000
 RECORD_FILE_MAX_BYTES = 3_000_000
 MAX_JSON_BODY_BYTES = 5_000_000
-
-
-class RequestBodyTooLarge(ValueError):
-    pass
 
 
 def env_flag(name: str, default: bool = False) -> bool:
@@ -3083,7 +3083,10 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         self.send_header("Cross-Origin-Resource-Policy", "same-origin")
         self.send_header("Origin-Agent-Cluster", "?1")
         self.send_header("Referrer-Policy", "same-origin")
-        self.send_header("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+        self.send_header(
+            "Permissions-Policy",
+            "camera=(), microphone=(), geolocation=(), payment=(), usb=(), fullscreen=(self)",
+        )
         self.send_header(
             "Content-Security-Policy",
             "default-src 'self'; "
@@ -3857,56 +3860,13 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             self.send_server_error(exc)
 
     def read_body_text(self) -> str:
-        try:
-            length = int(self.headers.get("Content-Length", "0"))
-        except ValueError as exc:
-            raise ValueError("Invalid request body length.") from exc
-        if length < 0:
-            raise ValueError("Invalid request body length.")
-        if length == 0:
-            return ""
-        if length > MAX_JSON_BODY_BYTES:
-            raise RequestBodyTooLarge("Request body is too large.")
-        try:
-            return self.rfile.read(length).decode("utf-8")
-        except UnicodeDecodeError as exc:
-            raise ValueError("Request body must be valid UTF-8.") from exc
+        return request_io.read_body_text(self.rfile, self.headers, MAX_JSON_BODY_BYTES)
 
     def read_json_body(self) -> dict[str, Any]:
-        raw = self.read_body_text()
-        if not raw:
-            return {}
-        try:
-            payload = json.loads(raw)
-        except json.JSONDecodeError as exc:
-            raise ValueError("Request body must be valid JSON.") from exc
-        if not isinstance(payload, dict):
-            raise ValueError("Expected a JSON object.")
-        return payload
+        return request_io.read_json_body(self.rfile, self.headers, MAX_JSON_BODY_BYTES)
 
     def read_webhook_body(self) -> dict[str, Any]:
-        raw = self.read_body_text()
-        if not raw:
-            return {}
-        content_type = str(self.headers.get("Content-Type", "")).lower()
-        if "json" in content_type:
-            try:
-                payload = json.loads(raw)
-            except json.JSONDecodeError as exc:
-                raise ValueError("Request body must be valid JSON.") from exc
-            if not isinstance(payload, dict):
-                raise ValueError("Expected a JSON object.")
-            return {str(key): value for key, value in payload.items()}
-        parsed = urllib.parse.parse_qs(raw, keep_blank_values=True)
-        if parsed:
-            return {str(key): values[-1] if values else "" for key, values in parsed.items()}
-        try:
-            payload = json.loads(raw)
-        except json.JSONDecodeError:
-            return {}
-        if not isinstance(payload, dict):
-            raise ValueError("Expected a JSON object.")
-        return {str(key): value for key, value in payload.items()}
+        return request_io.read_webhook_body(self.rfile, self.headers, MAX_JSON_BODY_BYTES)
 
     def saved_views(self, params: dict[str, list[str]]) -> dict[str, Any]:
         list_type = (params.get("type", ["people"])[0] or "people").lower()

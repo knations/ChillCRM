@@ -2027,9 +2027,13 @@ def main() -> int:
         hashed = server.password_hash("correct horse")
         assert server.verify_password("correct horse", hashed)
         assert not server.verify_password("wrong horse", hashed)
+        assert not server.verify_password("correct horse", "not-a-valid-hash")
+        assert not server.verify_password("correct horse", "pbkdf2_sha256$bad-iterations$salt$digest")
         token = server.signed_session_token({"uid": 1, "exp": 4_102_444_800}, "secret")
         assert server.verify_signed_session_token(token, "secret")["uid"] == 1
         assert server.verify_signed_session_token(token, "other-secret") is None
+        assert server.verify_signed_session_token("not-a-token", "secret") is None
+        assert server.verify_signed_session_token("bad.payload.signature", "secret") is None
         original_auth_env = {
             key: os.environ.get(key)
             for key in [

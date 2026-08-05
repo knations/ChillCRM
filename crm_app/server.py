@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import binascii
 import csv
 import email.utils
 import hashlib
@@ -711,7 +712,7 @@ def verify_password(password: str, stored_hash: str | None) -> bool:
         expected = b64url_decode(digest_text)
         actual = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), b64url_decode(salt_text), iterations)
         return hmac.compare_digest(actual, expected)
-    except Exception:
+    except (binascii.Error, TypeError, ValueError):
         return False
 
 
@@ -741,7 +742,7 @@ def verify_signed_session_token(token: str, secret: str) -> dict[str, Any] | Non
         if int(payload.get("exp") or 0) < int(time.time()):
             return None
         return payload
-    except Exception:
+    except (binascii.Error, json.JSONDecodeError, TypeError, UnicodeDecodeError, ValueError):
         return None
 
 

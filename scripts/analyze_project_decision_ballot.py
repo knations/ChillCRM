@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate a printable project decision ballot for the local CRM."""
+"""Generate a printable project decision ballot for the CHILLCRM."""
 
 from __future__ import annotations
 
@@ -76,7 +76,7 @@ def generate_report(app: server.CRMRequestHandler, rows: list[dict[str, Any]]) -
         "",
         f"Generated: {generated_at}",
         "",
-        "This is a review worksheet only. It does not save choices, prefill forms, merge records, delete records, resolve cleanup flags, or update Zendesk Sell.",
+        "This is a review worksheet only. It does not save choices, prefill forms, merge records, delete records, resolve cleanup flags, or update legacy CRM provider.",
         "",
         "## Summary",
         "",
@@ -144,7 +144,7 @@ def generate_report(app: server.CRMRequestHandler, rows: list[dict[str, Any]]) -
             "## How To Save After Review",
             "",
             "1. Create a fresh manual backup if you are about to save several decisions in one sitting.",
-            "2. Open Status in the local CRM.",
+            "2. Open Status in the CHILLCRM.",
             "3. Use Open Ballot or Open Sequence as reference, then save one Project Decision card at a time.",
             "4. Each save creates a local backup first and records only the selected decision path.",
             "",

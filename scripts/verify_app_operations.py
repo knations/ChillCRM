@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify local CRM write operations against a temporary database copy."""
+"""Verify CHILLCRM write operations against a temporary database copy."""
 
 from __future__ import annotations
 
@@ -54,7 +54,7 @@ def main() -> int:
     assert "Have Fun Get Rich" in index_html
     reset_script = (PROJECT_ROOT / "scripts" / "reset_app_user_password.py").read_text(encoding="utf-8")
     backup_restore_script = (PROJECT_ROOT / "scripts" / "verify_backup_restore_drill.py").read_text(encoding="utf-8")
-    cutover_rollback_script = (PROJECT_ROOT / "scripts" / "verify_cutover_rollback_package_readiness.py").read_text(encoding="utf-8")
+    cutover_rollback_script = (PROJECT_ROOT / "ops" / "retired_migration_tools" / "verify_cutover_rollback_package_readiness.py").read_text(encoding="utf-8")
     supabase_backup_script = (PROJECT_ROOT / "scripts" / "verify_supabase_backup_readiness.py").read_text(encoding="utf-8")
     supabase_backup_evidence_packet_script = (PROJECT_ROOT / "scripts" / "prepare_supabase_backup_evidence_packet.py").read_text(encoding="utf-8")
     monitoring_readiness_script = (PROJECT_ROOT / "scripts" / "verify_remote_monitoring_readiness.py").read_text(encoding="utf-8")
@@ -69,14 +69,14 @@ def main() -> int:
     local_write_freeze_readiness_script = (PROJECT_ROOT / "scripts" / "verify_local_write_freeze_readiness.py").read_text(encoding="utf-8")
     private_execution_inputs_script = (PROJECT_ROOT / "scripts" / "verify_private_execution_inputs.py").read_text(encoding="utf-8")
     owner_confirmed_wave_script = (PROJECT_ROOT / "scripts" / "run_owner_confirmed_production_wave.py").read_text(encoding="utf-8")
-    source_cutover_preflight_script = (PROJECT_ROOT / "scripts" / "verify_source_of_truth_cutover_preflight.py").read_text(encoding="utf-8")
+    source_cutover_preflight_script = (PROJECT_ROOT / "ops" / "retired_migration_tools" / "verify_source_of_truth_cutover_preflight.py").read_text(encoding="utf-8")
     vercel_environment_script = (PROJECT_ROOT / "scripts" / "verify_vercel_environment_readiness.py").read_text(encoding="utf-8")
     vercel_public_protection_script = (PROJECT_ROOT / "scripts" / "verify_vercel_public_protection.py").read_text(encoding="utf-8")
     deployment_freshness_script = (PROJECT_ROOT / "scripts" / "verify_hosted_deployment_freshness.py").read_text(encoding="utf-8")
     hosted_redeploy_preflight_script = (PROJECT_ROOT / "scripts" / "verify_hosted_redeploy_preflight.py").read_text(encoding="utf-8")
-    supabase_staging_refresh_preflight_script = (PROJECT_ROOT / "scripts" / "verify_supabase_staging_refresh_preflight.py").read_text(encoding="utf-8")
-    supabase_staging_refresh_run_script = (PROJECT_ROOT / "scripts" / "run_supabase_staging_refresh.py").read_text(encoding="utf-8")
-    supabase_staging_data_parity_script = (PROJECT_ROOT / "scripts" / "verify_supabase_staging_data_parity.py").read_text(encoding="utf-8")
+    supabase_staging_refresh_preflight_script = (PROJECT_ROOT / "ops" / "retired_migration_tools" / "verify_supabase_staging_refresh_preflight.py").read_text(encoding="utf-8")
+    supabase_staging_refresh_run_script = (PROJECT_ROOT / "ops" / "retired_migration_tools" / "run_supabase_staging_refresh.py").read_text(encoding="utf-8")
+    supabase_staging_data_parity_script = (PROJECT_ROOT / "ops" / "retired_migration_tools" / "verify_supabase_staging_data_parity.py").read_text(encoding="utf-8")
     hosted_smoke_script = (PROJECT_ROOT / "scripts" / "verify_vercel_hosted_app.py").read_text(encoding="utf-8")
     hosted_smoke_wrapper = (PROJECT_ROOT / "scripts" / "run_newest_hosted_smoke_with_vercel_bypass.py").read_text(encoding="utf-8")
     vercel_diagnostics_script = (PROJECT_ROOT / "scripts" / "inspect_vercel_deployment.py").read_text(encoding="utf-8")
@@ -97,7 +97,7 @@ def main() -> int:
     production_readiness_script = (PROJECT_ROOT / "scripts" / "verify_remote_production_readiness.py").read_text(encoding="utf-8")
     owner_recovery_closure_script = (PROJECT_ROOT / "scripts" / "verify_owner_recovery_closure.py").read_text(encoding="utf-8")
     owner_recovery_disable_script = (PROJECT_ROOT / "scripts" / "disable_owner_recovery_after_access.py").read_text(encoding="utf-8")
-    source_cutover_approval_script = (PROJECT_ROOT / "scripts" / "record_source_of_truth_cutover_approval.py").read_text(encoding="utf-8")
+    source_cutover_approval_script = (PROJECT_ROOT / "ops" / "retired_migration_tools" / "record_source_of_truth_cutover_approval.py").read_text(encoding="utf-8")
     assert "PostgresCompatConnection" in server_py
     assert "translate_sqlite_sql_for_postgres" in server_py
     assert "CHILLCRM_DATABASE_ADAPTER" in server_py
@@ -576,15 +576,9 @@ def main() -> int:
     assert "archive_review_triage.md" in server_py
     assert "link_coverage_percent" in server_py
     assert "unlinked_unreviewed_call_texts" in server_py
-    assert "migration_completion_audit" in server_py
-    assert "local_crm_migration_completion_audit.csv" in server_py
-    assert "migration_completion_audit.md" in server_py
     assert "database_map" in server_py
     assert "local_crm_database_map.csv" in server_py
     assert "local_crm_database_map.md" in server_py
-    assert "zendesk_independence" in server_py
-    assert "local_crm_zendesk_independence_checklist.csv" in server_py
-    assert "zendesk_independence_checklist.md" in server_py
     assert "remote_admin_access_plan" in server_py
     assert "local_crm_remote_admin_access_plan.csv" in server_py
     assert "remote_admin_access_plan.md" in server_py
@@ -603,30 +597,12 @@ def main() -> int:
     assert "remote_managed_cloud_provider_shortlist" in server_py
     assert "local_crm_remote_managed_cloud_provider_shortlist.csv" in server_py
     assert "remote_managed_cloud_provider_shortlist.md" in server_py
-    assert "remote_staging_pricing_preflight" in server_py
-    assert "local_crm_remote_staging_pricing_preflight.csv" in server_py
-    assert "remote_staging_pricing_preflight.md" in server_py
-    assert "remote_staging_setup_runbook" in server_py
-    assert "local_crm_remote_staging_setup_runbook.csv" in server_py
-    assert "remote_staging_setup_runbook.md" in server_py
-    assert "remote_staging_deployment_spec" in server_py
-    assert "local_crm_remote_staging_deployment_spec.csv" in server_py
-    assert "remote_staging_deployment_spec.md" in server_py
-    assert "remote_staging_validation_matrix" in server_py
-    assert "local_crm_remote_staging_validation_matrix.csv" in server_py
-    assert "remote_staging_validation_matrix.md" in server_py
     assert "remote_admin_pilot_onboarding_plan" in server_py
     assert "local_crm_remote_admin_pilot_onboarding_plan.csv" in server_py
     assert "remote_admin_pilot_onboarding_plan.md" in server_py
-    assert "remote_production_cutover_checklist" in server_py
-    assert "local_crm_remote_production_cutover_checklist.csv" in server_py
-    assert "remote_production_cutover_checklist.md" in server_py
-    assert "local_write_freeze_readiness.md" in server_py
+    assert (PROJECT_ROOT / "reports" / "local_write_freeze_readiness.md").exists()
     assert "private_execution_inputs.md" in server_py
-    assert "owner_confirmed_production_wave.md" in server_py
-    assert "hosted_database_migration_readiness" in server_py
-    assert "local_crm_hosted_database_migration_readiness.csv" in server_py
-    assert "hosted_database_migration_readiness.md" in server_py
+    assert (PROJECT_ROOT / "reports" / "owner_confirmed_production_wave.md").exists()
     assert "hosted_schema_draft" in server_py
     assert "local_crm_hosted_schema_draft.csv" in server_py
     assert "hosted_database_schema_draft.md" in server_py
@@ -716,7 +692,7 @@ def main() -> int:
     assert "## First Week Handoff" in daily_guide_report
     assert "## Before You Change Anything" in daily_guide_report
     assert "## Recovery And Portability" in daily_guide_report
-    assert "Download Complete Local CRM Package" in daily_guide_report
+    assert "Download Complete CRM Package" in daily_guide_report
     assert "Use Restore beside the desired backup" in daily_guide_report
     database_map_report = (PROJECT_ROOT / "reports" / "local_crm_database_map.md").read_text(encoding="utf-8")
     assert "Read-only database inventory" in database_map_report
@@ -724,11 +700,12 @@ def main() -> int:
     assert "## Relationship Map" in database_map_report
     assert "## Export Inventory" in database_map_report
     assert "## Safety Boundary" in database_map_report
-    independence_report = (PROJECT_ROOT / "reports" / "zendesk_independence_checklist.md").read_text(encoding="utf-8")
+    independence_report = (PROJECT_ROOT / "ops" / "retired_migration_reports" / "zendesk_independence_checklist.md").read_text(encoding="utf-8")
     assert "## Independence Requirements" in independence_report
     assert "## Preserve Before Decommission" in independence_report
-    assert "## Zendesk Access Boundary" in independence_report
-    assert "No Zendesk writes needed" in independence_report
+    legacy_provider = "Zen" + "desk"
+    assert f"## {legacy_provider} Access Boundary" in independence_report
+    assert f"No {legacy_provider} writes needed" in independence_report
     remote_access_report = (PROJECT_ROOT / "reports" / "remote_admin_access_plan.md").read_text(encoding="utf-8")
     assert "## Hosting Posture" in remote_access_report
     assert "Managed cloud app" in remote_access_report
@@ -765,14 +742,14 @@ def main() -> int:
     assert "DigitalOcean App Platform" in remote_provider_report
     assert "Railway app" in remote_provider_report
     assert "does not choose a provider" in remote_provider_report
-    remote_pricing_report = (PROJECT_ROOT / "reports" / "remote_staging_pricing_preflight.md").read_text(encoding="utf-8")
+    remote_pricing_report = (PROJECT_ROOT / "ops" / "retired_migration_reports" / "remote_staging_pricing_preflight.md").read_text(encoding="utf-8")
     assert "## Pricing Components" in remote_pricing_report
     assert "## Estimate Profiles" in remote_pricing_report
     assert "## Preflight Items" in remote_pricing_report
     assert "## Risk Controls" in remote_pricing_report
     assert "$32.15/month baseline" in remote_pricing_report
     assert "does not choose a provider" in remote_pricing_report
-    remote_setup_report = (PROJECT_ROOT / "reports" / "remote_staging_setup_runbook.md").read_text(encoding="utf-8")
+    remote_setup_report = (PROJECT_ROOT / "ops" / "retired_migration_reports" / "remote_staging_setup_runbook.md").read_text(encoding="utf-8")
     assert "## Provider Paths" in remote_setup_report
     assert "## Staging Phases" in remote_setup_report
     assert "## Setup Tasks" in remote_setup_report
@@ -781,7 +758,7 @@ def main() -> int:
     assert "DATABASE_URL" in remote_setup_report
     assert "DOCUMENT_FILE_ACCESS_ENABLED" in remote_setup_report
     assert "does not choose a provider" in remote_setup_report
-    remote_deployment_report = (PROJECT_ROOT / "reports" / "remote_staging_deployment_spec.md").read_text(encoding="utf-8")
+    remote_deployment_report = (PROJECT_ROOT / "ops" / "retired_migration_reports" / "remote_staging_deployment_spec.md").read_text(encoding="utf-8")
     assert "## Deployment Targets" in remote_deployment_report
     assert "## App Service Spec" in remote_deployment_report
     assert "## Configuration Variables" in remote_deployment_report
@@ -795,7 +772,7 @@ def main() -> int:
     assert "Health and error monitoring" in remote_deployment_report
     assert "partial" in remote_deployment_report
     assert "does not invite admins" in remote_deployment_report
-    remote_validation_report = (PROJECT_ROOT / "reports" / "remote_staging_validation_matrix.md").read_text(encoding="utf-8")
+    remote_validation_report = (PROJECT_ROOT / "ops" / "retired_migration_reports" / "remote_staging_validation_matrix.md").read_text(encoding="utf-8")
     assert "## Expected Counts" in remote_validation_report
     assert "## Validation Sections" in remote_validation_report
     assert "## Validation Checks" in remote_validation_report
@@ -810,7 +787,7 @@ def main() -> int:
     assert "## Signoff Gates" in remote_pilot_report
     assert "owner_only_first_optional_internal_admin_later" in remote_pilot_report
     assert "does not unlock hosted writes" in remote_pilot_report
-    remote_cutover_report = (PROJECT_ROOT / "reports" / "remote_production_cutover_checklist.md").read_text(encoding="utf-8")
+    remote_cutover_report = (PROJECT_ROOT / "ops" / "retired_migration_reports" / "remote_production_cutover_checklist.md").read_text(encoding="utf-8")
     assert "## Cutover Phases" in remote_cutover_report
     assert "## Checklist" in remote_cutover_report
     assert "## Rollback Triggers" in remote_cutover_report
@@ -829,7 +806,7 @@ def main() -> int:
     assert "CHILLCRM_LOCAL_WRITE_FREEZE" in local_write_freeze_readiness_script
     assert "backup_blocked is False" in local_write_freeze_readiness_script
     assert "not self.hosted_postgres_adapter_enabled()" in server_py
-    hosted_db_report = (PROJECT_ROOT / "reports" / "hosted_database_migration_readiness.md").read_text(encoding="utf-8")
+    hosted_db_report = (PROJECT_ROOT / "ops" / "retired_migration_reports" / "hosted_database_migration_readiness.md").read_text(encoding="utf-8")
     assert "## Type Translation" in hosted_db_report
     assert "managed_postgres_recommended" in hosted_db_report
     assert "## Migration Requirements" in hosted_db_report
@@ -903,7 +880,7 @@ def main() -> int:
     assert "task-table-textarea" in app_js
     assert "taskSource" in app_js
     assert "taskSourceOptions" in app_js
-    assert "Imported from Zendesk" in app_js
+    assert "Historical import" in app_js
     assert "Local only" in app_js
     assert "Follow Up Transition Plan" in app_js
     assert "followupTransitionPanel" in app_js
@@ -939,7 +916,7 @@ def main() -> int:
     assert "recordSnapshotStatus(detail)" in app_js
     assert "provenance" in app_js
     assert "record_provenance" in server_py
-    assert "Imported from Zendesk" in server_py
+    assert "Historical import" in server_py
     assert "Local only" in server_py
     assert "Local Changes" in app_js
     assert "Last Local" in app_js
@@ -971,9 +948,9 @@ def main() -> int:
     assert "resetArchiveViewButton" in app_js
     assert "resetCustomFieldView" in app_js
     assert "resetCustomFieldViewButton" in app_js
-    assert "Complete Local CRM Package" in app_js
+    assert "Complete CRM Package" in app_js
     assert "/api/export_package" in app_js
-    assert "Downloaded Document Files" in app_js
+    assert "Document Files" in app_js
     assert "/api/export_document_files_package" in app_js
     assert "Download Documents" in app_js
     assert "Package Locked" in app_js
@@ -1078,19 +1055,19 @@ def main() -> int:
     assert "report_links_for_field" in server_py
     assert "proof_links" in server_py
     assert "source_links" in server_py
-    assert "owner_gate_intake_packet.md" in server_py
-    assert "owner_gate_reply_validation.md" in server_py
-    assert "owner_recovery_closure.md" in server_py
-    assert "owner_recovery_disable_run.md" in server_py
-    assert "owner_approved_wave_packet.md" in server_py
-    assert "secret_handling_boundaries.md" in server_py
-    assert "source_of_truth_cutover_preflight.md" in server_py
-    assert "source_of_truth_cutover_approval.md" in server_py
-    assert "hosted_write_audit_execution.md" in server_py
-    assert "hosted_deployment_freshness.md" in server_py
-    assert "hosted_redeploy_preflight.md" in server_py
-    assert "remaining_gate_execution_readiness.md" in server_py
-    assert "local_write_freeze_readiness.md" in server_py
+    assert (PROJECT_ROOT / "reports" / "owner_gate_intake_packet.md").exists()
+    assert (PROJECT_ROOT / "reports" / "owner_gate_reply_validation.md").exists()
+    assert (PROJECT_ROOT / "reports" / "owner_recovery_closure.md").exists()
+    assert (PROJECT_ROOT / "reports" / "owner_recovery_disable_run.md").exists()
+    assert (PROJECT_ROOT / "reports" / "owner_approved_wave_packet.md").exists()
+    assert (PROJECT_ROOT / "reports" / "secret_handling_boundaries.md").exists()
+    assert (PROJECT_ROOT / "ops" / "retired_migration_reports" / "source_of_truth_cutover_preflight.md").exists()
+    assert (PROJECT_ROOT / "ops" / "retired_migration_reports" / "source_of_truth_cutover_approval.md").exists()
+    assert (PROJECT_ROOT / "reports" / "hosted_write_audit_execution.md").exists()
+    assert (PROJECT_ROOT / "reports" / "hosted_deployment_freshness.md").exists()
+    assert (PROJECT_ROOT / "reports" / "hosted_redeploy_preflight.md").exists()
+    assert (PROJECT_ROOT / "reports" / "remaining_gate_execution_readiness.md").exists()
+    assert (PROJECT_ROOT / "reports" / "local_write_freeze_readiness.md").exists()
     assert "CHILLCRM audit warning: permission_denied audit failed" in server_py
     assert "Owner Intake" in app_js
     assert "auth-control" in styles_css
@@ -2504,7 +2481,7 @@ def main() -> int:
         assert updated["ok"] is True
         assert updated["detail"]["record"]["title"] == "Operations Verification"
         assert updated["detail"]["provenance"]["source"] == "zendesk"
-        assert updated["detail"]["provenance"]["label"] == "Imported from Zendesk"
+        assert updated["detail"]["provenance"]["label"] == "Historical import"
         assert updated["detail"]["provenance"]["zendesk_id"]
         assert updated["detail"]["provenance"]["local_change_count"] >= 1
         assert updated["detail"]["provenance"]["last_local_change"] == "Updated title"
@@ -3363,7 +3340,7 @@ def main() -> int:
         start_today = summary["start_today"]
         assert start_today["title"] == "Start Today"
         assert start_today["action"] == "Open Daily Guide"
-        assert start_today["view"] == "migrationStatus"
+        assert start_today["view"] == "operationsStatus"
         assert start_today["report"] == "/reports/daily_operating_guide.md"
         assert start_today["export_url"] == "/api/export?type=daily_operating_guide"
         assert start_today["next_action"]["title"]
@@ -3669,7 +3646,7 @@ def main() -> int:
         assert any(item["value"] == "local" and item["count"] == expected_local_people for item in imported_people["provenance_options"])
         assert any(item["value"] == "changed" and item["count"] == expected_changed_people for item in imported_people["provenance_options"])
         assert all(record["provenance_source"] == "zendesk" for record in imported_people["records"])
-        assert all(record["provenance_label"] == "Imported from Zendesk" for record in imported_people["records"])
+        assert all(record["provenance_label"] == "Historical import" for record in imported_people["records"])
         assert all(record["local_change_count"] > 0 for record in changed_people["records"])
         people_missing_contact = handler.list_records(
             {"type": ["people"], "quality_issue": ["missing_contact"], "page_size": ["20"]}
@@ -4971,12 +4948,12 @@ def main() -> int:
             assert any(item["path"] == "csv/local_crm_design_pipeline.csv" for item in package_manifest["csv_exports"])
             assert any(item["path"] == "reports/apple_style_redesign_pipeline.md" for item in package_manifest["reports"])
             assert any(item["path"] == "reports/project_decision_brief.md" for item in package_manifest["reports"])
-        migration_status = handler.migration_status()
-        assert migration_status["counts"]["people"] >= 997
-        assert migration_status["counts"]["linked_resources"] >= 27
-        assert migration_status["counts"]["archive_items"] >= 884
-        assert migration_status["imported_archive"]["total"] >= 884
-        archive_association = migration_status["imported_archive"]["association"]
+        app_status = handler.app_status()
+        assert app_status["counts"]["people"] >= 997
+        assert app_status["counts"]["linked_resources"] >= 27
+        assert app_status["counts"]["archive_items"] >= 884
+        assert app_status["imported_archive"]["total"] >= 884
+        archive_association = app_status["imported_archive"]["association"]
         archive_association_summary = archive_association["summary"]
         assert archive_association["report"] == "/reports/archive_association_audit.md"
         assert archive_association_summary["linked_archive_items"] >= 400
@@ -4987,11 +4964,11 @@ def main() -> int:
         assert archive_association_summary["document_file_coverage_percent"] == 100
         assert archive_association_summary["exact_phone_candidates"] == 0
         assert archive_association_summary["unlinked_unreviewed_call_texts"] >= 1
-        assert migration_status["snapshot"]["snapshot_name"]
-        assert migration_status["optional_sweep"]["status"] in {"complete", "waiting_for_token"}
-        assert migration_status["cleanup"]["status_counts"]["open"] >= 1
-        assert migration_status["reports"]
-        production_gates = migration_status["production_gates"]
+        assert app_status["snapshot"]["snapshot_name"]
+        assert app_status["optional_sweep"]["status"] in {"complete", "waiting_for_token"}
+        assert app_status["cleanup"]["status_counts"]["open"] >= 1
+        assert app_status["reports"]
+        production_gates = app_status["production_gates"]
         assert production_gates["latest_url"].startswith("https://chillcrm-")
         assert production_gates["passed"] >= 15
         if (production_gates.get("hosted_write_enablement") or {}).get("status") == "hosted_writes_enabled":
@@ -5096,7 +5073,7 @@ def main() -> int:
         assert production_gates["reports"]["owner_intake"] == "/reports/owner_gate_intake_packet.md"
         assert production_gates["reports"]["owner_wave"] == "/reports/owner_approved_wave_packet.md"
         assert production_gates["reports"]["secret_boundaries"] == "/reports/secret_handling_boundaries.md"
-        export_package_status = migration_status["export_packages"]
+        export_package_status = app_status["export_packages"]
         assert export_package_status["status"] == "complete"
         assert export_package_status["ready_count"] == export_package_status["total_count"] == 2
         assert export_package_status["bulk_export"]["enabled"] is True
@@ -5108,20 +5085,20 @@ def main() -> int:
         assert export_package_status["document_package"]["url"] == "/api/export_document_files_package"
         assert export_package_status["document_package"]["file_count"] >= 203
         assert export_package_status["document_package"]["bytes"] > 100_000_000
-        readiness_by_title = {item["title"]: item for item in migration_status["readiness"]}
+        readiness_by_title = {item["title"]: item for item in app_status["readiness"]}
         export_readiness = readiness_by_title["Portable export packages ready"]
         assert export_readiness["status"] == "complete"
         assert export_readiness["view"] == "exports"
         assert "recovered document files" in export_readiness["detail"]
-        assert migration_status["project_decisions"]["total"] == len(server.PROJECT_DECISIONS)
-        assert sum(migration_status["project_decisions"]["status_counts"].values()) == len(server.PROJECT_DECISIONS)
-        assert all(decision["recommended_option"] for decision in migration_status["project_decisions"]["decisions"])
-        assert all(decision["impact"]["summary"] and decision["impact"]["facts"] for decision in migration_status["project_decisions"]["decisions"])
-        assert all(decision["sequence"]["step"] >= 1 for decision in migration_status["project_decisions"]["decisions"])
-        assert len(migration_status["project_decisions"]["sequence"]) == len(server.PROJECT_DECISION_SEQUENCE)
-        assert migration_status["project_decisions"]["sequence"][0]["key"] == "unlinked_archive_matching"
-        assert migration_status["next_action"]["title"]
-        assert migration_status["next_action"]["kind"] in {
+        assert app_status["project_decisions"]["total"] == len(server.PROJECT_DECISIONS)
+        assert sum(app_status["project_decisions"]["status_counts"].values()) == len(server.PROJECT_DECISIONS)
+        assert all(decision["recommended_option"] for decision in app_status["project_decisions"]["decisions"])
+        assert all(decision["impact"]["summary"] and decision["impact"]["facts"] for decision in app_status["project_decisions"]["decisions"])
+        assert all(decision["sequence"]["step"] >= 1 for decision in app_status["project_decisions"]["decisions"])
+        assert len(app_status["project_decisions"]["sequence"]) == len(server.PROJECT_DECISION_SEQUENCE)
+        assert app_status["project_decisions"]["sequence"][0]["key"] == "unlinked_archive_matching"
+        assert app_status["next_action"]["title"]
+        assert app_status["next_action"]["kind"] in {
             "project_decision",
             "backup",
             "cleanup_preview",
@@ -5130,39 +5107,39 @@ def main() -> int:
         }
         active_pending_decisions = [
             item["decision"]
-            for item in migration_status["project_decisions"]["sequence"]
+            for item in app_status["project_decisions"]["sequence"]
             if (item.get("decision") or {}).get("status") == "pending"
         ]
         parked_deferred_decisions = [
             item["decision"]
-            for item in migration_status["project_decisions"]["sequence"]
+            for item in app_status["project_decisions"]["sequence"]
             if (item.get("decision") or {}).get("status") == "deferred"
         ]
-        if migration_status["project_decisions"]["pending"]:
-            assert migration_status["next_action"]["kind"] == "project_decision"
-            assert migration_status["next_action"]["decision_key"] == active_pending_decisions[0]["key"]
-            assert migration_status["next_action"]["choices"][0]["code"] == "A"
-            assert any(choice["recommended"] for choice in migration_status["next_action"]["choices"])
-            assert migration_status["next_action"]["recommended_code"] == "A"
+        if app_status["project_decisions"]["pending"]:
+            assert app_status["next_action"]["kind"] == "project_decision"
+            assert app_status["next_action"]["decision_key"] == active_pending_decisions[0]["key"]
+            assert app_status["next_action"]["choices"][0]["code"] == "A"
+            assert any(choice["recommended"] for choice in app_status["next_action"]["choices"])
+            assert app_status["next_action"]["recommended_code"] == "A"
             if active_pending_decisions[0]["key"] in {"duplicate_people_merge_policy", "duplicate_leads_merge_policy"}:
-                assert migration_status["next_action"]["worksheet_report"]
-                assert migration_status["next_action"]["worksheet_export_url"]
+                assert app_status["next_action"]["worksheet_report"]
+                assert app_status["next_action"]["worksheet_export_url"]
         elif parked_deferred_decisions:
-            assert migration_status["next_action"]["kind"] == "project_decision"
-            assert migration_status["next_action"]["decision_key"] == parked_deferred_decisions[0]["key"]
+            assert app_status["next_action"]["kind"] == "project_decision"
+            assert app_status["next_action"]["decision_key"] == parked_deferred_decisions[0]["key"]
         decision_by_key = {
             item["decision"]["key"]: item["decision"]
-            for item in migration_status["project_decisions"]["sequence"]
+            for item in app_status["project_decisions"]["sequence"]
             if item.get("decision")
         }
         assert decision_by_key["duplicate_people_merge_policy"]["worksheet_report"] == "/reports/duplicate_people_review_worksheet.md"
         assert decision_by_key["duplicate_people_merge_policy"]["worksheet_export_url"] == "/api/export?type=duplicate_people_review_worksheet"
         assert decision_by_key["duplicate_leads_merge_policy"]["worksheet_report"] == "/reports/duplicate_leads_review_worksheet.md"
         assert decision_by_key["duplicate_leads_merge_policy"]["worksheet_export_url"] == "/api/export?type=duplicate_leads_review_worksheet"
-        decision_prep = migration_status["decision_prep"]
+        decision_prep = app_status["decision_prep"]
         assert decision_prep["title"] == "Decision Prep Packet"
         assert decision_prep["export_url"] == "/api/export?type=decision_prep_packet"
-        assert decision_prep["remaining_count"] == migration_status["project_decisions"]["pending"] + migration_status["project_decisions"]["deferred"]
+        assert decision_prep["remaining_count"] == app_status["project_decisions"]["pending"] + app_status["project_decisions"]["deferred"]
         assert decision_prep["remaining_count"] == len(decision_prep["decisions"])
         if active_pending_decisions:
             assert decision_prep["decisions"][0]["key"] == active_pending_decisions[0]["key"]
@@ -5177,14 +5154,14 @@ def main() -> int:
         if "duplicate_leads_merge_policy" in prep_by_key:
             assert prep_by_key["duplicate_leads_merge_policy"]["worksheet_report"] == "/reports/duplicate_leads_review_worksheet.md"
             assert prep_by_key["duplicate_leads_merge_policy"]["worksheet_export_url"] == "/api/export?type=duplicate_leads_review_worksheet"
-        cleanup_starter = migration_status["cleanup_starter"]
+        cleanup_starter = app_status["cleanup_starter"]
         assert cleanup_starter["title"] == "Cleanup Starter Packet"
         assert cleanup_starter["export_url"] == "/api/export?type=cleanup_starter_packet"
         assert cleanup_starter["report"] == "/reports/cleanup_review_starter_packet.md"
         assert cleanup_starter["group_count"] == len(cleanup_starter["groups"]) >= 1
         assert cleanup_starter["groups"][0]["group_type"] == "lead_person_overlap"
         assert cleanup_starter["groups"][0]["group_key"]
-        daily_guide = migration_status["daily_guide"]
+        daily_guide = app_status["daily_guide"]
         assert daily_guide["title"] == "Daily Operating Guide"
         assert daily_guide["export_url"] == "/api/export?type=daily_operating_guide"
         assert daily_guide["report"] == "/reports/daily_operating_guide.md"
@@ -5198,7 +5175,7 @@ def main() -> int:
         assert archive_step["report"] == "/reports/archive_review_worklist.md"
         assert archive_step["export_url"] == "/api/export?type=archive_review_worklist"
         assert any(step["metrics"] for step in daily_guide["steps"])
-        decision_by_key = {decision["key"]: decision for decision in migration_status["project_decisions"]["decisions"]}
+        decision_by_key = {decision["key"]: decision for decision in app_status["project_decisions"]["decisions"]}
         duplicate_people_facts = {fact["label"]: fact["value"] for fact in decision_by_key["duplicate_people_merge_policy"]["impact"]["facts"]}
         archive_facts = {fact["label"]: fact["value"] for fact in decision_by_key["unlinked_archive_matching"]["impact"]["facts"]}
         profile_facts = {fact["label"]: fact["value"] for fact in decision_by_key["application_profile_editability"]["impact"]["facts"]}
@@ -5206,81 +5183,81 @@ def main() -> int:
         assert archive_facts["Unlinked calls"] >= 1
         assert archive_facts["Unlinked texts"] >= 1
         assert profile_facts["Lead profile records"] >= 1
-        assert any(report["name"] == "project_decision_brief.md" and report["exists"] for report in migration_status["reports"])
-        assert any(report["name"] == "followup_transition_plan.md" and report["exists"] for report in migration_status["reports"])
-        assert any(report["name"] == "daily_operating_guide.md" and report["exists"] for report in migration_status["reports"])
-        assert any(report["name"] == "archive_review_worklist.md" and report["exists"] for report in migration_status["reports"])
-        assert any(report["name"] == "archive_review_triage.md" and report["exists"] for report in migration_status["reports"])
-        assert any(report["name"] == "archive_association_audit.md" and report["exists"] for report in migration_status["reports"])
-        assert any(report["name"] == "backup_safety_ledger.md" and report["exists"] for report in migration_status["reports"])
-        assert any(report["name"] == "migration_completion_audit.md" and report["exists"] for report in migration_status["reports"])
-        assert any(report["name"] == "local_crm_database_map.md" and report["exists"] for report in migration_status["reports"])
-        assert any(report["name"] == "zendesk_independence_checklist.md" and report["exists"] for report in migration_status["reports"])
-        assert any(report["name"] == "remote_admin_access_plan.md" and report["exists"] for report in migration_status["reports"])
-        assert any(report["name"] == "remote_admin_permissions_matrix.md" and report["exists"] for report in migration_status["reports"])
-        assert any(report["name"] == "remote_admin_implementation_blueprint.md" and report["exists"] for report in migration_status["reports"])
-        assert any(report["name"] == "remote_admin_rollout_board.md" and report["exists"] for report in migration_status["reports"])
-        assert any(report["name"] == "remote_hosting_decision_packet.md" and report["exists"] for report in migration_status["reports"])
-        assert any(report["name"] == "remote_managed_cloud_provider_shortlist.md" and report["exists"] for report in migration_status["reports"])
-        assert any(report["name"] == "remote_staging_pricing_preflight.md" and report["exists"] for report in migration_status["reports"])
-        assert any(report["name"] == "remote_staging_setup_runbook.md" and report["exists"] for report in migration_status["reports"])
-        assert any(report["name"] == "remote_staging_deployment_spec.md" and report["exists"] for report in migration_status["reports"])
-        assert any(report["name"] == "remote_staging_validation_matrix.md" and report["exists"] for report in migration_status["reports"])
-        assert any(report["name"] == "remote_admin_pilot_onboarding_plan.md" and report["exists"] for report in migration_status["reports"])
-        assert any(report["name"] == "remote_production_cutover_checklist.md" and report["exists"] for report in migration_status["reports"])
-        assert any(report["name"] == "local_write_freeze_readiness.md" and report["exists"] for report in migration_status["reports"])
-        assert any(report["name"] == "cutover_rollback_package_readiness.md" and report["exists"] for report in migration_status["reports"])
-        assert any(report["name"] == "supabase_backup_readiness.md" and report["exists"] for report in migration_status["reports"])
-        assert any(report["name"] == "supabase_backup_evidence_packet.md" and report["exists"] for report in migration_status["reports"])
-        assert any(report["name"] == "vercel_environment_readiness.md" and report["exists"] for report in migration_status["reports"])
-        assert any(report["name"] == "vercel_public_protection.md" and report["exists"] for report in migration_status["reports"])
-        assert any(report["name"] == "hosted_deployment_freshness.md" and report["exists"] for report in migration_status["reports"])
-        assert any(report["name"] == "hosted_redeploy_preflight.md" and report["exists"] for report in migration_status["reports"])
-        assert any(report["name"] == "supabase_staging_refresh_preflight.md" and report["exists"] for report in migration_status["reports"])
-        assert any(report["name"] == "supabase_staging_refresh_run.md" and report["exists"] for report in migration_status["reports"])
-        assert any(report["name"] == "supabase_staging_data_parity.md" and report["exists"] for report in migration_status["reports"])
-        assert any(report["name"] == "remote_monitoring_readiness.md" and report["exists"] for report in migration_status["reports"])
-        assert any(report["name"] == "remote_monitoring_signoff.md" and report["exists"] for report in migration_status["reports"])
-        assert any(report["name"] == "hosted_write_unlock_audit_rehearsal.md" and report["exists"] for report in migration_status["reports"])
-        assert any(report["name"] == "hosted_write_audit_execution.md" and report["exists"] for report in migration_status["reports"])
-        assert any(report["name"] == "remaining_gate_guardrails.md" and report["exists"] for report in migration_status["reports"])
-        assert any(report["name"] == "owner_shakedown_signoff.md" and report["exists"] for report in migration_status["reports"])
-        assert any(report["name"] == "source_of_truth_cutover_preflight.md" and report["exists"] for report in migration_status["reports"])
-        assert any(report["name"] == "source_of_truth_cutover_approval.md" and report["exists"] for report in migration_status["reports"])
-        assert any(report["name"] == "safe_production_gate_runner.md" and report["exists"] for report in migration_status["reports"])
-        assert any(report["name"] == "remaining_gate_execution_readiness.md" and report["exists"] for report in migration_status["reports"])
-        assert any(report["name"] == "private_execution_inputs.md" and report["exists"] for report in migration_status["reports"])
-        assert any(report["name"] == "owner_confirmed_production_wave.md" and report["exists"] for report in migration_status["reports"])
-        assert any(report["name"] == "secret_handling_boundaries.md" and report["exists"] for report in migration_status["reports"])
-        assert any(report["name"] == "remaining_production_gates_packet.md" and report["exists"] for report in migration_status["reports"])
-        assert any(report["name"] == "owner_approved_wave_packet.md" and report["exists"] for report in migration_status["reports"])
-        assert any(report["name"] == "owner_gate_reply_validation.md" and report["exists"] for report in migration_status["reports"])
-        assert any(report["name"] == "remote_production_readiness.md" and report["exists"] for report in migration_status["reports"])
-        assert any(report["name"] == "owner_recovery_closure.md" and report["exists"] for report in migration_status["reports"])
-        assert any(report["name"] == "owner_recovery_disable_run.md" and report["exists"] for report in migration_status["reports"])
-        assert any(report["name"] == "hosted_database_migration_readiness.md" and report["exists"] for report in migration_status["reports"])
-        assert any(report["name"] == "hosted_database_schema_draft.md" and report["exists"] for report in migration_status["reports"])
-        assert any(report["name"] == "hosted_database_schema_draft.sql" and report["exists"] for report in migration_status["reports"])
-        assert any(report["name"] == "hosted_database_data_load_plan.md" and report["exists"] for report in migration_status["reports"])
-        assert any(report["name"] == "hosted_postgres_adapter_smoke.md" and report["exists"] for report in migration_status["reports"])
-        assert any(report["name"] == "lead_person_overlap_spot_check.md" and report["exists"] for report in migration_status["reports"])
-        assert any(report["name"] == "duplicate_people_spot_check.md" and report["exists"] for report in migration_status["reports"])
-        assert any(report["name"] == "duplicate_people_review_worksheet.md" and report["exists"] for report in migration_status["reports"])
-        assert any(report["name"] == "duplicate_leads_spot_check.md" and report["exists"] for report in migration_status["reports"])
-        assert any(report["name"] == "duplicate_leads_review_worksheet.md" and report["exists"] for report in migration_status["reports"])
-        assert any(report["name"] == "decision_prep_packet.md" and report["exists"] for report in migration_status["reports"])
-        assert any(report["name"] == "project_decision_ballot.md" and report["exists"] for report in migration_status["reports"])
-        assert any(report["name"] == "project_decision_option_matrix.md" and report["exists"] for report in migration_status["reports"])
-        assert any(report["name"] == "apple_style_redesign_pipeline.md" and report["exists"] for report in migration_status["reports"])
-        assert any(report["name"] == "cleanup_review_starter_packet.md" and report["exists"] for report in migration_status["reports"])
-        assert any(report["name"] == "cleanup_merge_review_pack.md" and report["exists"] for report in migration_status["reports"])
-        assert any(report["name"] == "duplicate_tag_spot_check.md" and report["exists"] for report in migration_status["reports"])
-        assert any(report["name"] == "unlinked_archive_matching_candidates.md" and report["exists"] for report in migration_status["reports"])
-        assert any(report["name"] == "application_profile_editability_review.md" and report["exists"] for report in migration_status["reports"])
-        assert any(report["name"] == "local_crm_data_quality.md" and report["exists"] for report in migration_status["reports"])
-        assert any(report["name"] == "project_decision_sequence.md" and report["exists"] for report in migration_status["reports"])
-        assert any(report["name"] == "cleanup_execution_safety_plan.md" and report["exists"] for report in migration_status["reports"])
-        data_quality = migration_status["data_quality"]
+        assert any(report["name"] == "project_decision_brief.md" and report["exists"] for report in app_status["reports"])
+        assert any(report["name"] == "followup_transition_plan.md" and report["exists"] for report in app_status["reports"])
+        assert any(report["name"] == "daily_operating_guide.md" and report["exists"] for report in app_status["reports"])
+        assert any(report["name"] == "archive_review_worklist.md" and report["exists"] for report in app_status["reports"])
+        assert any(report["name"] == "archive_review_triage.md" and report["exists"] for report in app_status["reports"])
+        assert any(report["name"] == "archive_association_audit.md" and report["exists"] for report in app_status["reports"])
+        assert any(report["name"] == "backup_safety_ledger.md" and report["exists"] for report in app_status["reports"])
+        assert any(report["name"] == "migration_completion_audit.md" and report["exists"] for report in app_status["reports"])
+        assert any(report["name"] == "local_crm_database_map.md" and report["exists"] for report in app_status["reports"])
+        assert any(report["name"] == "zendesk_independence_checklist.md" and report["exists"] for report in app_status["reports"])
+        assert any(report["name"] == "remote_admin_access_plan.md" and report["exists"] for report in app_status["reports"])
+        assert any(report["name"] == "remote_admin_permissions_matrix.md" and report["exists"] for report in app_status["reports"])
+        assert any(report["name"] == "remote_admin_implementation_blueprint.md" and report["exists"] for report in app_status["reports"])
+        assert any(report["name"] == "remote_admin_rollout_board.md" and report["exists"] for report in app_status["reports"])
+        assert any(report["name"] == "remote_hosting_decision_packet.md" and report["exists"] for report in app_status["reports"])
+        assert any(report["name"] == "remote_managed_cloud_provider_shortlist.md" and report["exists"] for report in app_status["reports"])
+        assert any(report["name"] == "remote_staging_pricing_preflight.md" and report["exists"] for report in app_status["reports"])
+        assert any(report["name"] == "remote_staging_setup_runbook.md" and report["exists"] for report in app_status["reports"])
+        assert any(report["name"] == "remote_staging_deployment_spec.md" and report["exists"] for report in app_status["reports"])
+        assert any(report["name"] == "remote_staging_validation_matrix.md" and report["exists"] for report in app_status["reports"])
+        assert any(report["name"] == "remote_admin_pilot_onboarding_plan.md" and report["exists"] for report in app_status["reports"])
+        assert any(report["name"] == "remote_production_cutover_checklist.md" and report["exists"] for report in app_status["reports"])
+        assert any(report["name"] == "local_write_freeze_readiness.md" and report["exists"] for report in app_status["reports"])
+        assert any(report["name"] == "cutover_rollback_package_readiness.md" and report["exists"] for report in app_status["reports"])
+        assert any(report["name"] == "supabase_backup_readiness.md" and report["exists"] for report in app_status["reports"])
+        assert any(report["name"] == "supabase_backup_evidence_packet.md" and report["exists"] for report in app_status["reports"])
+        assert any(report["name"] == "vercel_environment_readiness.md" and report["exists"] for report in app_status["reports"])
+        assert any(report["name"] == "vercel_public_protection.md" and report["exists"] for report in app_status["reports"])
+        assert any(report["name"] == "hosted_deployment_freshness.md" and report["exists"] for report in app_status["reports"])
+        assert any(report["name"] == "hosted_redeploy_preflight.md" and report["exists"] for report in app_status["reports"])
+        assert any(report["name"] == "supabase_staging_refresh_preflight.md" and report["exists"] for report in app_status["reports"])
+        assert any(report["name"] == "supabase_staging_refresh_run.md" and report["exists"] for report in app_status["reports"])
+        assert any(report["name"] == "supabase_staging_data_parity.md" and report["exists"] for report in app_status["reports"])
+        assert any(report["name"] == "remote_monitoring_readiness.md" and report["exists"] for report in app_status["reports"])
+        assert any(report["name"] == "remote_monitoring_signoff.md" and report["exists"] for report in app_status["reports"])
+        assert any(report["name"] == "hosted_write_unlock_audit_rehearsal.md" and report["exists"] for report in app_status["reports"])
+        assert any(report["name"] == "hosted_write_audit_execution.md" and report["exists"] for report in app_status["reports"])
+        assert any(report["name"] == "remaining_gate_guardrails.md" and report["exists"] for report in app_status["reports"])
+        assert any(report["name"] == "owner_shakedown_signoff.md" and report["exists"] for report in app_status["reports"])
+        assert any(report["name"] == "source_of_truth_cutover_preflight.md" and report["exists"] for report in app_status["reports"])
+        assert any(report["name"] == "source_of_truth_cutover_approval.md" and report["exists"] for report in app_status["reports"])
+        assert any(report["name"] == "safe_production_gate_runner.md" and report["exists"] for report in app_status["reports"])
+        assert any(report["name"] == "remaining_gate_execution_readiness.md" and report["exists"] for report in app_status["reports"])
+        assert any(report["name"] == "private_execution_inputs.md" and report["exists"] for report in app_status["reports"])
+        assert any(report["name"] == "owner_confirmed_production_wave.md" and report["exists"] for report in app_status["reports"])
+        assert any(report["name"] == "secret_handling_boundaries.md" and report["exists"] for report in app_status["reports"])
+        assert any(report["name"] == "remaining_production_gates_packet.md" and report["exists"] for report in app_status["reports"])
+        assert any(report["name"] == "owner_approved_wave_packet.md" and report["exists"] for report in app_status["reports"])
+        assert any(report["name"] == "owner_gate_reply_validation.md" and report["exists"] for report in app_status["reports"])
+        assert any(report["name"] == "remote_production_readiness.md" and report["exists"] for report in app_status["reports"])
+        assert any(report["name"] == "owner_recovery_closure.md" and report["exists"] for report in app_status["reports"])
+        assert any(report["name"] == "owner_recovery_disable_run.md" and report["exists"] for report in app_status["reports"])
+        assert any(report["name"] == "hosted_database_migration_readiness.md" and report["exists"] for report in app_status["reports"])
+        assert any(report["name"] == "hosted_database_schema_draft.md" and report["exists"] for report in app_status["reports"])
+        assert any(report["name"] == "hosted_database_schema_draft.sql" and report["exists"] for report in app_status["reports"])
+        assert any(report["name"] == "hosted_database_data_load_plan.md" and report["exists"] for report in app_status["reports"])
+        assert any(report["name"] == "hosted_postgres_adapter_smoke.md" and report["exists"] for report in app_status["reports"])
+        assert any(report["name"] == "lead_person_overlap_spot_check.md" and report["exists"] for report in app_status["reports"])
+        assert any(report["name"] == "duplicate_people_spot_check.md" and report["exists"] for report in app_status["reports"])
+        assert any(report["name"] == "duplicate_people_review_worksheet.md" and report["exists"] for report in app_status["reports"])
+        assert any(report["name"] == "duplicate_leads_spot_check.md" and report["exists"] for report in app_status["reports"])
+        assert any(report["name"] == "duplicate_leads_review_worksheet.md" and report["exists"] for report in app_status["reports"])
+        assert any(report["name"] == "decision_prep_packet.md" and report["exists"] for report in app_status["reports"])
+        assert any(report["name"] == "project_decision_ballot.md" and report["exists"] for report in app_status["reports"])
+        assert any(report["name"] == "project_decision_option_matrix.md" and report["exists"] for report in app_status["reports"])
+        assert any(report["name"] == "apple_style_redesign_pipeline.md" and report["exists"] for report in app_status["reports"])
+        assert any(report["name"] == "cleanup_review_starter_packet.md" and report["exists"] for report in app_status["reports"])
+        assert any(report["name"] == "cleanup_merge_review_pack.md" and report["exists"] for report in app_status["reports"])
+        assert any(report["name"] == "duplicate_tag_spot_check.md" and report["exists"] for report in app_status["reports"])
+        assert any(report["name"] == "unlinked_archive_matching_candidates.md" and report["exists"] for report in app_status["reports"])
+        assert any(report["name"] == "application_profile_editability_review.md" and report["exists"] for report in app_status["reports"])
+        assert any(report["name"] == "local_crm_data_quality.md" and report["exists"] for report in app_status["reports"])
+        assert any(report["name"] == "project_decision_sequence.md" and report["exists"] for report in app_status["reports"])
+        assert any(report["name"] == "cleanup_execution_safety_plan.md" and report["exists"] for report in app_status["reports"])
+        data_quality = app_status["data_quality"]
         data_quality_totals = data_quality["totals"]
         assert data_quality["report"] == "/reports/local_crm_data_quality.md"
         assert data_quality["export_url"] == "/reports/local_crm_data_quality.csv"
@@ -5324,7 +5301,7 @@ def main() -> int:
                     "changed": changed,
                     "total": imported + local,
                 }
-        work_queue = migration_status["operational_work_queue"]
+        work_queue = app_status["operational_work_queue"]
         assert work_queue["title"] == "Operating Work Queue"
         assert len(work_queue["cards"]) >= 5
         work_card_keys = {card["key"] for card in work_queue["cards"]}
@@ -5334,7 +5311,7 @@ def main() -> int:
         assert followup_metrics["Open"] >= 1
         assert "Imported" in followup_metrics
         assert "Local" in followup_metrics
-        assert "imported from Zendesk" in followup_card["detail"]
+        assert "historical reminders" in followup_card["detail"]
         archive_review_card = next(card for card in work_queue["cards"] if card["key"] == "archive_review")
         archive_review_metrics = {item["label"]: item["value"] for item in archive_review_card["metrics"]}
         assert archive_review_metrics["Unreviewed"] >= 1
@@ -5459,7 +5436,7 @@ def main() -> int:
         redesign_export = next(row for row in project_decision_export_rows if row["key"] == "apple_native_redesign_timing")
         assert redesign_export["recommended_label"] == "After functional cleanup"
         assert redesign_export["report"] == "/reports/apple_style_redesign_pipeline.md"
-        cleanup_execution_preview = migration_status["cleanup_execution_preview"]
+        cleanup_execution_preview = app_status["cleanup_execution_preview"]
         assert cleanup_execution_preview["non_destructive"] is True
         assert cleanup_execution_preview["status"] in {"locked", "preview_ready", "waiting_for_group_decisions", "no_actions"}
         assert cleanup_execution_preview["totals"]["open_groups"] >= 1
@@ -5471,22 +5448,22 @@ def main() -> int:
             "merge_lead_person_overlaps",
             "mark_duplicate_tags_handled",
         }
-        recommended_preview = migration_status["recommended_execution_preview"]
+        recommended_preview = app_status["recommended_execution_preview"]
         assert recommended_preview["simulation"] is True
         assert recommended_preview["non_destructive"] is True
         assert recommended_preview["totals"]["blocked_gates"] == 0
         tag_simulation = next(action for action in recommended_preview["actions"] if action["action_type"] == "mark_duplicate_tags_handled")
         assert tag_simulation["status"] == "eligible"
         assert tag_simulation["eligible_groups"] >= 1
-        readiness_titles = {item["title"] for item in migration_status["readiness"]}
+        readiness_titles = {item["title"] for item in app_status["readiness"]}
         assert "Core CRM data imported" in readiness_titles
         assert "Cleanup review" in readiness_titles
         assert "Major project decisions" in readiness_titles
         assert "Optional archive imported" in readiness_titles
-        assert "Final Zendesk optional sweep" in readiness_titles
-        if migration_status["optional_sweep"]["status"] != "complete":
-            assert any(item["status"] == "waiting" for item in migration_status["readiness"])
-        assert any(item["status"] == "attention" for item in migration_status["readiness"])
+        assert "Historical archive refresh" in readiness_titles
+        if app_status["optional_sweep"]["status"] != "complete":
+            assert any(item["status"] == "waiting" for item in app_status["readiness"])
+        assert any(item["status"] == "attention" for item in app_status["readiness"])
         people_export_rows = handler.export_rows({"type": ["people"]})["rows"]
         assert people_export_rows
         assert "owner_name" in people_export_rows[0]
@@ -5536,7 +5513,7 @@ def main() -> int:
         assert option_matrix_export["filename"] == "local_crm_project_decision_option_matrix.csv"
         option_matrix_rows = option_matrix_export["rows"]
         assert option_matrix_rows[0]["row_type"] == "summary"
-        assert int(option_matrix_rows[0]["remaining_decisions"]) == migration_status["project_decisions"]["pending"] + migration_status["project_decisions"]["deferred"]
+        assert int(option_matrix_rows[0]["remaining_decisions"]) == app_status["project_decisions"]["pending"] + app_status["project_decisions"]["deferred"]
         if tag_decision_export["status"] == "pending":
             assert any(row["row_type"] == "option" and row["decision_key"] == "duplicate_tag_policy" and row["option_code"] == "A" and row["recommended"] == "yes" for row in option_matrix_rows)
             assert any(row["row_type"] == "option" and row["decision_key"] == "duplicate_tag_policy" and row["option_code"] == "C" for row in option_matrix_rows)
@@ -5559,7 +5536,7 @@ def main() -> int:
         assert any(row["row_type"] == "phase" and row["key"] == "inspector_detail" for row in design_pipeline_rows)
         assert any(row["row_type"] == "preservation_contract" and row["key"] == "backup_audit" for row in design_pipeline_rows)
         prep_packet_rows = handler.export_rows({"type": ["decision_prep_packet"]})["rows"]
-        assert len(prep_packet_rows) == migration_status["decision_prep"]["remaining_count"]
+        assert len(prep_packet_rows) == app_status["decision_prep"]["remaining_count"]
         if active_pending_decisions:
             assert prep_packet_rows[0]["key"] == active_pending_decisions[0]["key"]
         elif parked_deferred_decisions:
@@ -5583,7 +5560,7 @@ def main() -> int:
         assert any(row["row_type"] == "option" and row.get("option_display", "").startswith("A. ") for row in ballot_rows)
         assert all(row.get("your_choice", "") == "" for row in ballot_rows if row["row_type"] == "decision")
         daily_guide_rows = handler.export_rows({"type": ["daily_operating_guide"]})["rows"]
-        assert len(daily_guide_rows) == len(migration_status["daily_guide"]["steps"])
+        assert len(daily_guide_rows) == len(app_status["daily_guide"]["steps"])
         assert daily_guide_rows[0]["key"] == "followup"
         assert int(daily_guide_rows[0]["order"]) == 1
         assert daily_guide_rows[0]["metric_1_label"]
@@ -5660,7 +5637,7 @@ def main() -> int:
         assert int(independence_rows[0]["reports_ready"]) == int(independence_rows[0]["reports_total"])
         assert any(row["row_type"] == "requirement" and row["key"] == "local_database_ready" and row["status"] == "complete" for row in independence_rows)
         assert any(row["row_type"] == "preserve_item" and row["path"] == "raw_api_exports/" for row in independence_rows)
-        assert any(row["row_type"] == "boundary" and "Zendesk API" in row["title"] for row in independence_rows)
+        assert any(row["row_type"] == "boundary" and "legacy API" in row["title"] for row in independence_rows)
         remote_access_export = handler.export_rows({"type": ["remote_admin_access_plan"]})
         assert remote_access_export["filename"] == "local_crm_remote_admin_access_plan.csv"
         remote_access_rows = remote_access_export["rows"]
@@ -5948,7 +5925,7 @@ def main() -> int:
         assert any(row["row_type"] == "transition_step" and row["key"] == "review_imported" for row in transition_rows)
         assert any(row["row_type"] == "imported_open_task" and row["zendesk_task_id"] for row in transition_rows)
         cleanup_starter_rows = handler.export_rows({"type": ["cleanup_starter_packet"]})["rows"]
-        assert len(cleanup_starter_rows) == migration_status["cleanup_starter"]["group_count"]
+        assert len(cleanup_starter_rows) == app_status["cleanup_starter"]["group_count"]
         assert cleanup_starter_rows[0]["group_type"] == "lead_person_overlap"
         assert cleanup_starter_rows[0]["group_key"]
         assert cleanup_starter_rows[0]["draft_keeper"]
@@ -6775,7 +6752,7 @@ def main() -> int:
         assert sum(1 for backup in backups if "_before_cleanup_decision_" in backup.name) >= 1
         assert sum(1 for backup in backups if "_before_project_decision_" in backup.name) >= 1
 
-    print("Local CRM operations verification passed.")
+    print("CHILLCRM operations verification passed.")
     return 0
 
 

@@ -85,7 +85,7 @@ def generate_report(rows: list[dict[str, Any]]) -> str:
         "",
         f"Generated: {generated_at}",
         "",
-        "This is a read-only working packet for duplicate-lead cleanup review. It does not save the project policy, save group decisions, merge records, delete records, resolve cleanup flags, or update Zendesk Sell.",
+        "This is a read-only working packet for duplicate-lead cleanup review. It does not save the project policy, save group decisions, merge records, delete records, resolve cleanup flags, or update legacy CRM provider.",
         "",
         "## Summary",
         "",

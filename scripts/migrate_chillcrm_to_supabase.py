@@ -412,7 +412,7 @@ def write_markdown(path: Path, rows: list[LoadResult], setup_checks: dict[str, i
         "",
         f"- Project ref: `{project_ref}`.",
         f"- Status: {status}.",
-        f"- Loaded local CRM tables checked: {len(rows)}.",
+        f"- Loaded CHILLCRM tables checked: {len(rows)}.",
         f"- Count failures: {len(failures)}.",
         f"- Document archive rows: {setup_checks.get('document_archive_rows', 0)}.",
         f"- Remote file objects: {setup_checks.get('remote_file_objects', 0)}.",

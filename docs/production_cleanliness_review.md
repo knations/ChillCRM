@@ -11,7 +11,7 @@ The live health endpoint at `https://chillcrm.app/api/health` is green after the
 ## What Is Clean
 
 - Runtime dependencies are minimal: `certifi`, `cryptography`, and `pg8000`.
-- Local CRM data, backups, exports, reports, profile images, record files, `.env` files, `.vercel`, and Python cache files are ignored by Git and excluded from Vercel deploys.
+- CRM data, backups, exports, reports, profile images, record files, `.env` files, `.vercel`, and Python cache files are ignored by Git and excluded from Vercel deploys.
 - Production serves HTML with `Cache-Control: no-store` so app shell updates are immediate.
 - Versioned static CSS/JS paths use short-lived private caching with ETags.
 - Security headers are present on live responses: CSP without inline script/style allowances, frame blocking, noindex, nosniff, referrer policy, permissions policy, and HSTS via Vercel.
@@ -48,7 +48,7 @@ Green checks from the latest passes:
 
 Known non-code evidence gate:
 
-- `scripts/verify_app_operations.py` runs through refreshed readiness-report assertions and then stops at the existing final production readiness assertion after `CHILLCRM server error: RuntimeError on GET /api/summary`. Treat this as the standing private/provider readiness evidence gate until fresh owner/provider smoke, Vercel diagnostics/environment, and Supabase staging parity evidence is supplied. Do not interpret it as a regression from the latest hardening commits unless an earlier assertion fails.
+- `scripts/verify_app_operations.py` runs through refreshed readiness-report assertions and can stop at private/provider evidence gates after `CHILLCRM server error: RuntimeError on GET /api/summary`. Treat earlier assertion failures as regressions; treat final private/provider gates as evidence refresh work.
 
 ## Recommended Boundaries
 

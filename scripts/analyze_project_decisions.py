@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate a non-destructive project decision brief for the local CRM."""
+"""Generate a non-destructive project decision brief for the CHILLCRM."""
 
 from __future__ import annotations
 

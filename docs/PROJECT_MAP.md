@@ -42,7 +42,7 @@ Before moving past the internal foundation, approve:
 - client-visible data contract
 - auth and invite model
 - portal route/domain
-- production database migrations
+- production schema changes
 - provider integrations
 - monitoring/check ownership
 - production deployment

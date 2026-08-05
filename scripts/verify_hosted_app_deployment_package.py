@@ -100,7 +100,6 @@ def main() -> int:
         ".python-version",
         ".vercelignore",
         "config/chillcrm_vercel.env.example",
-        "docs/vercel_staging_setup.md",
     ]
     for relative_path in required_files:
         path = PROJECT_ROOT / relative_path

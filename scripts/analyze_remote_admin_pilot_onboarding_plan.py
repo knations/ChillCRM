@@ -225,7 +225,7 @@ def generate_report(rows: list[dict[str, Any]]) -> str:
         "",
         "## Safety Boundary",
         "",
-        "This plan is tracking only. It does not unlock hosted writes, create users, invite internal users, upload files, save decisions, expose this machine, switch source of truth, or change local CRM records. Optional internal-user access happens only after owner approval and passing staging validation gates.",
+        "This plan is tracking only. It does not unlock hosted writes, create users, invite internal users, upload files, save decisions, expose this machine, switch source of truth, or change CHILLCRM records. Optional internal-user access happens only after owner approval and passing staging validation gates.",
         "",
         "## Related Files",
         "",

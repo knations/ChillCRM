@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Maintenance utilities for the local CRM database."""
+"""Maintenance utilities for the CHILLCRM database."""
 
 from __future__ import annotations
 
@@ -105,7 +105,7 @@ def restore_database(backup_path: Path, db_path: Path = DEFAULT_DB) -> None:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Maintain the local CRM database.")
+    parser = argparse.ArgumentParser(description="Maintain the CHILLCRM database.")
     sub = parser.add_subparsers(dest="command", required=True)
 
     sub.add_parser("upgrade", help="Apply safe local schema upgrades.")

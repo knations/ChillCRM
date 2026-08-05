@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Export local CRM tables to CSV files."""
+"""Export CHILLCRM tables to CSV files."""
 
 from __future__ import annotations
 
@@ -67,7 +67,7 @@ def export_table(conn: sqlite3.Connection, db_path: Path, output_dir: Path, expo
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Export local CRM data to CSV.")
+    parser = argparse.ArgumentParser(description="Export CHILLCRM data to CSV.")
     parser.add_argument("--db-path", default=str(DEFAULT_DB))
     parser.add_argument("--output-root", default=str(DEFAULT_OUTPUT_ROOT))
     parser.add_argument("--only", choices=sorted(EXPORTS), action="append")

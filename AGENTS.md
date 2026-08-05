@@ -12,7 +12,7 @@ Primary users: Kevin, authorized sales operators, client-success users, admins, 
 
 Production environment: `https://chillcrm.app`, served from the GitHub repository `knations/ChillCRM` and deployed through Vercel. Known related service: Cloudflare Worker `chillcrm-ops-pulse`, which monitors `https://chillcrm.app/api/health`, stores snapshots in Cloudflare D1, and serves a private operations dashboard.
 
-Key technologies: Python, Vercel Python serverless entrypoint `api/index.py`, the local CRM server in `crm_app/server.py`, vanilla HTML/CSS/JavaScript in `crm_app/static/`, SQLite migration/local CRM databases, hosted Supabase/Postgres production data access, pg8000, project verification scripts, GitHub, Vercel, and related Cloudflare monitoring services. Agents must inspect the active repository before assuming any runtime details.
+Key technologies: Python, Vercel Python serverless entrypoint `api/index.py`, the CRM server in `crm_app/server.py`, vanilla HTML/CSS/JavaScript in `crm_app/static/`, hosted Supabase/Postgres production data access, private Supabase Storage, pg8000, project verification scripts, GitHub, Vercel, and related Cloudflare monitoring services. Agents must inspect the active repository before assuming any runtime details.
 
 ## Agent Operating Style
 
@@ -34,7 +34,7 @@ Treat these as source code:
 - `crm_app/`
 - `crm_app/static/`
 - `tests/`
-- `scripts/` when the task is verification, migration, reporting, deployment support, or data tooling
+- `scripts/` when the task is verification, reporting, deployment support, or data tooling
 - `ops/operator_launchers/` only when the task is owner-approved provider or operator launcher maintenance
 
 Treat these as configuration:
@@ -73,7 +73,7 @@ Project-specific read-only paths:
 - `profile_images/`
 - `ops/local_private_launchers/`
 - generated archives such as `.zip`, `.tar`, `.tar.gz`, and `.tgz`
-- production exports, customer/client data exports, CRM imports, migration snapshots, and local database files
+- production exports, customer/client data exports, CRM imports, historical snapshots, and local database files
 - synced reference materials
 
 ## Before Editing
@@ -103,7 +103,7 @@ Expected verification commands:
 
 - `python3 -m py_compile crm_app/server.py api/index.py`
 - `python3 scripts/verify_app_operations.py`
-- targeted verification scripts under `scripts/verify_*.py` when the change touches a specific deployment, hosted database, security, migration, backup, or Vercel pathway
+- targeted verification scripts under `scripts/verify_*.py` when the change touches a specific deployment, hosted database, security, backup, or Vercel pathway
 - local manual verification with `python3 crm_app/server.py --host 127.0.0.1 --port 8765 --auto-port` when UI or route behavior changes
 
 For frontend work:

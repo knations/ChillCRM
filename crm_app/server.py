@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Local CRM browser for the normalized local CRM database."""
+"""CRM browser for the normalized CRM database."""
 
 from __future__ import annotations
 
@@ -358,7 +358,7 @@ PROJECT_DECISIONS = [
             {
                 "value": "editable_first_class_fields",
                 "label": "Editable first-class fields",
-                "description": "Promote selected fields into editable local CRM fields while preserving original migrated values.",
+                "description": "Promote selected fields into editable CRM fields while preserving original migrated values.",
             },
             {
                 "value": "hybrid_core_editable",
@@ -397,9 +397,9 @@ PROJECT_DECISIONS = [
         "key": "apple_native_redesign_timing",
         "title": "Apple-style visual redesign timing",
         "category": "Design",
-        "question": "When should the local CRM be visually restructured into a native Apple-style interface?",
+        "question": "When should the CRM be visually restructured into a native Apple-style interface?",
         "recommendation": "after_functional_cleanup",
-        "view": "migrationStatus",
+        "view": "operationsStatus",
         "report": "/reports/apple_style_redesign_pipeline.md",
         "options": [
             {
@@ -1452,7 +1452,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
     get_permission_actions = {
         "/api/summary": "view_dashboard_reports",
         "/api/owner_brief": "view_owner_brief",
-        "/api/migration_status": "view_dashboard_reports",
+        "/api/operations_status": "view_dashboard_reports",
         "/api/production_gates": "view_dashboard_reports",
         "/api/project_decisions": "view_dashboard_reports",
         "/api/list": "view_dashboard_reports",
@@ -1565,7 +1565,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             "message": (
                 "Remote write lock is enabled; POST writes are blocked for staging validation."
                 if enabled
-                else "Remote write lock is off; local CRM writes are available."
+                else "Remote write lock is off; CRM writes are available."
             ),
         }
 
@@ -1581,13 +1581,13 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         enabled = requested and not hosted_adapter_enabled
         if enabled:
             mode = "frozen"
-            message = "Local write freeze is enabled; local CRM mutations are blocked for final cutover packaging."
+            message = "Local write freeze is enabled; CRM mutations are blocked for final cutover packaging."
         elif requested and hosted_adapter_enabled:
             mode = "ignored_hosted_adapter"
             message = "Local write freeze is requested but ignored while the hosted Postgres adapter is active."
         else:
             mode = "unfrozen"
-            message = "Local write freeze is off; local CRM writes are available."
+            message = "Local write freeze is off; CRM writes are available."
         return {
             "enabled": enabled,
             "requested": requested,
@@ -3263,7 +3263,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             {
                 "ok": ok,
                 "status": "ok" if ok else "degraded",
-                "service": "local_crm",
+                "service": "chillcrm",
                 "checked_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
                 "runtime": self.runtime_context(),
                 "checks": checks,
@@ -3318,7 +3318,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         self.send_json(
             {
                 "ok": False,
-                "error": "Local write freeze is enabled. Local CRM changes are blocked until the production cutover package and validation window are complete.",
+                "error": "Local write freeze is enabled. CRM changes are blocked until the production cutover package and validation window are complete.",
                 "code": "local_write_freeze_enabled",
                 "path": path,
                 "local_write_freeze": self.local_write_freeze_status(),
@@ -3878,8 +3878,8 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                 self.send_json(self.summary())
             elif path == "/api/owner_brief":
                 self.send_json(self.owner_brief())
-            elif path == "/api/migration_status":
-                self.send_json(self.migration_status())
+            elif path == "/api/operations_status":
+                self.send_json(self.operations_status())
             elif path == "/api/production_gates":
                 self.send_json({"production_gates": self.production_gate_status()})
             elif path in {"/health", "/api/health"}:
@@ -4906,8 +4906,8 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                 "title": "System Status",
                 "status": production_status,
                 "message": "Production evidence and admin-facing status live here so the top of the dashboard stays focused on daily CRM work.",
-                "view": "migrationStatus",
-                "action": "Open Status",
+                "view": "operationsStatus",
+                "action": "Open Operations",
                 "report": "/reports/remote_production_readiness.md",
                 "steps": [
                     {
@@ -4931,8 +4931,8 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                         "key": "status_evidence",
                         "title": "Status Evidence",
                         "status": "ready",
-                        "action": "Open Status",
-                        "view": "migrationStatus",
+                        "action": "Open Operations",
+                        "view": "operationsStatus",
                     },
                     {
                         "order": 4,
@@ -5648,8 +5648,8 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         return {
             "title": "Start Today",
             "status": guide.get("status") or "waiting",
-            "message": "Begin normal local CRM work from the daily runbook while cleanup decisions stay gated.",
-            "view": "migrationStatus",
+            "message": "Begin normal CRM work from the daily runbook while cleanup decisions stay gated.",
+            "view": "operationsStatus",
             "action": "Open Daily Guide",
             "report": guide.get("report"),
             "export_url": guide.get("export_url"),
@@ -5801,8 +5801,8 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                     ),
                     "choices": choices,
                     "decision_key": decision.get("key") or item.get("key"),
-                    "view": "migrationStatus",
-                    "related_view": decision.get("view") or "migrationStatus",
+                    "view": "operationsStatus",
+                    "related_view": decision.get("view") or "operationsStatus",
                     "report": decision.get("report"),
                     "worksheet_report": decision.get("worksheet_report") or "",
                     "worksheet_export_url": decision.get("worksheet_export_url") or "",
@@ -5823,7 +5823,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                 "eyebrow": "Safety Gate",
                 "title": "Create a fresh local backup",
                 "description": "Cleanup decisions are saved, but execution preview needs a backup before anything can become preview-ready.",
-                "why": "A backup gives the local CRM a restore point before future cleanup work.",
+                "why": "A backup gives the CRM a restore point before future cleanup work.",
                 "recommended_label": "",
                 "decision_key": "",
                 "view": "cleanup",
@@ -5899,10 +5899,10 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             "why": "Continue daily-use refinements or begin the queued Apple-style redesign when the functional CRM shape feels stable.",
             "recommended_label": "",
             "decision_key": "",
-            "view": "migrationStatus",
-            "related_view": "migrationStatus",
+            "view": "operationsStatus",
+            "related_view": "operationsStatus",
             "report": "/reports/cleanup_execution_safety_plan.md",
-            "primary_action": "Open Status",
+            "primary_action": "Open Operations",
             "secondary_action": "",
             "metrics": [
                 {"label": "Simulated eligible actions", "value": recommended_totals.get("eligible_actions", 0)},
@@ -5962,7 +5962,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                 "impact_summary": impact.get("summary"),
                 "next_step": impact.get("next_step"),
                 "facts": (impact.get("facts") or [])[:6],
-                "view": decision.get("view") or "migrationStatus",
+                "view": decision.get("view") or "operationsStatus",
                 "report": decision.get("report"),
                 "worksheet_report": decision.get("worksheet_report") or "",
                 "worksheet_export_url": decision.get("worksheet_export_url") or "",
@@ -6252,7 +6252,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             }
         )
 
-    def migration_status(self) -> dict[str, Any]:
+    def app_status(self) -> dict[str, Any]:
         manifest = self.latest_snapshot_manifest()
         linked_rows = self.collect_linked_resource_rows()
         linked_counts = self.linked_resource_counts(linked_rows, "kind")
@@ -6302,8 +6302,6 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         reports = []
         for name in [
             "local_crm_verification.md",
-            "local_crm_migration_summary.md",
-            "zendesk_sell_optional_data_sweep.md",
             "cleanup_decision_readiness.md",
             "merge_policy_options.md",
             "cleanup_merge_review_pack.md",
@@ -6319,58 +6317,23 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             "application_profile_editability_review.md",
             "local_crm_data_quality.md",
             "local_crm_database_map.md",
-            "zendesk_independence_checklist.md",
-            "remote_admin_access_plan.md",
-            "remote_admin_permissions_matrix.md",
-            "remote_admin_implementation_blueprint.md",
-            "remote_admin_rollout_board.md",
-            "remote_hosting_decision_packet.md",
-            "remote_managed_cloud_provider_shortlist.md",
-            "remote_staging_pricing_preflight.md",
-            "remote_staging_setup_runbook.md",
-            "remote_staging_deployment_spec.md",
-            "remote_staging_validation_matrix.md",
-            "remote_admin_pilot_onboarding_plan.md",
-            "remote_production_cutover_checklist.md",
-            "local_write_freeze_readiness.md",
-            "cutover_rollback_package_readiness.md",
             "supabase_backup_readiness.md",
             "supabase_backup_evidence_packet.md",
             "vercel_environment_readiness.md",
             "vercel_public_protection.md",
             "hosted_deployment_freshness.md",
             "hosted_redeploy_preflight.md",
-            "supabase_staging_refresh_preflight.md",
-            "supabase_staging_refresh_run.md",
-            "supabase_staging_data_parity.md",
             "remote_monitoring_readiness.md",
             "remote_monitoring_signoff.md",
-            "hosted_write_unlock_audit_rehearsal.md",
-            "hosted_write_audit_execution.md",
             "hosted_write_enablement.md",
-            "remaining_gate_guardrails.md",
-            "remaining_gate_execution_readiness.md",
             "private_execution_inputs.md",
-            "owner_confirmed_production_wave.md",
             "secret_handling_boundaries.md",
             "owner_recovery_closure.md",
             "owner_recovery_disable_run.md",
-            "owner_approved_wave_packet.md",
-            "owner_gate_reply_validation.md",
             "owner_shakedown_signoff.md",
-            "source_of_truth_cutover_preflight.md",
-            "source_of_truth_cutover_approval.md",
-            "safe_production_gate_runner.md",
-            "remaining_production_gates_packet.md",
-            "owner_gate_intake_packet.md",
             "remote_production_readiness.md",
-            "hosted_database_migration_readiness.md",
-            "hosted_database_schema_draft.md",
-            "hosted_database_schema_draft.sql",
-            "hosted_database_data_load_plan.md",
             "hosted_postgres_adapter_smoke.md",
             "backup_safety_ledger.md",
-            "migration_completion_audit.md",
             "followup_transition_plan.md",
             "daily_operating_guide.md",
             "archive_review_worklist.md",
@@ -6415,12 +6378,12 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             "download_documents": download_documents,
             "token_available": token_available,
             "message": (
-                "Extended optional Zendesk Sell sweep has been captured."
+                "Historical archive data has been captured."
                 if include_extended
-                else "Core data is local. Final optional Zendesk Sell sweep still needs a fresh token."
+                else "Core CRM data is available. Historical archive refresh is not currently configured."
             ),
         }
-        readiness = self.migration_readiness_items(
+        readiness = self.readiness_items(
             counts,
             optional_sweep,
             cleanup_summary,
@@ -6494,6 +6457,17 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             "recommended_execution_preview": recommended_execution_preview,
         }
 
+    def operations_status(self) -> dict[str, Any]:
+        status = self.app_status()
+        status.pop("snapshot", None)
+        status.pop("optional_sweep", None)
+        status["readiness"] = [
+            item
+            for item in status.get("readiness", [])
+            if item.get("title") not in {"Historical archive refresh"}
+        ]
+        return status
+
     def daily_operating_guide(
         self,
         work_queue: dict[str, Any],
@@ -6551,7 +6525,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                 1,
                 "followup",
                 "Work Follow Ups",
-                followup.get("description") or "Open task reminders and separate imported Zendesk history from local follow-ups.",
+                followup.get("description") or "Open task reminders and separate historical tasks from current follow-ups.",
                 followup.get("status") or "waiting",
                 "Open Follow Up",
                 view="followup",
@@ -6618,8 +6592,8 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                 "Review Major Decisions",
                 decision_prep.get("message") or next_action.get("description") or "Review the remaining major project choices before enabling cleanup execution.",
                 decision_prep.get("status") or next_action.get("status") or "waiting",
-                "Open Status",
-                view="migrationStatus",
+                "Open Operations",
+                view="operationsStatus",
                 secondary_action="Export Packet",
                 report=decision_prep.get("report") or "/reports/decision_prep_packet.md",
                 export_url=decision_prep.get("export_url") or "/api/export?type=decision_prep_packet",
@@ -6665,7 +6639,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         return {
             "title": "Daily Operating Guide",
             "status": "ready",
-            "message": "A live runbook for using the local CRM without touching Zendesk Sell.",
+            "message": "A live runbook for using CHILLCRM.",
             "report": "/reports/daily_operating_guide.md",
             "csv": "/reports/daily_operating_guide.csv",
             "export_url": "/api/export?type=daily_operating_guide",
@@ -6821,8 +6795,8 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                 "status": next_action.get("status") or "waiting",
                 "description": project_gate_title,
                 "detail": next_action.get("eyebrow") or next_action.get("description") or "",
-                "view": next_action.get("view") or "migrationStatus",
-                "action": next_action.get("primary_action") or "Open Status",
+                "view": next_action.get("view") or "operationsStatus",
+                "action": next_action.get("primary_action") or "Open Operations",
                 "metrics": next_action.get("metrics") or [],
             },
             {
@@ -6830,7 +6804,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                 "title": "Follow Up",
                 "status": "attention" if task_counts["overdue"] else "ready" if task_counts["open"] else "waiting",
                 "description": f"{task_counts['open']:,} open tasks, {task_counts['overdue']:,} overdue, {task_counts['due_soon']:,} due soon.",
-                "detail": f"{task_counts['imported_open']:,} open tasks are imported from Zendesk; {task_counts['local_open']:,} are local CRM follow-ups.",
+                "detail": f"{task_counts['imported_open']:,} open tasks are historical reminders; {task_counts['local_open']:,} are current CRM follow-ups.",
                 "view": "followup",
                 "action": "Open Follow Up",
                 "metrics": [
@@ -6849,7 +6823,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                     f"{int(source_totals.get('local') or 0):,} local-only, "
                     f"{int(source_totals.get('changed') or 0):,} with local changes."
                 ),
-                "detail": "Use Source Mix shortcuts to separate migrated history from local CRM work.",
+                "detail": "Use Source Mix shortcuts to separate historical records from current CRM work.",
                 "preset": source_mix.get("primary_preset"),
                 "action": source_mix.get("primary_action") or "Open Source List",
                 "metrics": [
@@ -6900,8 +6874,8 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                 "status": "attention" if quality_attention else "ready",
                 "description": f"{quality_attention:,} records need ordinary contact or pipeline data review.",
                 "detail": "This is non-destructive CRM hygiene, separate from merge cleanup.",
-                "view": "migrationStatus",
-                "action": "Open Status",
+                "view": "operationsStatus",
+                "action": "Open Operations",
                 "report": "/reports/local_crm_data_quality.md",
                 "secondary_report": "/reports/local_crm_data_quality.csv",
                 "metrics": [
@@ -7168,7 +7142,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             "export_url": "/reports/local_crm_data_quality.csv",
         }
 
-    def migration_readiness_items(
+    def readiness_items(
         self,
         counts: dict[str, int],
         optional_sweep: dict[str, Any],
@@ -7219,7 +7193,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             {
                 "status": "complete" if backups else "attention",
                 "title": "Local backups ready",
-                "detail": f"{len(backups):,} backups are available." if backups else "No local CRM backup files were found.",
+                "detail": f"{len(backups):,} backups are available." if backups else "No CRM backup files were found.",
                 "view": "cleanup",
                 "action": "Manage Backups",
             },
@@ -7242,7 +7216,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                     if pending_decisions or deferred_decisions
                     else "All major project decisions have a saved path."
                 ),
-                "view": "migrationStatus",
+                "view": "operationsStatus",
                 "action": "Open Decisions",
             },
             {
@@ -7258,17 +7232,17 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                 "detail": (
                     f"{counts.get('archive_items', 0):,} calls, texts, documents, orders, and lead conversions are local."
                     if counts.get("archive_items")
-                    else "The optional archive has not been imported into the local CRM yet."
+                    else "The historical archive is not available yet."
                 ),
                 "view": "archive",
                 "action": "Open Archive",
             },
             {
                 "status": "complete" if optional_sweep.get("status") == "complete" else "waiting",
-                "title": "Final Zendesk optional sweep",
+                "title": "Historical archive refresh",
                 "detail": optional_sweep.get("message") or "",
-                "view": "migrationStatus",
-                "action": "View Status",
+                "view": "operationsStatus",
+                "action": "View Operations",
             },
         ]
 
@@ -7587,7 +7561,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                         if ready
                         else "Save this project decision before execution can be preview-ready."
                     ),
-                    "view": decision.get("view") or "migrationStatus",
+                    "view": decision.get("view") or "operationsStatus",
                 }
             )
         gates.append(
@@ -8085,7 +8059,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         table_alias, source_column, audit_record_type = self.list_provenance_metadata(record_type)
         return f"""
                CASE WHEN {table_alias}.{source_column} IS NULL THEN 'local' ELSE 'zendesk' END AS provenance_source,
-               CASE WHEN {table_alias}.{source_column} IS NULL THEN 'Local only' ELSE 'Imported from Zendesk' END AS provenance_label,
+               CASE WHEN {table_alias}.{source_column} IS NULL THEN 'Local only' ELSE 'Historical import' END AS provenance_label,
                {table_alias}.{source_column} AS zendesk_id,
                (SELECT count(*) FROM audit_log al WHERE al.record_type = '{audit_record_type}' AND al.record_id = {table_alias}.id) AS local_change_count
         """
@@ -8103,7 +8077,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         return [
             {
                 "value": "imported",
-                "label": "Imported from Zendesk",
+                "label": "Historical import",
                 "count": conn.execute(f"SELECT count(*) FROM {table_name} {table_alias} WHERE {table_alias}.{source_column} IS NOT NULL").fetchone()[0],
             },
             {
@@ -8910,27 +8884,27 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         status = "attention" if open_imported else "ready" if open_local else "waiting"
         if open_imported:
             message = (
-                f"{open_imported:,} open tasks are imported Zendesk reminders. Review them before treating the local CRM follow-up queue as clean."
+                f"{open_imported:,} open tasks are historical reminders. Review them before treating the current follow-up queue as clean."
             )
         elif open_local:
-            message = f"{open_local:,} local CRM follow-ups are active and no imported open tasks remain."
+            message = f"{open_local:,} current CRM follow-ups are active and no historical open tasks remain."
         else:
             message = "No open imported or local follow-ups are waiting."
         steps = [
             {
                 "key": "review_imported",
-                "title": "Review Imported Open Tasks",
+                "title": "Review Historical Open Tasks",
                 "status": "attention" if open_imported else "ready",
-                "description": "Decide which old Zendesk reminders are still useful and which are historical.",
+                "description": "Decide which old reminders are still useful and which are historical.",
                 "preset": "followup_imported_open",
                 "action": "Show Imported Open",
                 "count": open_imported,
             },
             {
                 "key": "review_overdue",
-                "title": "Check Overdue Imported Tasks",
+                "title": "Check Overdue Historical Tasks",
                 "status": "attention" if overdue_imported else "ready",
-                "description": "Start with dated reminders from Zendesk that are already overdue.",
+                "description": "Start with dated historical reminders that are already overdue.",
                 "preset": "followup_imported_overdue",
                 "action": "Show Overdue Imported",
                 "count": overdue_imported,
@@ -9562,14 +9536,14 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             return result(
                 "ready_to_link_candidate",
                 "ready_to_link",
-                "One local CRM record shares the normalized phone number.",
+                "One CRM record shares the normalized phone number.",
                 ["exact unique phone candidate"],
             )
         if classification == "ambiguous_exact_candidates":
             return result(
                 "needs_lookup",
                 "needs_lookup",
-                "More than one local CRM record shares the normalized phone number.",
+                "More than one CRM record shares the normalized phone number.",
                 ["ambiguous exact phone candidates"],
             )
         if classification == "short_or_non_contact_number":
@@ -9621,7 +9595,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             return result(
                 "needs_lookup",
                 "needs_lookup",
-                "Short or conversational text may contain human context, but the phone does not match a local CRM record.",
+                "Short or conversational text may contain human context, but the phone does not match a CRM record.",
                 ["short/conversational text", "no exact CRM phone match"],
             )
         if item_type == "call":
@@ -9642,7 +9616,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             return result(
                 "batch_archive_only",
                 "archive_only",
-                "Missed call has no exact CRM phone match and no strong identity evidence in the local CRM.",
+                "Missed call has no exact CRM phone match and no strong identity evidence in the CRM.",
                 [
                     "missed call",
                     "no exact CRM phone match",
@@ -9863,7 +9837,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                 "distinct_unlinked_numbers": sum(int(row.get("distinct_numbers") or 0) for row in communication_rows),
                 "unlinked_call_recording_urls": int((next((row for row in communication_rows if row.get("item_type") == "call"), {}) or {}).get("has_external_url") or 0),
                 "recommendation": "Do not auto-link remaining calls/texts.",
-                "reason": "Remaining unlinked communications have no Zendesk resource IDs, no associated deals, and no exact local CRM phone candidates.",
+                "reason": "Remaining unlinked communications have no legacy resource IDs, no associated deals, and no exact CRM phone candidates.",
             },
             "type_rows": type_rows,
             "communication_rows": communication_rows,
@@ -11063,24 +11037,10 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             ("archive_review_triage", "Archive Review Triage"),
             ("archive_association_audit", "Archive Association Audit"),
             ("backup_safety_ledger", "Backup Safety Ledger"),
-            ("migration_completion_audit", "Migration Completion Audit"),
-            ("database_map", "Local Database Map"),
-            ("zendesk_independence", "Zendesk Independence Checklist"),
+            ("database_map", "CRM Database Map"),
             ("remote_admin_access_plan", "Remote Admin Access Plan"),
             ("remote_admin_permissions_matrix", "Remote Admin Permissions Matrix"),
-            ("remote_admin_implementation_blueprint", "Remote Admin Implementation Blueprint"),
-            ("remote_admin_rollout_board", "Remote Admin Rollout Board"),
-            ("remote_hosting_decision_packet", "Remote Hosting Decision Packet"),
-            ("remote_managed_cloud_provider_shortlist", "Remote Managed Cloud Provider Shortlist"),
-            ("remote_staging_pricing_preflight", "Remote Staging Pricing Preflight"),
-            ("remote_staging_setup_runbook", "Remote Staging Setup Runbook"),
-            ("remote_staging_deployment_spec", "Remote Staging Deployment Spec"),
-            ("remote_staging_validation_matrix", "Remote Staging Validation Matrix"),
             ("remote_admin_pilot_onboarding_plan", "Remote Admin Pilot Onboarding Plan"),
-            ("remote_production_cutover_checklist", "Remote Production Cutover Checklist"),
-            ("hosted_database_migration_readiness", "Hosted Database Migration Readiness"),
-            ("hosted_schema_draft", "Hosted Schema Draft"),
-            ("hosted_data_load_plan", "Hosted Data Load Plan"),
             ("lead_person_overlap_spot_check", "Lead/Person Overlap Spot Check"),
             ("duplicate_people_spot_check", "Duplicate People Spot Check"),
             ("duplicate_people_review_worksheet", "Duplicate People Review Worksheet"),
@@ -11103,19 +11063,19 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         return {
             "bulk_export": bulk_export,
             "package": {
-                "label": "Complete Local CRM Package",
+                "label": "Complete CRM Package",
                 "url": "/api/export_package",
                 "filename": "local_crm_complete_package.zip",
-                "description": "Downloads the current SQLite database, core CSV exports, key reports, and project docs in one zip file.",
-                "contents": ["SQLite database", "CSV exports", "reports", "project docs"],
+                "description": "Downloads the current CRM data, operational CSV exports, key reports, and project docs in one zip file.",
+                "contents": ["CRM data", "CSV exports", "key reports", "project docs"],
                 "enabled": bulk_export["enabled"],
                 "locked_message": bulk_export["message"],
             },
             "document_package": {
-                "label": "Downloaded Document Files",
+                "label": "Document Files",
                 "url": "/api/export_document_files_package",
                 "filename": "local_crm_document_files.zip",
-                "description": "Downloads the Zendesk document files recovered during the final optional sweep.",
+                "description": "Downloads CRM document files as one zip file.",
                 "file_count": document_package["file_count"],
                 "bytes": document_package["bytes"],
                 "available": document_package["file_count"] > 0,
@@ -11231,7 +11191,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         filename = f"local_crm_document_files_{stamp}.zip"
         package_manifest = {
             "generated_at": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
-            "source": "Local CRM downloaded Zendesk document files",
+            "source": "CHILLCRM document files",
             "file_count": len(entries),
             "bytes": sum(int(entry.get("bytes") or 0) for entry in entries),
             "documents": self.document_file_package_manifest_rows(entries),
@@ -11257,7 +11217,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         manifest = self.export_manifest()
         package_manifest: dict[str, Any] = {
             "generated_at": generated_at,
-            "source": "Local CRM",
+            "source": "CHILLCRM",
             "database": None,
             "csv_exports": [],
             "reports": [],
@@ -11289,8 +11249,19 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                     }
                 )
 
+            retired_report_tokens = (
+                "zendesk",
+                "migration_completion",
+                "hosted_database_migration",
+                "staging_refresh",
+                "staging_data",
+                "source_of_truth_cutover",
+                "cutover_rollback",
+            )
             for report_path in sorted(REPORTS_DIR.glob("*")):
                 if report_path.is_file() and report_path.suffix.lower() in {".md", ".csv", ".sql"}:
+                    if any(token in report_path.name.lower() for token in retired_report_tokens):
+                        continue
                     archive_name = f"reports/{report_path.name}"
                     archive.write(report_path, archive_name)
                     package_manifest["reports"].append({"path": archive_name, "bytes": report_path.stat().st_size})
@@ -11341,12 +11312,8 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             return {"filename": "local_crm_archive_association_audit.csv", "rows": self.export_archive_association_audit_rows()}
         if export_type == "backup_safety_ledger":
             return {"filename": "local_crm_backup_safety_ledger.csv", "rows": self.export_backup_safety_ledger_rows()}
-        if export_type == "migration_completion_audit":
-            return {"filename": "local_crm_migration_completion_audit.csv", "rows": self.export_migration_completion_audit_rows()}
         if export_type == "database_map":
             return {"filename": "local_crm_database_map.csv", "rows": self.export_database_map_rows()}
-        if export_type == "zendesk_independence":
-            return {"filename": "local_crm_zendesk_independence_checklist.csv", "rows": self.export_zendesk_independence_rows()}
         if export_type == "remote_admin_access_plan":
             return {"filename": "local_crm_remote_admin_access_plan.csv", "rows": self.export_remote_admin_access_plan_rows()}
         if export_type == "remote_admin_permissions_matrix":
@@ -11403,11 +11370,6 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             return {
                 "filename": "local_crm_remote_production_cutover_checklist.csv",
                 "rows": self.export_remote_production_cutover_checklist_rows(),
-            }
-        if export_type == "hosted_database_migration_readiness":
-            return {
-                "filename": "local_crm_hosted_database_migration_readiness.csv",
-                "rows": self.export_hosted_database_migration_readiness_rows(),
             }
         if export_type == "hosted_schema_draft":
             return {
@@ -11790,7 +11752,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
 
         contracts = [
             ("search", "Top search must still find names, contact info, notes, tasks, tags, links, addresses, and custom field values."),
-            ("backup_audit", "Every mutating local CRM action must continue creating backups and audit entries as currently required."),
+            ("backup_audit", "Every mutating CRM action must continue creating backups and audit entries as currently required."),
             ("archive_review", "Archive item inspection, review statuses, manual linking, and association evidence must remain accessible."),
             ("cleanup_gates", "Cleanup merge execution must remain gated behind project decisions, group decisions, backups, preview counts, and explicit confirmation."),
             ("exports_restore", "CSV exports, complete package export, document file package export, and backup restore must stay visible."),
@@ -12072,7 +12034,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         return rows
 
     def export_daily_operating_guide_rows(self) -> list[dict[str, Any]]:
-        status = self.migration_status()
+        status = self.app_status()
         guide = status.get("daily_guide") or {}
         rows: list[dict[str, Any]] = []
         for step in guide.get("steps") or []:
@@ -12390,7 +12352,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         if item_type == "document":
             return "Keep linked to recovered local person records; use the separate document-file package for files."
         if item_type in {"order", "lead_conversion"}:
-            return "Keep attached to the Zendesk-supplied local record."
+            return "Keep attached to the legacy-supplied local record."
         if item_type in {"call", "text_message"} and unlinked:
             return "Review unlinked items manually; link only after human confirmation."
         if unlinked:
@@ -12533,7 +12495,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         return rows
 
     def export_migration_completion_audit_rows(self) -> list[dict[str, Any]]:
-        status = self.migration_status()
+        status = self.app_status()
         counts = status.get("counts") or {}
         readiness = status.get("readiness") or []
         project_decisions = status.get("project_decisions") or {}
@@ -12571,7 +12533,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                 "next_action_decision_key": next_action.get("decision_key"),
                 "report": "/reports/migration_completion_audit.md",
                 "export_url": "/api/export?type=migration_completion_audit",
-                "safety": "Audit/report only; does not save decisions, merge records, link archive items, resolve cleanup, or update Zendesk Sell.",
+                "safety": "Audit/report only; does not save decisions, merge records, link archive items, resolve cleanup, or update legacy CRM provider.",
             }
         ]
 
@@ -12593,11 +12555,11 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         requirements = [
             {
                 "key": "zendesk_export",
-                "title": "Zendesk data exported",
+                "title": "legacy data exported",
                 "status": "complete" if optional_sweep.get("status") == "complete" else "attention",
                 "evidence": optional_sweep.get("message") or "",
                 "proof": "Snapshot metadata, optional sweep status, and raw export files.",
-                "next_step": "No new Zendesk data is expected unless a final manual re-check is requested.",
+                "next_step": "No new legacy data is expected unless a final manual re-check is requested.",
             },
             {
                 "key": "local_database",
@@ -12605,11 +12567,11 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                 "status": "complete" if counts.get("people") and counts.get("leads") else "attention",
                 "evidence": f"{counts.get('people', 0):,} people, {counts.get('companies', 0):,} companies, {counts.get('leads', 0):,} leads, {counts.get('deals', 0):,} deals.",
                 "proof": "/reports/local_crm_verification.md",
-                "next_step": "Continue using the final local CRM database as the source of truth.",
+                "next_step": "Continue using the final CRM database as the source of truth.",
             },
             {
                 "key": "local_crm_operations",
-                "title": "Local CRM operating surface",
+                "title": "CRM operating surface",
                 "status": "complete",
                 "evidence": "Dashboard, Status, record lists, right-sidebar editing, Follow Up, Activity, Exports, Archive, Linked Resources, Tags, Custom Fields, and Cleanup are wired.",
                 "proof": "scripts.verify_app_operations",
@@ -12709,8 +12671,8 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             "custom_field_definitions": "CRM detail data",
             "custom_field_values": "CRM detail data",
             "linked_resources": "CRM detail data",
-            "imported_archive_items": "Recovered Zendesk archive",
-            "archive_review_decisions": "Recovered Zendesk archive",
+            "imported_archive_items": "Historical archive",
+            "archive_review_decisions": "Historical archive",
             "review_flags": "Cleanup and governance",
             "cleanup_group_decisions": "Cleanup and governance",
             "project_decisions": "Cleanup and governance",
@@ -12721,30 +12683,30 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
 
     def database_map_table_purpose(self, table_name: str) -> str:
         purposes = {
-            "people": "Final local person/contact records imported from Zendesk Sell or created locally.",
-            "companies": "Final local company/account records imported from Zendesk Sell or created locally.",
+            "people": "Person and contact records managed in CHILLCRM.",
+            "companies": "Company and account records managed in CHILLCRM.",
             "leads": "Final local lead/application records and promoted application profile data.",
             "deals": "Final local sales pipeline records with stage, value, contact, and organization links.",
-            "users": "Zendesk owner/user reference data used for ownership labels and filters.",
-            "pipelines": "Pipeline reference data imported from Zendesk Sell.",
-            "stages": "Deal stage reference data imported from Zendesk Sell.",
-            "addresses": "Local and migrated addresses attached to people, companies, and leads.",
-            "notes": "Imported Zendesk notes and locally-created CRM notes.",
-            "tasks": "Imported Zendesk tasks and locally-created follow-up tasks.",
+            "users": "CRM owner and reference data used for ownership labels and filters.",
+            "pipelines": "Pipeline reference data.",
+            "stages": "Deal stage reference data.",
+            "addresses": "Addresses attached to people, companies, and leads.",
+            "notes": "CRM notes.",
+            "tasks": "CRM tasks and follow-up reminders.",
             "tags": "Normalized local tag definitions.",
             "tag_assignments": "Tag links from normalized tags to people, companies, leads, and deals.",
-            "custom_field_definitions": "Migrated custom field definitions.",
-            "custom_field_values": "Migrated custom field values, including Application Profile fields.",
+            "custom_field_definitions": "Custom field definitions.",
+            "custom_field_values": "Custom field values, including Application Profile fields.",
             "linked_resources": "Extracted URLs and external references surfaced from notes/custom fields.",
-            "imported_archive_items": "Recovered optional Zendesk history: calls, texts, documents, orders, and lead conversions.",
+            "imported_archive_items": "Historical calls, texts, documents, orders, and lead conversions.",
             "archive_review_decisions": "Manual review status and notes for unlinked archive calls/texts.",
             "review_flags": "Non-destructive cleanup flags for duplicate and overlap review.",
             "cleanup_group_decisions": "Saved group-level cleanup review decisions; does not execute merges.",
-            "project_decisions": "Saved major A/B/C migration and cleanup policy choices.",
+            "project_decisions": "Saved major cleanup and operating policy choices.",
             "audit_log": "Local audit trail for edits, decisions, archive actions, backups, and restores.",
             "saved_views": "Reusable local list/filter/view settings.",
         }
-        return purposes.get(table_name, "Supporting local CRM table.")
+        return purposes.get(table_name, "Supporting CRM table.")
 
     def export_database_map_rows(self) -> list[dict[str, Any]]:
         def quote_identifier(identifier: str) -> str:
@@ -12765,7 +12727,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             )
             tables = [item for item in objects if item.get("type") == "table"]
             views = [item for item in objects if item.get("type") == "view"]
-            reports = self.migration_status().get("reports") or []
+            reports = self.app_status().get("reports") or []
             export_items = self.export_manifest().get("exports") or []
             rows.append(
                 {
@@ -12779,7 +12741,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                     "reports_ready": sum(1 for report in reports if report.get("exists")),
                     "report": "/reports/local_crm_database_map.md",
                     "export_url": "/api/export?type=database_map",
-                    "safety": "Read-only database inventory; does not edit records, save decisions, link archive items, resolve cleanup, or update Zendesk Sell.",
+                    "safety": "Read-only database inventory; does not edit records, save decisions, link archive items, resolve cleanup, or update legacy CRM provider.",
                 }
             )
             for item in objects:
@@ -12850,7 +12812,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         return rows
 
     def export_zendesk_independence_rows(self) -> list[dict[str, Any]]:
-        status = self.migration_status()
+        status = self.app_status()
         counts = status.get("counts") or {}
         optional_sweep = status.get("optional_sweep") or {}
         snapshot = status.get("snapshot") or {}
@@ -12867,7 +12829,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             {
                 "row_type": "summary",
                 "status": "local_operational_with_open_gates",
-                "source": "Zendesk Sell migration",
+                "source": "legacy CRM provider migration",
                 "local_database": str(self.db_path),
                 "snapshot_name": snapshot.get("snapshot_name") or "",
                 "optional_sweep_status": optional_sweep.get("status") or "",
@@ -12888,7 +12850,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                 "data_quality_attention_records": data_quality.get("attention_records"),
                 "report": "/reports/zendesk_independence_checklist.md",
                 "export_url": "/api/export?type=zendesk_independence",
-                "safety": "Read-only checklist; does not contact Zendesk, save decisions, merge, delete, link archive items, or rewrite CRM data.",
+                "safety": "Read-only checklist; does not contact legacy, save decisions, merge, delete, link archive items, or rewrite CRM data.",
             }
         ]
         requirements = [
@@ -12896,13 +12858,13 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                 "local_database_ready",
                 "Local database is the working source",
                 "complete" if self.db_path.exists() and counts.get("people") and counts.get("leads") else "attention",
-                f"{counts.get('people', 0):,} people, {counts.get('companies', 0):,} companies, {counts.get('leads', 0):,} leads, {counts.get('deals', 0):,} deals in the local CRM.",
-                "Use local CRM for ordinary daily work.",
+                f"{counts.get('people', 0):,} people, {counts.get('companies', 0):,} companies, {counts.get('leads', 0):,} leads, {counts.get('deals', 0):,} deals in the CRM.",
+                "Use CRM for ordinary daily work.",
                 "/reports/local_crm_verification.md",
             ),
             (
                 "zendesk_snapshot_preserved",
-                "Zendesk export snapshot is preserved",
+                "legacy export snapshot is preserved",
                 "complete" if optional_sweep.get("status") == "complete" else "attention",
                 optional_sweep.get("message") or "Snapshot metadata is available.",
                 "Do not delete raw_api_exports; keep the latest snapshot with the project.",
@@ -12913,7 +12875,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                 "Recovered document files are preserved",
                 "complete" if archive_summary.get("document_file_coverage_percent") == 100.0 else "attention",
                 f"{archive_summary.get('linked_documents', 0):,}/{archive_summary.get('document_total', 0):,} downloaded document files covered.",
-                "Keep the separate Downloaded Document Files package available.",
+                "Keep the separate Document Files package available.",
                 "/reports/archive_association_audit.md",
             ),
             (
@@ -12921,7 +12883,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                 "Portable export packages are ready",
                 "complete" if export_packages.get("status") == "complete" else "attention",
                 f"{export_packages.get('ready_count', 0):,} of {export_packages.get('total_count', 0):,} export packages ready.",
-                "Download Complete Local CRM Package and Downloaded Document Files before any Zendesk account shutdown.",
+                "Download Complete CRM Package and Document Files before any legacy account shutdown.",
                 "Exports",
             ),
             (
@@ -12937,7 +12899,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                 "Remaining local governance gates are visible",
                 "attention" if int(project_decisions.get("pending") or 0) else "complete",
                 f"{project_decisions.get('pending', 0):,} pending decisions, {project_decisions.get('deferred', 0):,} deferred decisions, {cleanup_summary.get('open_groups', 0):,} open cleanup groups.",
-                "Continue with Project Decisions in Status; these do not require new Zendesk writes.",
+                "Continue with Project Decisions in Status; these do not require new legacy writes.",
                 "/reports/project_decision_option_matrix.md",
             ),
         ]
@@ -12955,12 +12917,12 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                 }
             )
         preserve_items = [
-            ("crm_database/local_crm.sqlite", "Current local CRM database", "Keep with project; include in complete package."),
-            ("raw_api_exports/", "Original Zendesk API snapshots", "Keep for audit and re-import traceability."),
-            ("raw_api_exports/latest_snapshot.txt", "Pointer to latest Zendesk snapshot", "Keep with project docs."),
-            ("raw_api_exports/snapshot_20260605T042056Z/document_files/", "Downloaded Zendesk document files", "Keep or download the document-files package."),
+            ("crm_database/local_crm.sqlite", "Current CRM database", "Keep with project; include in complete package."),
+            ("raw_api_exports/", "Original legacy API snapshots", "Keep for audit and re-import traceability."),
+            ("raw_api_exports/latest_snapshot.txt", "Pointer to latest legacy snapshot", "Keep with project docs."),
+            ("raw_api_exports/snapshot_20260605T042056Z/document_files/", "Downloaded legacy document files", "Keep or download the document-files package."),
             ("backups/", "SQLite backup history", "Keep before and after major local changes."),
-            ("reports/", "Printable audit and decision reports", "Keep with Complete Local CRM Package."),
+            ("reports/", "Printable audit and decision reports", "Keep with Complete CRM Package."),
             ("docs/", "Operating notes and project status", "Keep for handoff."),
         ]
         for order, (path, title, handling) in enumerate(preserve_items, start=1):
@@ -12975,20 +12937,20 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             )
         boundaries = [
             (
-                "No Zendesk writes needed",
-                "The local CRM is the operating surface for new notes, tasks, edits, decisions, cleanup review, exports, and backups.",
+                "No legacy writes needed",
+                "The CRM is the operating surface for new notes, tasks, edits, decisions, cleanup review, exports, and backups.",
             ),
             (
-                "Zendesk API only for deliberate re-checks",
-                "Because no new Zendesk Sell data is expected, API access is only useful if you request a final verification pull before closing access.",
+                "legacy API only for deliberate re-checks",
+                "Because no new legacy CRM provider data is expected, API access is only useful if you request a final verification pull before closing access.",
             ),
             (
-                "Do not treat cleanup gates as Zendesk dependencies",
-                "Pending cleanup/project decisions are local governance work, not a reason to keep writing to Zendesk Sell.",
+                "Do not treat cleanup gates as legacy dependencies",
+                "Pending cleanup/project decisions are local governance work, not a reason to keep writing to legacy CRM provider.",
             ),
             (
                 "Do not delete raw exports",
-                "Raw API exports and downloaded documents are the audit trail proving what was captured from Zendesk.",
+                "Raw API exports and downloaded documents are the audit trail proving what was captured from legacy.",
             ),
         ]
         for order, (title, detail) in enumerate(boundaries, start=1):
@@ -13000,7 +12962,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             "Core CRM records": 1,
             "Reference data": 2,
             "CRM detail data": 3,
-            "Recovered Zendesk archive": 4,
+            "Recovered legacy archive": 4,
             "Cleanup and governance": 5,
             "Local operations": 6,
         }.get(category, 7)
@@ -13129,7 +13091,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                         "category": self.database_map_table_category(table_name),
                         "purpose": self.database_map_table_purpose(table_name),
                         "sql": ddl,
-                        "migration_note": "Core local CRM table translated from SQLite; review in staging before production.",
+                        "migration_note": "Core CRM table translated from SQLite; review in staging before production.",
                     }
                 )
                 if "record_type" in column_names and "record_id" in column_names:
@@ -13169,7 +13131,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                             "target_table": target_table,
                             "target_column": target_column,
                             "sql": sql,
-                            "migration_note": "Apply after all local CRM tables are created.",
+                            "migration_note": "Apply after all CRM tables are created.",
                         }
                     )
                 for columns_tuple in sorted(index_candidates):
@@ -13193,7 +13155,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             (
                 "app_users",
                 "Remote identity",
-                "Individual remote app users; separate from Zendesk owner reference data.",
+                "Individual remote app users; separate from legacy owner reference data.",
                 [
                     '"id" bigint GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY',
                     '"email" text NOT NULL UNIQUE',
@@ -13395,7 +13357,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                 "title": "Header",
                 "sql": "\n".join(
                     [
-                        "-- Hosted CRM schema draft generated from the local CRM.",
+                        "-- Hosted CRM schema draft generated from the CRM.",
                         "-- Review and run only in a staging database after choosing a hosting posture.",
                         "CREATE SCHEMA IF NOT EXISTS crm;",
                         "SET search_path TO crm, public;",
@@ -13456,7 +13418,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                     "order": order,
                     "key": key,
                     "sql": sql,
-                    "migration_note": "Run after a staged load and compare against the local CRM counts/package manifests.",
+                    "migration_note": "Run after a staged load and compare against the CRM counts/package manifests.",
                 }
             )
         requirements = [
@@ -13501,7 +13463,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
     def hosted_data_load_phase_for_table(self, table_name: str) -> tuple[int, str, str]:
         explicit = {
             "migration_info": (2, "Reference and metadata", "Load migration metadata early so staging provenance is visible."),
-            "users": (2, "Reference and metadata", "Load Zendesk owner reference data before owner-labelled records."),
+            "users": (2, "Reference and metadata", "Load legacy owner reference data before owner-labelled records."),
             "pipelines": (2, "Reference and metadata", "Load pipeline references before stages and deals."),
             "stages": (2, "Reference and metadata", "Load stages after pipelines and before deals."),
             "source_map": (2, "Reference and metadata", "Load source mapping before dependent inspection/reporting checks."),
@@ -13517,8 +13479,8 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             "notes": (4, "CRM detail and relationships", "Load notes after core polymorphic record targets."),
             "tasks": (4, "CRM detail and relationships", "Load tasks after core polymorphic record targets."),
             "tag_assignments": (4, "CRM detail and relationships", "Load tag assignments after tags and core polymorphic record targets."),
-            "imported_archive_items": (5, "Recovered Zendesk archive", "Load archive items after core records so existing links can validate."),
-            "linked_resources": (5, "Recovered Zendesk archive", "Load linked resources after core records and archive/imported content."),
+            "imported_archive_items": (5, "Recovered legacy archive", "Load archive items after core records so existing links can validate."),
+            "linked_resources": (5, "Recovered legacy archive", "Load linked resources after core records and archive/imported content."),
             "archive_review_decisions": (6, "Cleanup and governance", "Load archive review decisions after imported archive items."),
             "review_flags": (6, "Cleanup and governance", "Load cleanup flags after core records."),
             "cleanup_group_decisions": (6, "Cleanup and governance", "Load saved cleanup decisions after cleanup groups are inspectable."),
@@ -13537,7 +13499,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         def quote(identifier: str) -> str:
             return self.hosted_schema_quote_identifier(identifier)
 
-        status = self.migration_status()
+        status = self.app_status()
         counts = status.get("counts") or {}
         project_decisions = status.get("project_decisions") or {}
         cleanup_summary = ((status.get("cleanup") or {}).get("summary") or {})
@@ -13622,7 +13584,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             (2, "Reference and metadata", "Load owner, pipeline, stage, tag, and migration metadata first."),
             (3, "Core CRM records", "Load companies, people, leads, and deals while preserving local IDs."),
             (4, "CRM detail and relationships", "Load fields, addresses, notes, tasks, tags, and polymorphic relationship tables."),
-            (5, "Recovered Zendesk archive", "Load archive items and linked resources after core records exist."),
+            (5, "Recovered legacy archive", "Load archive items and linked resources after core records exist."),
             (6, "Cleanup and governance", "Load review flags, project decisions, and cleanup/archive review intent."),
             (7, "Local operations", "Load local audit history, saved views, and settings after referenced data exists."),
             (8, "Remote-only seed and files", "Seed app users/roles/permissions and private file object records in staging."),
@@ -13639,7 +13601,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             ("app_user_roles", "Assign owner/admin roles to staging users.", "After app_users and app_roles exist."),
             ("migration_runs", "Record the staging load run and source backup/export package names.", "At start and completion of each load."),
             ("remote_audit_events", "Write actor-aware remote events only for staged remote actions.", "After auth and permission middleware exist."),
-            ("remote_file_objects", "Create private storage records for downloaded Zendesk documents.", "After private object storage upload."),
+            ("remote_file_objects", "Create private storage records for downloaded legacy documents.", "After private object storage upload."),
             ("app_saved_views", "Convert current local_list_views to global or user-scoped starter views.", "After app_users exist if user-scoped."),
         ]
         for order, (table_name, seed_action, gate) in enumerate(remote_seeds, start=1):
@@ -13656,12 +13618,12 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         file_steps = [
             (
                 "document_manifest",
-                "Use document_files_manifest.csv from the Downloaded Document Files package.",
+                "Use document_files_manifest.csv from the Document Files package.",
                 "Manifest row count equals document package file count.",
             ),
             (
                 "private_upload",
-                "Upload recovered Zendesk document files to private storage.",
+                "Upload recovered legacy document files to private storage.",
                 "No public file URLs; storage keys are deterministic or recorded.",
             ),
             (
@@ -13688,7 +13650,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             ("core_counts", "People, companies, leads, deals, notes, tasks, archive items, and linked resources match Status counts.", "Required before owner shakedown or any internal admin access."),
             ("foreign_keys", "Hosted foreign key checks pass after load.", "Required before enabling writes."),
             ("polymorphic_references", "record_type/record_id tables resolve to valid local target records where expected.", "Required before archive/detail work."),
-            ("custom_fields", "Custom field definitions and values match the local CRM counts.", "Required before Application Profile review."),
+            ("custom_fields", "Custom field definitions and values match the CRM counts.", "Required before Application Profile review."),
             ("tags", "Tags, aliases, and assignments match local normalized tag behavior.", "Required before tag edits."),
             ("files", "Private file object count and signed download checks match document package manifest.", "Required before remote document downloads."),
             ("permission_denials", "Read-only writes, staff restore, staff project decisions, and unauthenticated access are denied.", "Required before owner shakedown or any internal admin access."),
@@ -13872,7 +13834,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             (
                 "remote_user_identity",
                 "Add remote user identity",
-                "The current users table is Zendesk owner reference data; hosted admin login needs separate app-user identity and audit attribution.",
+                "The current users table is legacy owner reference data; hosted admin login needs separate app-user identity and audit attribution.",
                 "Required before inviting admins.",
             ),
             (
@@ -13939,7 +13901,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         return rows
 
     def export_remote_admin_access_plan_rows(self) -> list[dict[str, Any]]:
-        status = self.migration_status()
+        status = self.app_status()
         counts = status.get("counts") or {}
         project_decisions = status.get("project_decisions") or {}
         cleanup_summary = ((status.get("cleanup") or {}).get("summary") or {})
@@ -14056,7 +14018,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                 "staging_cutover",
                 "Staging cutover rehearsal",
                 "Load a copied database and files into staging; compare counts and run workflow smoke tests.",
-                "Counts match local CRM and edit flows create backups/audit rows.",
+                "Counts match CRM and edit flows create backups/audit rows.",
                 "Local remains source of truth during rehearsal.",
             ),
             (
@@ -14148,7 +14110,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         return rows
 
     def export_remote_admin_permissions_matrix_rows(self) -> list[dict[str, Any]]:
-        status = self.migration_status()
+        status = self.app_status()
         counts = status.get("counts") or {}
         project_decisions = status.get("project_decisions") or {}
         cleanup_summary = ((status.get("cleanup") or {}).get("summary") or {})
@@ -14162,7 +14124,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                 "row_type": "summary",
                 "status": "permissions_design_ready",
                 "recommended_roles": "owner, admin, staff, read_only, migration_operator",
-                "current_identity_source": "Single local browser session; the users table is Zendesk owner reference data, not remote app login identity.",
+                "current_identity_source": "Single local browser session; the users table is legacy owner reference data, not remote app login identity.",
                 "remote_identity_needed": "yes",
                 "remote_shared_database_needed": "yes",
                 "private_file_storage_needed": "yes",
@@ -14231,7 +14193,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                     "lifespan": lifespan,
                     "scope": scope,
                     "example_user": example_user,
-                    "remote_gate": "Create app_users/app_roles first; do not reuse Zendesk owner reference rows as login accounts.",
+                    "remote_gate": "Create app_users/app_roles first; do not reuse legacy owner reference rows as login accounts.",
                 }
             )
 
@@ -14240,7 +14202,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                 "view_dashboard_reports",
                 "Read access",
                 "View dashboard, Status, reports, and ordinary lists",
-                "GET /api/summary, /api/migration_status, /api/list, /api/detail",
+                "GET /api/summary, /api/operations_status, /api/list, /api/detail",
                 "allow",
                 "allow",
                 "allow",
@@ -14284,7 +14246,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             (
                 "download_document_files",
                 "Files",
-                "Download recovered Zendesk document files",
+                "Download recovered legacy document files",
                 "GET /api/archive_file, /api/export_document_files_package",
                 "allow",
                 "allow",
@@ -14529,14 +14491,14 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                     "order": order,
                     "key": key,
                     "requirement": requirement,
-                    "implementation_note": "audit_log now supports app_user_id, actor_email, actor_roles, and permission_action; lifecycle, permission-denial, and approved local CRM-write audit entries use those fields, while hosted write-unlock testing remains before production writes.",
+                    "implementation_note": "audit_log now supports app_user_id, actor_email, actor_roles, and permission_action; lifecycle, permission-denial, and approved CRM-write audit entries use those fields, while hosted write-unlock testing remains before production writes.",
                 }
             )
 
         implementation_gaps = [
             ("login_session_beta", "Hosted login/session now supports bootstrap owner/admin identity, protected routes, and owner Users UI deployment.", "Run newest-deployment hosted role smoke and pilot-user login flow before pilot users."),
             ("app_user_lifecycle_api_beta", "Owner-only app-user API endpoints and UI now support save, role assignment, deactivation/reactivation, and password reset with no shared admin password; local and prior hosted smoke passed.", "Run newest-deployment hosted role smoke and pilot-user invite process before inviting real admins."),
-            ("audit_actor_api_beta", "audit_log now has actor fields, and app-user lifecycle, permission-denial, plus approved local CRM writes capture actor email, role snapshot, and permission action.", "Run hosted write-unlock audit rehearsal before lifting the write lock."),
+            ("audit_actor_api_beta", "audit_log now has actor fields, and app-user lifecycle, permission-denial, plus approved CRM writes capture actor email, role snapshot, and permission action.", "Run hosted write-unlock audit rehearsal before lifting the write lock."),
             ("local_sqlite_source_of_truth", "SQLite remains the source of truth while Supabase/Vercel staging is verified.", "Cut over only after storage, audit, backup/restore, role tests, and pilot pass."),
             ("private_file_storage_verified", "Recovered document files are in private Supabase Storage with validated remote object keys and owner/admin signed access.", "Keep lower-role denial probes and storage smoke in the pilot gate."),
             ("role_middleware_beta", "Hosted auth now has static action-level role middleware for reads, exports, files, writes, backups, restore, owner-only governance, and app-user management; local full-role matrix and prior read-only hosted denial smoke passed.", "Run the full Owner/Admin/Staff/Read-only/Migration Operator matrix against the newest hosted deployment and add user-scoped saved views before pilot."),
@@ -14558,7 +14520,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         rollout_gates = [
             ("choose_hosting_posture", "Choose hosting posture", "Owner chooses managed cloud, self-hosted, or hybrid transition.", "No hosting decision is saved by this report."),
             ("final_local_package", "Create final local package", "Create a fresh backup and complete export package before staging migration.", "Rollback evidence exists."),
-            ("staging_database", "Build staging database", "Load the local CRM into a hosted staging database and preserve or map IDs.", "Counts and relationships match."),
+            ("staging_database", "Build staging database", "Load the CRM into a hosted staging database and preserve or map IDs.", "Counts and relationships match."),
             ("private_file_storage", "Migrate private files", "Upload recovered files to private storage and verify private download links.", "No public file URLs."),
             ("app_users_roles", "Add app users and roles", "Implement invite/deactivate/roles and action permission checks.", "No shared admin password."),
             ("audit_upgrade", "Upgrade audit attribution", "Record actor identity, role snapshot, backup reference, and reason note.", "Every write identifies who did it."),
@@ -14580,7 +14542,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         return rows
 
     def export_remote_admin_implementation_blueprint_rows(self) -> list[dict[str, Any]]:
-        status = self.migration_status()
+        status = self.app_status()
         counts = status.get("counts") or {}
         project_decisions = status.get("project_decisions") or {}
         cleanup_summary = ((status.get("cleanup") or {}).get("summary") or {})
@@ -14630,7 +14592,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             (
                 "private_file_storage",
                 "Private File Storage",
-                "Move recovered Zendesk documents/files out of local paths into private object storage keys.",
+                "Move recovered legacy documents/files out of local paths into private object storage keys.",
                 "Every downloaded document is available through a private signed download path.",
                 "Do not publish raw local file paths in the remote app.",
             ),
@@ -14639,7 +14601,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                 "Identity And Access",
                 "Add app users, roles, invites, deactivation, and session handling.",
                 "Owner/Admin/Staff/Read-only/Migration Operator role tests pass.",
-                "Do not reuse Zendesk owner reference rows as login accounts.",
+                "Do not reuse legacy owner reference rows as login accounts.",
             ),
             (
                 "permission_middleware",
@@ -14667,7 +14629,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                 "Staging Verification",
                 "Run count, relationship, file, export, login, permissions, edit, audit, and restore checks before cutover.",
                 "No admin production invite until the staging checklist passes.",
-                "Local CRM remains source of truth during rehearsal.",
+                "CRM remains source of truth during rehearsal.",
             ),
             (
                 "production_cutover",
@@ -14696,7 +14658,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                 "Remote identity",
                 "Remote login users for you/admins/staff/read-only users.",
                 "id, email, display_name, status, last_login_at, created_at, deactivated_at",
-                "Separate from Zendesk users table.",
+                "Separate from legacy users table.",
             ),
             (
                 "app_roles",
@@ -14794,7 +14756,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             ("hosting_choice", "Choose hosting posture", "Owner selects managed cloud, self-hosted, or hybrid.", "Decision recorded outside this report."),
             ("final_local_snapshot", "Create pre-staging package", "Manual backup plus complete CRM and document packages.", "Backup/export names recorded."),
             ("schema_migration", "Build hosted schema migration", "Create core CRM tables plus remote-only app user/file/audit tables.", "Migration applies and rolls back in staging."),
-            ("staging_load", "Load staging data", "Import current local CRM preserving local IDs where possible.", "Counts and relationships match."),
+            ("staging_load", "Load staging data", "Import current CRM preserving local IDs where possible.", "Counts and relationships match."),
             ("file_upload", "Upload private files", "Upload document files and write remote_file_objects.", "Coverage equals document package manifest."),
             ("auth_roles", "Implement app users and roles", "Add individual logins, invites, deactivation, and role checks.", "Role matrix tests pass."),
             ("audit_upgrade", "Implement actor-aware audit", "Attach user, role, backup reference, reason note, old/new values.", "Write tests prove actor attribution."),
@@ -14815,7 +14777,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             )
 
         verification_gates = [
-            ("count_match", "Counts match local CRM", "people, companies, leads, deals, notes, tasks, archive, tags, custom fields, audit rows"),
+            ("count_match", "Counts match CRM", "people, companies, leads, deals, notes, tasks, archive, tags, custom fields, audit rows"),
             ("relationship_match", "Relationships survive migration", "addresses, tags, notes, tasks, deals, linked resources, archive associations"),
             ("file_coverage", "Private files work", "document manifest count and signed download checks match local package"),
             ("login_roles", "Individual logins work", "owner/admin/staff/read-only/migration-operator can log in and see expected views"),
@@ -14860,7 +14822,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         return rows
 
     def export_remote_admin_rollout_board_rows(self) -> list[dict[str, Any]]:
-        status = self.migration_status()
+        status = self.app_status()
         counts = status.get("counts") or {}
         project_decisions = status.get("project_decisions") or {}
         cleanup_summary = ((status.get("cleanup") or {}).get("summary") or {})
@@ -14916,7 +14878,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                 "P0",
                 "complete_for_staging_snapshot",
                 "choose_hosting_posture",
-                "Create a fresh local backup, Complete Local CRM Package, and Downloaded Document Files package immediately before rehearsal.",
+                "Create a fresh local backup, Complete CRM Package, and Document Files package immediately before rehearsal.",
                 "Fresh backup plus complete package and document package names are recorded.",
                 "/reports/backup_safety_ledger.md",
             ),
@@ -14952,7 +14914,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                 "P0",
                 "complete_supabase_counts_passed",
                 "create_pre_staging_package, build_schema_migration",
-                "Load all local CRM tables into staging while preserving local IDs and recording migration run metadata.",
+                "Load all CRM tables into staging while preserving local IDs and recording migration run metadata.",
                 "Staging counts match local source rows and migration run is logged.",
                 "/reports/hosted_database_data_load_plan.md",
             ),
@@ -14964,7 +14926,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                 "P0",
                 "complete_supabase_storage_validated",
                 "confirm_remote_stack, create_pre_staging_package",
-                "Upload recovered Zendesk documents to private storage and insert remote_file_objects metadata.",
+                "Upload recovered legacy documents to private storage and insert remote_file_objects metadata.",
                 "Private file object count equals the document package manifest count.",
                 "/reports/hosted_database_data_load_plan.md",
             ),
@@ -15096,7 +15058,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                 "P0",
                 "blocked_by_staging_signoff",
                 "resolve_staging_findings",
-                "Stop local CRM writes, create final local backup/export/document packages, and record the cutover package names.",
+                "Stop CRM writes, create final local backup/export/document packages, and record the cutover package names.",
                 "Final source package is stable and retained as rollback evidence.",
                 "/reports/hosted_database_data_load_plan.md",
             ),
@@ -15291,7 +15253,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         return rows
 
     def export_remote_hosting_decision_packet_rows(self) -> list[dict[str, Any]]:
-        status = self.migration_status()
+        status = self.app_status()
         counts = status.get("counts") or {}
         project_decisions = status.get("project_decisions") or {}
         cleanup_summary = ((status.get("cleanup") or {}).get("summary") or {})
@@ -15425,7 +15387,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         requirements = [
             ("individual_logins", "Individual logins", "Every admin/staff user needs a unique login; no shared admin password."),
             ("managed_database", "Hosted relational database", "Use a shared hosted database target, preferably Postgres, with staging and production separation."),
-            ("private_files", "Private file storage", "Recovered Zendesk documents must move from local paths to private storage keys and signed downloads."),
+            ("private_files", "Private file storage", "Recovered legacy documents must move from local paths to private storage keys and signed downloads."),
             ("https", "HTTPS only", "Remote access must be HTTPS; do not expose this local server publicly."),
             ("role_permissions", "Role permissions", "Owner/Admin/Staff/Read-only/Migration Operator actions must be allowed or denied by endpoint."),
             ("actor_audit", "Actor-aware audit", "Remote writes must record who acted, role snapshot, old/new values, backup reference, and reason note."),
@@ -15470,7 +15432,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         return rows
 
     def export_remote_managed_cloud_provider_shortlist_rows(self) -> list[dict[str, Any]]:
-        status = self.migration_status()
+        status = self.app_status()
         counts = status.get("counts") or {}
         project_decisions = status.get("project_decisions") or {}
         cleanup_summary = ((status.get("cleanup") or {}).get("summary") or {})
@@ -15529,7 +15491,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                 "database": "DigitalOcean Managed Databases for PostgreSQL",
                 "private_file_storage": "DigitalOcean Spaces object storage",
                 "auth_path": "App-level login/roles first; optional external OAuth later.",
-                "backup_path": "Managed database backups plus Complete Local CRM Package before cutover.",
+                "backup_path": "Managed database backups plus Complete CRM Package before cutover.",
                 "staging_path": "Separate staging app, staging database, and staging Space before production.",
                 "fit": "Best default stack to price and test first because app hosting, managed Postgres, and object storage live in one vendor family.",
                 "ops_load": "Low",
@@ -15546,7 +15508,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                 "database": "Railway PostgreSQL template/service",
                 "private_file_storage": "Railway private S3-compatible Buckets",
                 "auth_path": "App-level login/roles first; Railway environment separation for staging.",
-                "backup_path": "Provider database backup/restore approach plus Complete Local CRM Package before cutover.",
+                "backup_path": "Provider database backup/restore approach plus Complete CRM Package before cutover.",
                 "staging_path": "Separate Railway environment with isolated database and bucket credentials.",
                 "fit": "Strong second finalist for fast staging and simple app/database/storage wiring.",
                 "ops_load": "Low",
@@ -15563,7 +15525,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                 "database": "Fly.io Managed Postgres",
                 "private_file_storage": "Tigris Global Object Storage",
                 "auth_path": "App-level login/roles; provider secrets for storage/database.",
-                "backup_path": "Managed Postgres backups plus Complete Local CRM Package before cutover.",
+                "backup_path": "Managed Postgres backups plus Complete CRM Package before cutover.",
                 "staging_path": "Separate app/database/bucket with staged secrets.",
                 "fit": "Good if we want more infrastructure control and strong app/storage primitives while staying managed.",
                 "ops_load": "Medium",
@@ -15597,7 +15559,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                 "database": "Supabase Postgres",
                 "private_file_storage": "Supabase Storage with RLS policies",
                 "auth_path": "Supabase Auth with JWT/RLS integration, or app-level auth using Supabase as data layer.",
-                "backup_path": "Supabase database backups on paid plans plus Complete Local CRM Package before cutover.",
+                "backup_path": "Supabase database backups on paid plans plus Complete CRM Package before cutover.",
                 "staging_path": "Separate Supabase project plus separate app staging host.",
                 "fit": "Strong data/auth/storage platform, but not the simplest complete hosted-app stack for this current local app.",
                 "ops_load": "Medium",
@@ -15630,7 +15592,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         criteria = [
             ("app_hosting", "Can host the CRM as a private web app", "Must run the current app with HTTPS, secrets, staging, logs, and repeatable deploys.", "DigitalOcean, Railway, Fly.io, Render, and Heroku directly support app hosting; Supabase needs a separate app host."),
             ("managed_postgres", "Managed Postgres path", "The shared CRM should use managed Postgres rather than local SQLite once multiple admins edit data.", "All shortlisted stacks can provide Postgres; backup and restore details must be verified before purchase."),
-            ("private_object_storage", "Private document storage", "Recovered Zendesk documents should move to private object storage with signed/proxied access.", "DigitalOcean Spaces, Railway Buckets, Fly/Tigris, and Supabase Storage are direct fits; Render/Heroku need external storage."),
+            ("private_object_storage", "Private document storage", "Recovered legacy documents should move to private object storage with signed/proxied access.", "DigitalOcean Spaces, Railway Buckets, Fly/Tigris, and Supabase Storage are direct fits; Render/Heroku need external storage."),
             ("staging_separation", "Separate staging and production", "The first hosted migration must happen in staging with separate database/files before admins use it.", "Do not invite admins until staging counts, files, permissions, exports, and restore checks pass."),
             ("admin_identity", "Individual admin identity", "Remote writes must record who made the change and which role applied.", "Can be app-level auth first; Supabase Auth is a deeper data-layer option if we choose that route."),
             ("backup_restore", "Backup and restore proof", "Provider backups are not enough; the complete local package must remain the portable rollback artifact.", "Require one successful staging restore drill before production cutover."),
@@ -15730,7 +15692,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         return rows
 
     def export_remote_staging_pricing_preflight_rows(self) -> list[dict[str, Any]]:
-        status = self.migration_status()
+        status = self.app_status()
         counts = status.get("counts") or {}
         project_decisions = status.get("project_decisions") or {}
         cleanup_summary = ((status.get("cleanup") or {}).get("summary") or {})
@@ -16084,7 +16046,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         return rows
 
     def export_remote_staging_setup_runbook_rows(self) -> list[dict[str, Any]]:
-        status = self.migration_status()
+        status = self.app_status()
         counts = status.get("counts") or {}
         project_decisions = status.get("project_decisions") or {}
         cleanup_summary = ((status.get("cleanup") or {}).get("summary") or {})
@@ -16177,7 +16139,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
 
         phases = [
             ("approval", "Owner approval", "Confirm finalist, budget cap, account owner, region, and staging-only scope.", "No provider account/payment/provisioning before this is explicit."),
-            ("package", "Fresh local package", "Create fresh complete package and document package for staging import.", "Use local CRM as source of truth until production cutover."),
+            ("package", "Fresh local package", "Create fresh complete package and document package for staging import.", "Use CRM as source of truth until production cutover."),
             ("provision", "Provision staging", "Create app/database/storage resources only in staging.", "No production resources and no admin invites yet."),
             ("configure", "Configure secrets and settings", "Add runtime variables, private storage credentials, app URL, secure cookies, and first-admin seed.", "No secrets written to reports, docs, or committed files."),
             ("schema", "Apply hosted schema", "Apply the hosted schema draft and remote-only tables to staging database.", "Schema must be reviewed before data load."),
@@ -16201,7 +16163,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             ("railway", "create_private_bucket", "Create Railway private bucket", "Migration Operator", "Create bucket in chosen region; use credentials from bucket Credentials tab.", "provision"),
             ("railway", "set_service_variables", "Set Railway service variables", "Migration Operator", "Use variables/sealed variables for app secrets; do not expose values in logs or reports.", "configure"),
             ("common", "apply_schema", "Apply hosted schema draft", "Migration Operator", "Apply reports/hosted_database_schema_draft.sql to staging database.", "schema"),
-            ("common", "load_core_tables", "Load local CRM data", "Migration Operator", "Use hosted data-load plan by phase; verify counts after each major group.", "load"),
+            ("common", "load_core_tables", "Load CRM data", "Migration Operator", "Use hosted data-load plan by phase; verify counts after each major group.", "load"),
             ("common", "load_private_files", "Upload recovered document files", "Migration Operator", "Upload document package to private storage keys and populate remote file-object metadata.", "load"),
             ("common", "run_validation", "Run staging validation", "Migration Operator", "Run app smoke tests, count checks, auth/role tests, audit checks, file access checks, exports, and restore drill.", "validate"),
         ]
@@ -16310,7 +16272,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         return rows
 
     def export_remote_staging_deployment_spec_rows(self) -> list[dict[str, Any]]:
-        status = self.migration_status()
+        status = self.app_status()
         counts = status.get("counts") or {}
         project_decisions = status.get("project_decisions") or {}
         cleanup_summary = ((status.get("cleanup") or {}).get("summary") or {})
@@ -16436,8 +16398,8 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             )
 
         deployment_inputs = [
-            ("complete_package", "Complete Local CRM Package", "database/local_crm.sqlite, CSV exports, reports, docs, package_manifest.json", "Create fresh copy immediately before any upload."),
-            ("document_package", "Downloaded Document Files Package", "document file archive plus document_files_manifest.csv and chillcrm_supabase_storage_manifest.csv", "Required for private Supabase Storage upload."),
+            ("complete_package", "Complete CRM Package", "database/local_crm.sqlite, CSV exports, reports, docs, package_manifest.json", "Create fresh copy immediately before any upload."),
+            ("document_package", "Document Files Package", "document file archive plus document_files_manifest.csv and chillcrm_supabase_storage_manifest.csv", "Required for private Supabase Storage upload."),
             ("schema_sql", "Hosted schema SQL draft", "reports/hosted_database_schema_draft.sql", "Review and apply only to staging database after owner approval."),
             ("data_load_plan", "Hosted data load plan", "reports/hosted_database_data_load_plan.md, staging validation report, and storage migration report", "Use for table order, remote seed data, file migration, and validation gates."),
             ("adapter_smoke", "Hosted Postgres adapter smoke test", "scripts/verify_hosted_postgres_adapter_smoke.py and reports/hosted_postgres_adapter_smoke.md", "Hosted Supabase read-path smoke has passed; rerun after any schema, adapter, or provider-environment change before pilot."),
@@ -16454,7 +16416,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             ("auth_sessions", "Authentication and sessions", "Hosted auth now supports bootstrap owner login, signed HttpOnly Secure cookies, logout, protected CRM/report routes, Vercel-authenticated outer protection, role/action middleware, owner-only app-user lifecycle APIs, deactivated-user login denial, Supabase-backed denial/login/logout smoke, and deployed owner Users UI. Newest-deployment full role-matrix smoke remains before pilot.", "Blocks remote admin invite until role/admin flows are hardened.", "owner_ui_deployed_newest_role_smoke_pending"),
             ("private_file_storage", "Private file storage", "Storage manifest is byte-verified for 203 files, all files are uploaded to private Supabase Storage, crm.remote_file_objects has 203 validated rows and matching bytes, and Vercel owner/admin signed document access smoke passed.", "No longer blocks signed file access; still include unauthorized lower-role probes before pilot.", "passed_private_storage_signed_access"),
             ("vercel_app_host", "Vercel app host", "Vercel project is created and deployed; explicit Python runtime, hosted env vars, Supabase adapter, Vercel Authentication bypass for automation, CRM auth, summary counts, write lock, export lock, signed file access, and logout smoke all passed.", "Does not yet clear backup/restore, audit, role lifecycle, or pilot gates.", "deployed_signed_file_smoke_passed"),
-            ("actor_audit", "Actor-aware audit", "audit_log now supports app_user_id, actor_email, actor_roles, and permission_action; app-user lifecycle changes, permission denials, and approved local CRM writes write actor-aware rows. Hosted write-unlock audit rehearsal remains before production writes.", "Blocks write unlock.", "local_crm_write_actor_audit_passed_hosted_unlock_pending"),
+            ("actor_audit", "Actor-aware audit", "audit_log now supports app_user_id, actor_email, actor_roles, and permission_action; app-user lifecycle changes, permission denials, and approved CRM writes write actor-aware rows. Hosted write-unlock audit rehearsal remains before production writes.", "Blocks write unlock.", "local_crm_write_actor_audit_passed_hosted_unlock_pending"),
             ("write_lock_enforcement", "Remote write lock", "Server-side REMOTE_WRITE_LOCK now blocks browser/API POST writes when enabled so staging can validate read paths first.", "Required before pilot workflow testing.", "implemented"),
             ("bulk_export_permissions", "Bulk export controls", "Server-side EXPORT_PACKAGE_ENABLED=false now blocks complete package/document package downloads for staging; role-based Owner/Admin export permissions still need auth/session work.", "Blocks lower-role access.", "partial"),
             ("health_monitoring", "Health and error monitoring", "Server-side /health and /api/health now check local SQLite or hosted Postgres schema reachability; provider log review, backup status, alerts, and first-week monitoring still need hosted setup.", "Blocks production cutover.", "partial"),
@@ -16472,7 +16434,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             ("data_load_counts", "Data load counts match", "Staging table counts match expected local counts.", "P0", "passed_supabase"),
             ("file_private", "Files remain private", "Recovered documents are in private Supabase Storage, mapped to crm.remote_file_objects, and authorized owner/admin requests receive short-lived signed Supabase Storage redirects; public/lower-role probes remain before pilot.", "P0", "passed_private_storage_signed_access"),
             ("auth_role_deny", "Auth/role deny flows work", "CHILLCRM_AUTH_REQUIRED=true blocks unauthenticated CRM data/routes, owner login works, logout clears the session, role/action middleware is in place, owner-only user lifecycle API tests pass in hosted staging, read-only user-management/write denial smoke passed, local full-role matrix passed, and staging writes/exports remain locked; newest hosted full-role matrix remains before pilot.", "P0", "local_full_matrix_passed_newest_hosted_pending"),
-            ("audit_write", "Actor-aware write audit works", "Approved local CRM write records actor, role snapshot, permission action, and old/new values; hosted write-unlock rehearsal remains.", "P0", "local_crm_write_actor_audit_passed_hosted_unlock_pending"),
+            ("audit_write", "Actor-aware write audit works", "Approved CRM write records actor, role snapshot, permission action, and old/new values; hosted write-unlock rehearsal remains.", "P0", "local_crm_write_actor_audit_passed_hosted_unlock_pending"),
             ("backup_restore", "Backup/restore drill passes", "Provider backup or restore drill succeeds before pilot admin invite.", "P0", "not_started"),
         ]
         for order, (key, test, pass_criteria, severity, smoke_status) in enumerate(smoke_tests, start=1):
@@ -16499,7 +16461,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         return rows
 
     def export_remote_staging_validation_matrix_rows(self) -> list[dict[str, Any]]:
-        status = self.migration_status()
+        status = self.app_status()
         counts = status.get("counts") or {}
         project_decisions = status.get("project_decisions") or {}
         cleanup_summary = ((status.get("cleanup") or {}).get("summary") or {})
@@ -16664,7 +16626,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         return rows
 
     def export_remote_admin_pilot_onboarding_plan_rows(self) -> list[dict[str, Any]]:
-        status = self.migration_status()
+        status = self.app_status()
         counts = status.get("counts") or {}
         project_decisions = status.get("project_decisions") or {}
         cleanup_summary = ((status.get("cleanup") or {}).get("summary") or {})
@@ -16735,7 +16697,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
 
         prerequisites = [
             ("hosting_approved", "Supabase/Vercel staging selected", "CHILLCRM staging uses Supabase Postgres, Supabase Storage, and Vercel.", "Owner", "Already clears provider-choice blocker."),
-            ("fresh_package", "Fresh local packages retained", "Complete Local CRM Package and Downloaded Document Files package exist for rollback/source evidence.", "Migration Operator", "Blocks production cutover if stale."),
+            ("fresh_package", "Fresh local packages retained", "Complete CRM Package and Document Files package exist for rollback/source evidence.", "Migration Operator", "Blocks production cutover if stale."),
             ("validation_p0_passed", "All P0 validation checks passed", "Remote Staging Validation Matrix has no failed/unreviewed P0 checks on the newest deployment.", "Migration Operator", "Blocks owner shakedown signoff."),
             ("restore_proven", "Supabase backup/restore proof recorded", "Provider backup/PITR evidence or staged restore evidence is recorded.", "Migration Operator", "Blocks production cutover."),
             ("write_lock_plan", "Write-lock/unlock rehearsal confirmed", "Remote write lock behavior is understood and can be re-enabled after one approved staging write-audit test.", "Migration Operator", "Blocks hosted write testing."),
@@ -16865,7 +16827,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         return rows
 
     def export_remote_production_cutover_checklist_rows(self) -> list[dict[str, Any]]:
-        status = self.migration_status()
+        status = self.app_status()
         counts = status.get("counts") or {}
         project_decisions = status.get("project_decisions") or {}
         cleanup_summary = ((status.get("cleanup") or {}).get("summary") or {})
@@ -16933,11 +16895,11 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             ("owner_approval", "Owner approves production cutover", "Cutover window, provider, production URL, internal-user audience if any, and rollback criteria are approved.", "before_freeze", "Owner", "not_started"),
             ("owner_shakedown_signoff", "Owner shakedown signoff is complete", "Owner-only staging shakedown is complete, blockers are fixed or accepted, and cutover readiness is approved.", "before_freeze", "Owner", "not_started"),
             ("production_resources_ready", "Production resources are ready", "Production app, database, private storage, environment variables, HTTPS, and backups are ready.", "before_freeze", "Migration Operator", "not_started"),
-            ("announce_freeze", "Announce local write freeze", "Owner and any internal users know that local CRM writes pause until remote production is validated.", "freeze", "Owner", "not_started"),
+            ("announce_freeze", "Announce local write freeze", "Owner and any internal users know that CRM writes pause until remote production is validated.", "freeze", "Owner", "not_started"),
             ("enforce_freeze", "Enforce local write freeze", "Local app is treated as read-only during final package/load window.", "freeze", "Migration Operator", "not_started"),
             ("final_sqlite_backup", "Create final SQLite backup", "Final timestamped backup exists after the freeze.", "package", "Migration Operator", "not_started"),
-            ("final_complete_package", "Create final complete package", "Complete Local CRM Package includes database, CSVs, reports, docs, and manifest.", "package", "Migration Operator", "not_started"),
-            ("final_document_package", "Create final document package", "Downloaded Document Files package includes recovered document files and manifest.", "package", "Migration Operator", "not_started"),
+            ("final_complete_package", "Create final complete package", "Complete CRM Package includes database, CSVs, reports, docs, and manifest.", "package", "Migration Operator", "not_started"),
+            ("final_document_package", "Create final document package", "Document Files package includes recovered document files and manifest.", "package", "Migration Operator", "not_started"),
             ("load_database", "Load production database", "Production database loads from the final frozen source package.", "load", "Migration Operator", "not_started"),
             ("load_files", "Load private document files", "Recovered document files load into private storage with non-public access.", "load", "Migration Operator", "not_started"),
             ("seed_users_roles", "Seed approved users and roles", "Owner and optional internal users/roles are created only from owner-approved list.", "load", "Owner + Migration Operator", "not_started"),
@@ -18686,7 +18648,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         ).fetchone()[0]
         return {
             "source": "zendesk" if zendesk_id else "local",
-            "label": "Imported from Zendesk" if zendesk_id else "Local only",
+            "label": "Historical import" if zendesk_id else "Local only",
             "zendesk_id": zendesk_id,
             "local_change_count": local_change_count,
             "last_local_change_at": latest_change_at,
@@ -19732,7 +19694,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                     "created",
                     "Person created",
                     record.get("created_at"),
-                    meta=["Imported from Zendesk" if record.get("zendesk_contact_id") else "Local record"],
+                    meta=["Historical import" if record.get("zendesk_contact_id") else "Local record"],
                 ),
                 "record:created",
             )
@@ -20849,7 +20811,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                     note = str(row.get("spot_check_note") or "")
                     if "Aliases match exactly in one resource type" in note:
                         exact_alias_groups += 1
-                    elif "Same alias text appears across multiple Zendesk resource types" in note:
+                    elif "Same alias text appears across multiple legacy resource types" in note:
                         cross_resource_same_alias_groups += 1
                     else:
                         alias_drift_groups += 1
@@ -20864,7 +20826,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         )
         return {
             "recommendation": "Mark normalized tags handled",
-            "reason": "Duplicate Zendesk tag definitions are already normalized into single local tags while assignments are preserved.",
+            "reason": "Duplicate legacy tag definitions are already normalized into single local tags while assignments are preserved.",
             "open_groups": len(rows),
             "affected_assignments": sum(int(row.get("record_count") or 0) for row in rows),
             "definition_count": sum(int(row.get("definition_count") or 0) for row in rows),
@@ -21691,7 +21653,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         if group_type == "duplicate_tags":
             assignment_count = int((counts or {}).get("record_count") or record_count)
             score = flag_count * 5 + min(assignment_count, 25)
-            reasons = ["Multiple Zendesk tag definitions map to the same local tag."]
+            reasons = ["Multiple legacy tag definitions map to the same local tag."]
             if assignment_count:
                 reasons.append(f"This tag is assigned to {assignment_count} records.")
             priority = "Medium" if assignment_count >= 10 else "Low"
@@ -26584,7 +26546,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             if not note:
                 raise ValueError(f"Note {note_id} not found.")
             if note["zendesk_note_id"] is not None:
-                raise ValueError("Imported Zendesk notes are read-only. Add a local correction note instead.")
+                raise ValueError("Historical notes are read-only. Add a local correction note instead.")
             if str(note["content"] or "") == content:
                 return {
                     "ok": True,
@@ -26601,7 +26563,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             if not note:
                 raise ValueError(f"Note {note_id} not found.")
             if note["zendesk_note_id"] is not None:
-                raise ValueError("Imported Zendesk notes are read-only. Add a local correction note instead.")
+                raise ValueError("Historical notes are read-only. Add a local correction note instead.")
             conn.execute("UPDATE notes SET content = ?, updated_at = ? WHERE id = ?", (content, timestamp, note_id))
             self.insert_audit_log(
                 conn,
@@ -26815,7 +26777,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             if not task:
                 raise ValueError(f"Task {task_id} not found.")
             if task["zendesk_task_id"] is None:
-                raise ValueError("Only imported Zendesk tasks can be copied into a local follow-up.")
+                raise ValueError("Only historical tasks can be copied into a local follow-up.")
             record_type = task["record_type"]
             record_id = task["record_id"]
             if record_type not in {"person", "company", "lead", "deal"} or not record_id:
@@ -26985,11 +26947,11 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Run the local CRM browser.")
+    parser = argparse.ArgumentParser(description="Run the CRM browser.")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8765)
     parser.add_argument("--auto-port", action="store_true", help="Use the next open port if the requested port is busy.")
-    parser.add_argument("--open", action="store_true", help="Open the local CRM in the default browser.")
+    parser.add_argument("--open", action="store_true", help="Open the CRM in the default browser.")
     parser.add_argument("--db-path", default=str(DEFAULT_DB))
     args = parser.parse_args()
 
@@ -27012,7 +26974,7 @@ def main() -> int:
         raise OSError(f"No open port found from {args.port} to {args.port + 49}.") from last_error
 
     url = f"http://{args.host}:{server.server_port}"
-    print(f"Local CRM running at {url}")
+    print(f"CRM running at {url}")
     if hosted_adapter_enabled:
         print("Using hosted Postgres adapter: enabled")
     else:
@@ -27022,7 +26984,7 @@ def main() -> int:
     try:
         server.serve_forever()
     except KeyboardInterrupt:
-        print("\nLocal CRM stopped.")
+        print("\nCRM stopped.")
     finally:
         server.server_close()
     return 0

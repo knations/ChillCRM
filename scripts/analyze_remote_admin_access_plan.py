@@ -83,7 +83,7 @@ def generate_report(rows: list[dict[str, Any]]) -> str:
         "",
         f"Generated: {generated_at}",
         "",
-        "This is a read-only plan for moving the local CRM prototype into a secure shared system for remote admins. It does not provision hosting, expose localhost, save project decisions, migrate data, invite users, or change CRM records.",
+        "This is a read-only plan for moving the CHILLCRM prototype into a secure shared system for remote admins. It does not provision hosting, expose localhost, save project decisions, migrate data, invite users, or change CRM records.",
         "",
         "## Summary",
         "",

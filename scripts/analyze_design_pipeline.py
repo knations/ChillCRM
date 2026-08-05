@@ -73,7 +73,7 @@ def generate_report(rows: list[dict[str, Any]]) -> str:
         "",
         f"Generated: {generated_at}",
         "",
-        "This is a planning report only. It does not redesign screens, save project decisions, merge records, delete records, link archive items, or update Zendesk Sell.",
+        "This is a planning report only. It does not redesign screens, save project decisions, merge records, delete records, link archive items, or update legacy CRM provider.",
         "",
         "## Summary",
         "",

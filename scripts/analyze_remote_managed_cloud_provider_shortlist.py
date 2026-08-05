@@ -182,7 +182,7 @@ def generate_report(rows: list[dict[str, Any]]) -> str:
         "",
         "## Safety Boundary",
         "",
-        "This shortlist is planning only. It does not choose a provider, provision hosting, create accounts, enter payment details, create a remote database, upload files, create users, invite admins, save decisions, expose this machine, or change local CRM records.",
+        "This shortlist is planning only. It does not choose a provider, provision hosting, create accounts, enter payment details, create a remote database, upload files, create users, invite admins, save decisions, expose this machine, or change CHILLCRM records.",
         "",
         "## Related Files",
         "",

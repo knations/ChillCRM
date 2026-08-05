@@ -10,7 +10,7 @@ The current CRM permission model includes internal roles such as:
 - admin
 - staff
 - read_only
-- migration_operator
+- operations_operator
 
 These roles control internal CRM actions such as viewing records, editing
 records, notes/tasks/follow-ups, backups, restores, exports, user management,
@@ -55,7 +55,7 @@ Portal users should not access:
 - cleanup tools
 - exports
 - admin user management
-- migration or archive evidence
+- operator evidence
 
 ## Requires Explicit Approval
 

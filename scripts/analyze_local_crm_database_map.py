@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate a read-only map of the local CRM database."""
+"""Generate a read-only map of the CHILLCRM database."""
 
 from __future__ import annotations
 
@@ -94,15 +94,15 @@ def generate_report(rows: list[dict[str, Any]]) -> str:
     operational_tables = [
         row
         for row in table_rows
-        if row.get("category") in {"Local operations", "Cleanup and governance", "Recovered Zendesk archive"}
+        if row.get("category") in {"Local operations", "Cleanup and governance", "Recovered legacy archive"}
     ]
 
     lines = [
-        "# Local CRM Database Map",
+        "# CHILLCRM Database Map",
         "",
         f"Generated: {generated_at}",
         "",
-        "Read-only database inventory. It does not edit records, save decisions, link archive items, resolve cleanup, restore backups, or update Zendesk Sell.",
+        "Read-only database inventory. It does not edit records, save decisions, link archive items, resolve cleanup, restore backups, or update legacy CRM provider.",
         "",
         "## Summary",
         "",
@@ -199,8 +199,8 @@ def generate_report(rows: list[dict[str, Any]]) -> str:
         "",
         "## Safety Boundary",
         "",
-        "- Treat `crm_database/local_crm.sqlite` as the local source of truth after the Zendesk Sell pull.",
-        "- Use the local CRM app and maintenance script for backups, restores, and edits; do not hand-edit SQLite tables.",
+        "- Treat `crm_database/local_crm.sqlite` as the local source of truth after the legacy CRM provider pull.",
+        "- Use the CHILLCRM app and maintenance script for backups, restores, and edits; do not hand-edit SQLite tables.",
         "- Project Decisions, archive review/linking, cleanup review, and record edits create local audit entries when saved from the app.",
         "- The map is for understanding, export, and handoff only; it does not save decisions or run cleanup.",
         "",

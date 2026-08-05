@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate a read-only plan for moving from imported Zendesk tasks to local follow-ups."""
+"""Generate a read-only plan for moving from imported legacy tasks to local follow-ups."""
 
 from __future__ import annotations
 
@@ -73,13 +73,13 @@ def generate_report(app: server.CRMRequestHandler, rows: list[dict[str, Any]]) -
         "",
         f"Generated: {generated_at}",
         "",
-        "This is a review plan only. Running it does not complete tasks, create local follow-ups, delete reminders, or update Zendesk Sell.",
+        "This is a review plan only. Running it does not complete tasks, create local follow-ups, delete reminders, or update legacy CRM provider.",
         "",
         "## Summary",
         "",
         f"- Plan status: {plan.get('status') or 'unknown'}.",
-        f"- Open imported Zendesk tasks: {int(counts.get('open_imported') or 0):,}.",
-        f"- Open local CRM follow-ups: {int(counts.get('open_local') or 0):,}.",
+        f"- Open imported legacy tasks: {int(counts.get('open_imported') or 0):,}.",
+        f"- Open CHILLCRM follow-ups: {int(counts.get('open_local') or 0):,}.",
         f"- Overdue imported tasks: {int(counts.get('overdue_imported') or 0):,}.",
         f"- Imported tasks without due date: {int(counts.get('imported_without_due') or 0):,}.",
         f"- Linked imported tasks: {int(counts.get('linked_imported') or 0):,}.",
@@ -108,7 +108,7 @@ def generate_report(app: server.CRMRequestHandler, rows: list[dict[str, Any]]) -
                     task_rows,
                     [
                         ("task_id", "Local Task ID"),
-                        ("zendesk_task_id", "Zendesk ID"),
+                        ("zendesk_task_id", "legacy ID"),
                         ("record_type", "Record Type"),
                         ("record_id", "Record ID"),
                         ("record_name", "Record"),
@@ -123,8 +123,8 @@ def generate_report(app: server.CRMRequestHandler, rows: list[dict[str, Any]]) -
         [
             "## How To Use",
             "",
-            "1. Open Follow Up in the local CRM.",
-            "2. Use Show Imported Open to review all open reminders that came from Zendesk.",
+            "1. Open Follow Up in the CHILLCRM.",
+            "2. Use Show Imported Open to review all open reminders that came from legacy.",
             "3. Use Show Overdue Imported for the highest-friction items first.",
             "4. For reminders that still matter, use Copy Local in Follow Up and choose a fresh local due date, or leave the due date blank.",
             "5. Treat old imported reminders as historical until you explicitly complete or edit them locally.",
@@ -132,9 +132,9 @@ def generate_report(app: server.CRMRequestHandler, rows: list[dict[str, Any]]) -
             "## Safety Notes",
             "",
             f"- {plan.get('safety')}",
-            "- Copy Local creates a separate local follow-up after an explicit click; it does not complete or delete the imported Zendesk task.",
-            "- Imported Zendesk task rows remain preserved in the local database unless you explicitly edit or complete them locally.",
-            "- New local follow-ups have no Zendesk task ID and stay separate from imported reminder history.",
+            "- Copy Local creates a separate local follow-up after an explicit click; it does not complete or delete the imported legacy task.",
+            "- Imported legacy task rows remain preserved in the local database unless you explicitly edit or complete them locally.",
+            "- New local follow-ups have no legacy task ID and stay separate from imported reminder history.",
             "",
             "## Related Files",
             "",

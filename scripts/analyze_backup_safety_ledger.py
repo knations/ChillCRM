@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate a backup safety ledger for the local CRM."""
+"""Generate a backup safety ledger for the CHILLCRM."""
 
 from __future__ import annotations
 
@@ -74,7 +74,7 @@ def generate_report(app: server.CRMRequestHandler, rows: list[dict[str, Any]]) -
         "",
         f"Generated: {generated_at}",
         "",
-        "This report documents local CRM backup inventory and restore posture. It does not create, restore, delete, or modify any backup or CRM record.",
+        "This report documents CHILLCRM backup inventory and restore posture. It does not create, restore, delete, or modify any backup or CRM record.",
         "",
         "## Summary",
         "",

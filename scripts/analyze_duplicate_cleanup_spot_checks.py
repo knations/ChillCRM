@@ -129,7 +129,7 @@ def generate_report(rows: list[dict[str, Any]], config: dict[str, Any]) -> str:
         "",
         f"Generated: {generated_at}",
         "",
-        f"Use this report as the focused evidence page before saving the {config['decision_label']}. It is read-only and does not save the project decision, merge records, delete records, resolve cleanup flags, or update Zendesk Sell.",
+        f"Use this report as the focused evidence page before saving the {config['decision_label']}. It is read-only and does not save the project decision, merge records, delete records, resolve cleanup flags, or update legacy CRM provider.",
         "",
         "## Summary",
         "",

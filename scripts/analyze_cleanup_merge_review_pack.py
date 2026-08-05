@@ -423,7 +423,7 @@ def generate_report(rows: list[dict[str, Any]]) -> str:
         "",
         "## Safety Notes",
         "",
-        "- The report is non-destructive and reads from the current local CRM only.",
+        "- The report is non-destructive and reads from the current CHILLCRM only.",
         "- Draft keepers do not become merge rules until the related Project Decisions are saved.",
         "- Group-level decisions such as Merge Later still do not merge records; they only make groups eligible for a future preview.",
         "- Future merge execution should require a fresh backup, preview counts, undo documentation, and an explicit final confirmation.",

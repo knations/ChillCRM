@@ -184,7 +184,7 @@ def build_gates() -> tuple[dict[str, Any], list[Gate]]:
     add_gate(
         gates,
         "local_data_integrity",
-        "Local CRM data integrity",
+        "CHILLCRM data integrity",
         "pass" if "Blocking failures: 0" in integrity_report and "Hosted staging gate: pass" in integrity_report else "fail",
         True,
         "Local functional integrity report has 0 blocking failures and hosted staging gate pass." if integrity_report else "Missing local functional integrity report.",
@@ -479,7 +479,7 @@ def build_gates() -> tuple[dict[str, Any], list[Gate]]:
             else "Missing Supabase staging data parity report."
         ),
         "reports/supabase_staging_data_parity.md; reports/supabase_staging_refresh_preflight.md; reports/supabase_staging_refresh_run.md",
-        "Run the Supabase staging refresh preflight, then use scripts/run_supabase_staging_refresh.py --execute --prompt-secrets to reload current local CRM data into Supabase staging and rerun staging validation/parity.",
+        "Run the Supabase staging refresh preflight, then use scripts/run_supabase_staging_refresh.py --execute --prompt-secrets to reload current CHILLCRM data into Supabase staging and rerun staging validation/parity.",
     )
     supabase_backup_status = plain_value(supabase_backup, "Status")
     production_gate = plain_value(supabase_backup, "Production gate")

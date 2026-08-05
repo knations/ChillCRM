@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate a non-destructive local CRM data-quality report."""
+"""Generate a non-destructive CHILLCRM data-quality report."""
 
 from __future__ import annotations
 
@@ -156,7 +156,7 @@ def generate_report(app: server.CRMRequestHandler, rows: list[dict[str, Any]]) -
     owner_rows = owner_summary_rows(rows)
     work_rows = work_order_rows(rows)
     lines = [
-        "# Local CRM Data Quality",
+        "# CHILLCRM Data Quality",
         "",
         f"Generated: {generated_at}",
         "",

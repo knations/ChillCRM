@@ -2,7 +2,7 @@
 
 ## Visual Direction
 
-After the functional CRM and archive design is stable, redesign the local CRM to feel like a native Apple app: elegant, quiet, simple on the surface, and powerful underneath.
+After the functional CRM and archive design is stable, keep refining CHILLCRM toward a native Apple-style feel: elegant, quiet, simple on the surface, and powerful underneath.
 
 ## Pipeline Status
 

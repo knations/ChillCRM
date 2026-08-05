@@ -25,11 +25,11 @@ These files guide the build but are not CRM data:
 - `docs/`
 - `.gitignore`
 
-Keep these current enough that a new task can understand the app without reading old migration history first.
+Keep these current enough that a new task can understand the app as an operational CRM.
 
-## Operator And Migration Tooling
+## Operator Tooling
 
-These files support verification, migration, provider setup, evidence reports, and owner-approved operations:
+These files support verification, provider setup, evidence reports, and owner-approved operations:
 
 - `scripts/`
 - `ops/operator_launchers/`
@@ -64,4 +64,4 @@ When adding a new file, place it by purpose:
 - private machine-only helpers go in `ops/local_private_launchers/`
 - product/build doctrine goes in `docs/`
 
-This keeps the CRM itself clean while preserving the migration and evidence tools that still matter.
+This keeps the CRM itself clean while preserving the operator and verification tools that still matter.

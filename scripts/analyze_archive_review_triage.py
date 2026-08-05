@@ -80,7 +80,7 @@ def generate_report(rows: list[dict[str, Any]]) -> str:
         "",
         f"Generated: {generated_at}",
         "",
-        "This is a read-only triage packet for unlinked calls/texts. It does not save review status, link archive items, merge records, delete records, or update Zendesk Sell.",
+        "This is a read-only triage packet for unlinked calls/texts. It does not save review status, link archive items, merge records, delete records, or update legacy CRM provider.",
         "",
         "## Summary",
         "",

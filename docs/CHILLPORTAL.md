@@ -56,7 +56,7 @@ production access is turned on.
 - Production auth changes.
 - Production environment variables.
 - Document integrations.
-- Production database migrations or data backfills.
+- Production schema changes or data backfills.
 - Any rule that exposes existing CRM notes or call logs to clients.
 - Client invitations or client-visible notifications.
 - Deploying a portal route to production.
@@ -65,7 +65,7 @@ production access is turned on.
 
 - No enabled client-facing pages.
 - No enabled production client routes.
-- No production database migration has been applied by this document.
+- No production database schema change has been applied by this document.
 - No storage buckets.
 - No invitations.
 - No provider integrations.

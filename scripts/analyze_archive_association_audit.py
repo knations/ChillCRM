@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate an archive association audit for recovered Zendesk history."""
+"""Generate an archive association audit for recovered legacy history."""
 
 from __future__ import annotations
 
@@ -74,7 +74,7 @@ def generate_report(app: server.CRMRequestHandler, rows: list[dict[str, Any]]) -
         "",
         f"Generated: {generated_at}",
         "",
-        "This report explains how recovered Zendesk Sell archive items are associated with local CRM records. It does not save review status, link archive items, merge records, delete records, or update Zendesk Sell.",
+        "This report explains how recovered legacy CRM provider archive items are associated with CHILLCRM records. It does not save review status, link archive items, merge records, delete records, or update legacy CRM provider.",
         "",
         "## Summary",
         "",
@@ -129,9 +129,9 @@ def generate_report(app: server.CRMRequestHandler, rows: list[dict[str, Any]]) -
         "## Findings",
         "",
         "- Downloaded document files are already attached to local person records and remain available in the separate document-file package.",
-        "- Orders and lead conversions are linked through Zendesk-supplied resource IDs.",
-        "- The remaining calls/texts do not include Zendesk resource IDs, associated deal IDs, contact IDs, lead IDs, or exact local CRM phone matches.",
-        "- Call recording URLs are preserved on the relevant Archive items when Zendesk exposed them, but a recording URL is not a person/company/deal association by itself.",
+        "- Orders and lead conversions are linked through legacy-supplied resource IDs.",
+        "- The remaining calls/texts do not include legacy resource IDs, associated deal IDs, contact IDs, lead IDs, or exact CHILLCRM phone matches.",
+        "- Call recording URLs are preserved on the relevant Archive items when legacy exposed them, but a recording URL is not a person/company/deal association by itself.",
         "",
         "## Recommended Next Step",
         "",

@@ -418,7 +418,7 @@ def write_markdown(
         "",
         f"Generated: {generated}",
         "",
-        "This report tracks recovered Zendesk document file movement into private Supabase Storage. It does not include service-role keys, database passwords, signed URLs, or public file links.",
+        "This report tracks recovered legacy document file movement into private Supabase Storage. It does not include service-role keys, database passwords, signed URLs, or public file links.",
         "",
         "## Summary",
         "",

@@ -112,7 +112,7 @@ def alias_label(alias: dict[str, Any]) -> str:
     if alias.get("resource_type"):
         parts.append(f"[{alias['resource_type']}]")
     if alias.get("zendesk_tag_id"):
-        parts.append(f"Zendesk #{alias['zendesk_tag_id']}")
+        parts.append(f"legacy #{alias['zendesk_tag_id']}")
     return " ".join(parts)
 
 
@@ -130,7 +130,7 @@ def spot_check_note(alias_names: list[str], resource_types: list[str]) -> str:
     if len(alias_names) <= 1 and len(resource_types) <= 1:
         return "Aliases match exactly in one resource type."
     if len(alias_names) <= 1:
-        return "Same alias text appears across multiple Zendesk resource types."
+        return "Same alias text appears across multiple legacy resource types."
     return "Alias text varies; spot-check spelling before saving the tag policy."
 
 
@@ -229,7 +229,7 @@ def decision_option_rows() -> list[dict[str, Any]]:
             "effect": "Keeps the tag cleanup lane gated behind manual group review.",
         },
         "keep_aliases_visible": {
-            "choose_when": "You want duplicate Zendesk definitions visible for audit/history despite normalized local assignments.",
+            "choose_when": "You want duplicate legacy definitions visible for audit/history despite normalized local assignments.",
             "effect": "Leaves the duplicate tag groups open as visible historical definitions.",
         },
     }
@@ -270,11 +270,11 @@ def generate_report(app: server.CRMRequestHandler, rows: list[dict[str, Any]]) -
         "",
         "## Recommendation",
         "",
-        "Use this report as the final spot check before saving the Duplicate Tag policy. The local CRM has already normalized duplicate Zendesk tag definitions into single local tags while preserving assignments; this report shows the aliases and sample records behind that recommendation.",
+        "Use this report as the final spot check before saving the Duplicate Tag policy. The CHILLCRM has already normalized duplicate legacy tag definitions into single local tags while preserving assignments; this report shows the aliases and sample records behind that recommendation.",
         "",
         f"- Open duplicate tag groups: {len(rows):,}.",
         f"- Affected tag assignments: {total_assignments:,}.",
-        f"- Zendesk tag definitions represented by those groups: {total_definitions:,}.",
+        f"- legacy tag definitions represented by those groups: {total_definitions:,}.",
         f"- Priority split: {priority_counts.get('High', 0):,} high, {priority_counts.get('Medium', 0):,} medium, {priority_counts.get('Low', 0):,} low.",
         f"- Current project decision: {decision['status']} / {decision['saved_path']}.",
         f"- Recommended project path: {decision['recommended_path']}.",
@@ -299,7 +299,7 @@ def generate_report(app: server.CRMRequestHandler, rows: list[dict[str, Any]]) -
         "",
         "- Saving a Duplicate Tag project decision creates a local backup first.",
         "- Saving records the selected policy in Project Decisions, Activity, and the audit log.",
-        "- Saving does not merge records, delete tags, resolve cleanup flags, rewrite tag assignments, or update Zendesk Sell.",
+        "- Saving does not merge records, delete tags, resolve cleanup flags, rewrite tag assignments, or update legacy CRM provider.",
         "- Even with A saved, any future cleanup execution still needs its own preview, backup, and explicit confirmation.",
         "",
         "## What To Spot Check",

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Create the final local CRM database from the Zendesk Sell staging database."""
+"""Create the final CHILLCRM database from the legacy CRM provider staging database."""
 
 from __future__ import annotations
 
@@ -390,7 +390,7 @@ def migrate_people(src: sqlite3.Connection, dst: sqlite3.Connection) -> None:
                 "medium",
                 "person",
                 None,
-                f"Person {row['name']} references missing Zendesk company {row['parent_organization_id']}.",
+                f"Person {row['name']} references missing legacy company {row['parent_organization_id']}.",
                 flag_key=str(row["parent_organization_id"]),
             )
         dst.execute(
@@ -555,9 +555,9 @@ def migrate_deals(src: sqlite3.Connection, dst: sqlite3.Connection) -> None:
         local_id = dst.execute("SELECT last_insert_rowid()").fetchone()[0]
         insert_source_map(dst, "deals", local_id, "deals", row["source_id"])
         if row["contact_id"] and person_id is None:
-            add_flag(dst, "missing_deal_person", "high", "deal", local_id, f"Deal {row['name']} references missing Zendesk contact {row['contact_id']}.")
+            add_flag(dst, "missing_deal_person", "high", "deal", local_id, f"Deal {row['name']} references missing legacy contact {row['contact_id']}.")
         if row["organization_id"] and company_id is None:
-            add_flag(dst, "missing_deal_company", "high", "deal", local_id, f"Deal {row['name']} references missing Zendesk organization {row['organization_id']}.")
+            add_flag(dst, "missing_deal_company", "high", "deal", local_id, f"Deal {row['name']} references missing legacy organization {row['organization_id']}.")
 
 
 def map_resource(dst: sqlite3.Connection, resource_type: str | None, resource_id: int | None) -> tuple[str | None, int | None]:
@@ -674,7 +674,7 @@ def migrate_tags(src: sqlite3.Connection, dst: sqlite3.Connection) -> None:
         dst.execute("UPDATE tags SET definition_count = ? WHERE id = ?", (count, tag_id))
         if count > 1:
             tag = dst.execute("SELECT display_name FROM tags WHERE id = ?", (tag_id,)).fetchone()
-            add_flag(dst, "duplicate_tag_definition", "low", "tag", tag_id, f"Tag '{tag['display_name']}' has {count} Zendesk definitions.")
+            add_flag(dst, "duplicate_tag_definition", "low", "tag", tag_id, f"Tag '{tag['display_name']}' has {count} legacy definitions.")
 
     assignments = src.execute("SELECT record_type, record_id, tag FROM tag_assignments ORDER BY record_type, record_id").fetchall()
     for row in assignments:
@@ -831,7 +831,7 @@ def write_summary(dst: sqlite3.Connection, report_path: Path, db_path: Path) -> 
         return "\n".join(lines)
 
     lines = [
-        "# Local CRM Migration Summary",
+        "# CHILLCRM Migration Summary",
         "",
         f"Database: `{db_path}`",
         "",
@@ -889,7 +889,7 @@ def migrate(staging_path: Path, output_path: Path, report_path: Path) -> None:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Migrate staging database to final local CRM database.")
+    parser = argparse.ArgumentParser(description="Migrate staging database to final CHILLCRM database.")
     parser.add_argument("--staging-db", default="staging_database/zendesk_sell_staging.sqlite")
     parser.add_argument("--output-db", default="crm_database/local_crm.sqlite")
     parser.add_argument("--summary", default="reports/local_crm_migration_summary.md")
@@ -901,7 +901,7 @@ def main() -> int:
     report_path.parent.mkdir(parents=True, exist_ok=True)
 
     migrate(staging_path, output_path, report_path)
-    print(f"Built local CRM database: {output_path}")
+    print(f"Built CHILLCRM database: {output_path}")
     print(f"Wrote migration summary: {report_path}")
     return 0
 

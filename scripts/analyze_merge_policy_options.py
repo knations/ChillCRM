@@ -323,7 +323,7 @@ def generate_report(rows: list[dict[str, Any]]) -> str:
         "",
         "## Recommendation",
         "",
-        "Use the Guided policy next. It keeps every person, lead, and lead/person overlap merge under human review, but separates the work into faster lanes. Duplicate tag definitions are the only current batch-decision candidate because the local CRM has already normalized tag aliases while preserving assignments.",
+        "Use the Guided policy next. It keeps every person, lead, and lead/person overlap merge under human review, but separates the work into faster lanes. Duplicate tag definitions are the only current batch-decision candidate because the CHILLCRM has already normalized tag aliases while preserving assignments.",
         "",
         f"- Open cleanup groups: {total:,}.",
         f"- Manual review first: {manual_first:,}.",

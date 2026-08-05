@@ -2,7 +2,7 @@
 
 This is the Person-first schema blueprint for the Portal foundation. The local
 runtime can create these tables as needed, but this document does not apply a
-production migration or change production data.
+production schema change or alter production data.
 
 ## Confirmed Direction
 
@@ -111,9 +111,9 @@ Notes:
 
 ## Approval Required Before Build
 
-- Production migration SQL.
+- Production schema SQL.
 - Portal auth/invite model.
 - Which internal users can publish portal items.
 - Whether portal items can be unpublished or archived.
-- Production migration.
+- Production schema change.
 - Production deployment.

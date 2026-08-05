@@ -257,7 +257,7 @@ def write_report(path: Path, recommendations: list[FieldRecommendation], csv_pat
             [
                 "# Custom Field Promotion Recommendations",
                 "",
-                "This report classifies migrated Zendesk Sell custom fields by how useful they are likely to be in the local CRM.",
+                "This report classifies migrated legacy CRM provider custom fields by how useful they are likely to be in the CHILLCRM.",
                 "",
                 "No fields are changed by this report. It is decision support for future schema and UI work.",
                 "",

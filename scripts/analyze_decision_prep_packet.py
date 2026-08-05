@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate a printable decision prep packet for the local CRM."""
+"""Generate a printable decision prep packet for the CHILLCRM."""
 
 from __future__ import annotations
 
@@ -127,7 +127,7 @@ def generate_report(app: server.CRMRequestHandler, rows: list[dict[str, Any]]) -
         [
             "## How To Use",
             "",
-            "1. Open Status in the local CRM.",
+            "1. Open Status in the CHILLCRM.",
             "2. Review the Decision Prep Packet and evidence links.",
             "3. Use Open Next Decision to focus the next active pending decision; deferred decisions stay parked until pending decisions are cleared.",
             "4. Use Fill Recommended only to stage the suggested path; nothing is saved until Save Decision is clicked.",

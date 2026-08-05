@@ -306,7 +306,7 @@ def build_rows() -> list[dict[str, Any]]:
     add_boundary_check(
         rows,
         key="source_of_truth_cutover_preflight_no_secret_storage",
-        source="scripts/verify_source_of_truth_cutover_preflight.py",
+        source="ops/retired_migration_tools/verify_source_of_truth_cutover_preflight.py",
         requirement="Source-of-truth cutover preflight is report-only and preserves no provider calls, no writes, and no source-of-truth changes.",
         tokens=[
             "Source-Of-Truth Cutover Preflight",
@@ -320,7 +320,7 @@ def build_rows() -> list[dict[str, Any]]:
     add_boundary_check(
         rows,
         key="supabase_refresh_private_database_url",
-        source="scripts/run_supabase_staging_refresh.py",
+        source="ops/retired_migration_tools/run_supabase_staging_refresh.py",
         requirement="Supabase staging refresh uses private database URL handling and reloads staging only when explicitly executed.",
         tokens=[
             "getpass.getpass",
@@ -393,13 +393,13 @@ def build_rows() -> list[dict[str, Any]]:
     add_report_check(
         rows,
         key="source_of_truth_cutover_preflight_report_no_secrets",
-        report="reports/source_of_truth_cutover_preflight.md",
+        report="ops/retired_migration_reports/source_of_truth_cutover_preflight.md",
         tokens=["Secret values stored: no", "Remote write lock changed: no", "Source of truth changed: no"],
     )
     add_report_check(
         rows,
         key="supabase_refresh_report_no_secrets",
-        report="reports/supabase_staging_refresh_run.md",
+        report="ops/retired_migration_reports/supabase_staging_refresh_run.md",
         tokens=["Secret values stored: no", "Database URL source:", "Provider calls:", "Source of truth changed: no"],
     )
     add_report_check(
@@ -451,7 +451,7 @@ def write_report(path: Path, rows: list[dict[str, Any]]) -> None:
         "",
         f"Generated: {summary.get('generated_at')}",
         "",
-        "This report verifies that CHILLCRM production source, reports, docs, and config examples are not carrying secret values. It also checks that the guided production runners use hidden prompts or one-shot environment values and record no secrets. It does not read raw Zendesk exports, database files, backups, or document archives.",
+        "This report verifies that CHILLCRM production source, reports, docs, and config examples are not carrying secret values. It also checks that the guided production runners use hidden prompts or one-shot environment values and record no secrets. It does not read raw legacy exports, database files, backups, or document archives.",
         "",
         "## Summary",
         "",

@@ -81,7 +81,7 @@ def role_for_field(field_name: str) -> tuple[str, str]:
     if field_name == "Date Created":
         return (
             "Read-only timestamp",
-            "Imported application intake date; keep separate from local CRM edit dates.",
+            "Imported application intake date; keep separate from CHILLCRM edit dates.",
         )
     return (
         "Read-only intake history",

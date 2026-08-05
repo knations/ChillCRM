@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify the final local CRM database against the staging database."""
+"""Verify the final CHILLCRM database against the staging database."""
 
 from __future__ import annotations
 
@@ -40,7 +40,7 @@ def write_csv(path: Path, rows: list[dict[str, Any]]) -> None:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Verify local CRM migration.")
+    parser = argparse.ArgumentParser(description="Verify CHILLCRM migration.")
     parser.add_argument("--staging-db", default="staging_database/zendesk_sell_staging.sqlite")
     parser.add_argument("--crm-db", default="crm_database/local_crm.sqlite")
     parser.add_argument("--reports-dir", default="reports")
@@ -99,11 +99,11 @@ def main() -> int:
     write_csv(reports_dir / "local_crm_source_map_summary.csv", source_rows)
 
     lines = [
-        "# Local CRM Verification",
+        "# CHILLCRM Verification",
         "",
         "## Count Verification",
         "",
-        "| Object | Staging Count | Local CRM Count | Status |",
+        "| Object | Staging Count | CHILLCRM Count | Status |",
         "| --- | ---: | ---: | --- |",
     ]
     for row in count_rows:

@@ -82,7 +82,7 @@ def generate_report(rows: list[dict[str, Any]]) -> str:
         "",
         f"Generated: {generated_at}",
         "",
-        "This is a comparison matrix only. It does not save choices, prefill forms, merge records, delete records, resolve cleanup flags, link archive items, or update Zendesk Sell.",
+        "This is a comparison matrix only. It does not save choices, prefill forms, merge records, delete records, resolve cleanup flags, link archive items, or update legacy CRM provider.",
         "",
         "## Summary",
         "",

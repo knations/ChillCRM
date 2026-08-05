@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate a printable daily operating guide for the local CRM."""
+"""Generate a printable daily operating guide for the CHILLCRM."""
 
 from __future__ import annotations
 
@@ -174,13 +174,13 @@ def recovery_rows(status: dict[str, Any]) -> list[dict[str, Any]]:
         {
             "need": "Portable handoff",
             "where": "Exports",
-            "action": "Download Complete Local CRM Package for the database, CSVs, reports, and docs.",
+            "action": "Download Complete CRM Package for the database, CSVs, reports, and docs.",
             "current_state": f"{int(export_packages.get('ready_count') or 0):,} of {int(export_packages.get('total_count') or 0):,} packages ready.",
         },
         {
             "need": "Recovered files",
             "where": "Exports",
-            "action": "Download Document Files package when recovered Zendesk document attachments are needed separately.",
+            "action": "Download Document Files package when recovered legacy document attachments are needed separately.",
             "current_state": "203 recovered document files are packaged separately.",
         },
         {
@@ -205,7 +205,7 @@ def recovery_rows(status: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def generate_report(app: server.CRMRequestHandler, rows: list[dict[str, Any]]) -> str:
-    status = app.migration_status()
+    status = app.app_status()
     guide = status.get("daily_guide") or {}
     generated_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
     guide_rows = rows if rows and rows[0].get("key") else []
@@ -216,7 +216,7 @@ def generate_report(app: server.CRMRequestHandler, rows: list[dict[str, Any]]) -
         "",
         f"Generated: {generated_at}",
         "",
-        "This is a live runbook for using the local CRM after the Zendesk Sell data pull. It does not save project decisions, merge records, delete records, resolve cleanup flags, or update Zendesk Sell.",
+        "This is a live runbook for using the CHILLCRM after the legacy CRM provider data pull. It does not save project decisions, merge records, delete records, resolve cleanup flags, or update legacy CRM provider.",
         "",
         "## Summary",
         "",
@@ -314,7 +314,7 @@ def generate_report(app: server.CRMRequestHandler, rows: list[dict[str, Any]]) -
         [
             "## How To Use",
             "",
-            "1. Open Status in the local CRM.",
+            "1. Open Status in the CHILLCRM.",
             "2. Start with the Next Action card if a major decision needs attention.",
             "3. Use the Daily Operating Guide for normal CRM work: follow-ups, active deals, new leads, data quality, archive review, recent local changes, decision review, cleanup starter review, and export checks.",
             "4. Save local record edits only from the normal record forms. The guide itself is navigation and reporting only.",

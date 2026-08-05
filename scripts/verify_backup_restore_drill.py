@@ -117,7 +117,7 @@ def write_report(rows: list[dict[str, Any]]) -> None:
         "",
         f"Generated: {summary.get('generated_at')}",
         "",
-        "This report verifies backup and restore mechanics against a disposable copy of the local CRM database. It does not restore, replace, upload, or modify the live CRM database.",
+        "This report verifies backup and restore mechanics against a disposable copy of the CHILLCRM database. It does not restore, replace, upload, or modify the live CRM database.",
         "",
         "## Summary",
         "",
@@ -179,7 +179,7 @@ def main() -> int:
     live_bytes = DB_PATH.stat().st_size if DB_PATH.exists() else 0
 
     if not DB_PATH.exists():
-        raise SystemExit(f"Missing local CRM database: {DB_PATH}")
+        raise SystemExit(f"Missing CHILLCRM database: {DB_PATH}")
 
     with tempfile.TemporaryDirectory(prefix="chillcrm_restore_drill_") as tmp:
         tmp_dir = Path(tmp)

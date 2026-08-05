@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify local CRM functional data integrity before hosted staging."""
+"""Verify CHILLCRM functional data integrity before hosted staging."""
 
 from __future__ import annotations
 
@@ -164,7 +164,7 @@ def check_count_parity(
                 details.append(f"{label}: staging {staging_count}, local {crm_count}")
         status = "pass" if mismatches == 0 else "fail"
         detail = "All required source counts match staging." if not details else "; ".join(details)
-        add(results, "counts", "staging to local CRM count parity", status, mismatches, detail)
+        add(results, "counts", "staging to CHILLCRM count parity", status, mismatches, detail)
     finally:
         staging.close()
 
@@ -583,7 +583,7 @@ def write_markdown(path: Path, results: list[CheckResult]) -> None:
         "",
         f"Generated: {generated}",
         "",
-        "This is a technical integrity report. It does not edit records, save merge decisions, link archive items, resolve cleanup flags, create backups, upload files, or contact Zendesk Sell.",
+        "This is a technical integrity report. It does not edit records, save merge decisions, link archive items, resolve cleanup flags, create backups, upload files, or contact legacy CRM provider.",
         "",
         "## Summary",
         "",
@@ -608,7 +608,7 @@ def write_markdown(path: Path, results: list[CheckResult]) -> None:
             "",
             "## Interpretation",
             "",
-            "- `pass` means the local CRM foundation is technically consistent for that area.",
+            "- `pass` means the CHILLCRM foundation is technically consistent for that area.",
             "- `warn` means a known human work queue remains, but it is not a broken technical reference.",
             "- `fail` means the local copy should not be promoted into hosted staging until corrected.",
             "",
@@ -622,7 +622,7 @@ def write_markdown(path: Path, results: list[CheckResult]) -> None:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Verify local CRM functional data integrity.")
+    parser = argparse.ArgumentParser(description="Verify CHILLCRM functional data integrity.")
     parser.add_argument("--crm-db", default=str(DEFAULT_CRM_DB))
     parser.add_argument("--staging-db", default=str(DEFAULT_STAGING_DB))
     parser.add_argument("--reports-dir", default=str(DEFAULT_REPORTS_DIR))
@@ -647,7 +647,7 @@ def main() -> int:
             "record_id",
             "tasks record links",
             allow_unlinked=True,
-            unlinked_detail="2 imported setup tasks are intentionally unlinked historical Zendesk reminders.",
+            unlinked_detail="2 imported setup tasks are intentionally unlinked historical legacy reminders.",
         )
         check_polymorphic_refs(crm, results, "tag_assignments", "record_type", "record_id", "tag assignment links")
         check_polymorphic_refs(crm, results, "custom_field_values", "record_type", "record_id", "custom field value links")

@@ -94,7 +94,7 @@ def generate_report(app: server.CRMRequestHandler, rows: list[dict[str, Any]]) -
         "",
         f"Generated: {generated_at}",
         "",
-        "This is a planning and review report only. It does not save review status, link archive items, merge records, delete records, or update Zendesk Sell.",
+        "This is a planning and review report only. It does not save review status, link archive items, merge records, delete records, or update legacy CRM provider.",
         "",
         "## Linkage Progress",
         "",

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate cleanup decision-readiness reports for the local CRM."""
+"""Generate cleanup decision-readiness reports for the CHILLCRM."""
 
 from __future__ import annotations
 
@@ -149,12 +149,12 @@ def generate_report(app: server.CRMRequestHandler, rows: list[dict[str, Any]]) -
     lines = [
         "# Cleanup Decision Readiness",
         "",
-        "This report summarizes the local cleanup queues after the final Zendesk optional archive import. It is a planning artifact only; no records are merged, deleted, or changed by this report.",
+        "This report summarizes the local cleanup queues after the final legacy optional archive import. It is a planning artifact only; no records are merged, deleted, or changed by this report.",
         "",
         "## Current State",
         "",
         "- Core CRM data is local.",
-        "- Optional Zendesk archive data is local and searchable.",
+        "- Optional legacy archive data is local and searchable.",
         "- Cleanup is now the main human-decision area.",
         f"- Open cleanup groups: {len(rows):,}.",
         f"- Saved cleanup group decisions: {sum(int(row['count']) for row in decision_counts):,}.",

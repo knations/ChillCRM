@@ -105,7 +105,7 @@ def write_report(path: Path, rows: list[dict[str, Any]]) -> None:
             "",
             "## Operator Boundary",
             "",
-            "Use `CHILLCRM_LOCAL_WRITE_FREEZE=true` only during the final local packaging and production validation window. The guard blocks local CRM mutations and restore operations while leaving `/api/backup`, read paths, reports, and exports available so the final rollback package can still be created after the freeze.",
+            "Use `CHILLCRM_LOCAL_WRITE_FREEZE=true` only during the final local packaging and production validation window. The guard blocks CHILLCRM mutations and restore operations while leaving `/api/backup`, read paths, reports, and exports available so the final rollback package can still be created after the freeze.",
         ]
     )
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
@@ -232,7 +232,7 @@ def main() -> int:
         rows,
         "runtime_visibility",
         "pass"
-        if server_py.count('"local_write_freeze"') >= 4 and "runtime_context" in server_py and "migration_status" in server_py
+        if server_py.count('"local_write_freeze"') >= 4 and "runtime_context" in server_py and "app_status" in server_py
         else "fail",
         "Runtime, dashboard, hosted summary, and Status payloads expose local write-freeze state.",
         "crm_app/server.py",

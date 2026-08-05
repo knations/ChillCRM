@@ -124,7 +124,7 @@ const els = {
   shell: document.querySelector(".app-shell"),
   dashboard: document.querySelector("#dashboardView"),
   ownerBrief: document.querySelector("#ownerBriefView"),
-  migrationStatus: document.querySelector("#migrationStatusView"),
+  operationsStatus: document.querySelector("#operationsStatusView"),
   pipeline: document.querySelector("#pipelineView"),
   list: document.querySelector("#listView"),
   tags: document.querySelector("#tagsView"),
@@ -1076,7 +1076,7 @@ function setView(view) {
     : {
         dashboard: els.dashboard,
         ownerBrief: els.ownerBrief,
-        migrationStatus: els.migrationStatus,
+        operationsStatus: els.operationsStatus,
         pipeline: els.pipeline,
         tags: els.tags,
         customFields: els.customFields,
@@ -1090,8 +1090,8 @@ function setView(view) {
       }[view];
   showOnlyMainView(activeView || els.dashboard);
   updateRecordWorkspaceForView(view);
-  if (view === "migrationStatus") {
-    renderMigrationStatus();
+  if (view === "operationsStatus") {
+    renderOperationsStatus();
   } else if (view === "ownerBrief") {
     renderOwnerBrief();
   } else if (view === "pipeline") {
@@ -1153,7 +1153,7 @@ function viewDisplayLabel(view = state.view) {
     {
       dashboard: "Dashboard",
       ownerBrief: "Owner Brief",
-      migrationStatus: "Status",
+      operationsStatus: "Operations",
       pipeline: "Pipeline",
       tags: "Tags",
       customFields: "Custom Fields",
@@ -2036,7 +2036,7 @@ function startTodayPanel(start) {
         </div>
         <div class="start-today-actions">
           <span class="pill ${tone}">${escapeHtml(labelize(start.status || "waiting"))}</span>
-          <button type="button" class="text-button nav-jump" data-view="${escapeHtml(start.view || "migrationStatus")}">${escapeHtml(start.action || "Open Status")}</button>
+          <button type="button" class="text-button nav-jump" data-view="${escapeHtml(start.view || "operationsStatus")}">${escapeHtml(start.action || "Open Operations")}</button>
           ${start.report ? `<a class="text-button action-link" href="${safeHref(start.report)}" target="_blank" rel="noopener noreferrer">Open Guide</a>` : ""}
           ${start.export_url ? `<a class="text-button action-link" href="${safeHref(start.export_url)}">Export Guide</a>` : ""}
         </div>
@@ -2044,14 +2044,14 @@ function startTodayPanel(start) {
       <div class="start-today-body">
         <div class="start-next-card">
           <span class="eyebrow">Next Action${next.eyebrow ? ` · ${escapeHtml(next.eyebrow)}` : ""}</span>
-          <strong>${escapeHtml(next.title || "Review Status")}</strong>
+          <strong>${escapeHtml(next.title || "Review Operations")}</strong>
           <p>${escapeHtml(next.description || "")}</p>
           ${nextActionChoices(next, true)}
           <div class="start-next-actions">
             ${
               next.decision_key
                 ? `<button type="button" class="text-button next-action-decision" data-key="${escapeHtml(next.decision_key)}">${escapeHtml(next.primary_action || "Open Decision")}</button>`
-                : `<button type="button" class="text-button nav-jump" data-view="${escapeHtml(next.view || "migrationStatus")}">${escapeHtml(next.primary_action || "Open")}</button>`
+                : `<button type="button" class="text-button nav-jump" data-view="${escapeHtml(next.view || "operationsStatus")}">${escapeHtml(next.primary_action || "Open")}</button>`
             }
             ${next.report ? `<a class="text-button action-link" href="${safeHref(next.report)}" target="_blank" rel="noopener noreferrer">Evidence</a>` : ""}
             ${worksheetActionLinks(next)}
@@ -2083,7 +2083,7 @@ function productionStatusPanel(status) {
         </div>
         <div class="start-today-actions">
           <span class="pill ${tone}">${escapeHtml(labelize(status.status || "waiting"))}</span>
-          <button type="button" class="text-button nav-jump" data-view="${escapeHtml(status.view || "migrationStatus")}">${escapeHtml(status.action || "Open Status")}</button>
+          <button type="button" class="text-button nav-jump" data-view="${escapeHtml(status.view || "operationsStatus")}">${escapeHtml(status.action || "Open Operations")}</button>
           ${status.report ? `<a class="text-button action-link" href="${safeHref(status.report)}" target="_blank" rel="noopener noreferrer">Evidence</a>` : ""}
         </div>
       </div>
@@ -2146,12 +2146,10 @@ function cleanupPrioritySummary(counts) {
   return `High ${formatNumber(counts.High || 0)} · Medium ${formatNumber(counts.Medium || 0)} · Low ${formatNumber(counts.Low || 0)}`;
 }
 
-async function renderMigrationStatus() {
-  setStatus("Loading status");
-  const data = await fetchJson("/api/migration_status");
+async function renderOperationsStatus() {
+  setStatus("Loading operations");
+  const data = await fetchJson("/api/operations_status");
   setRuntimeContext(data.runtime);
-  const account = data.snapshot?.account || {};
-  const sweep = data.optional_sweep || {};
   const cleanup = data.cleanup || {};
   const statusCounts = cleanup.status_counts || {};
   const decisionCounts = cleanup.decision_counts || {};
@@ -2159,11 +2157,11 @@ async function renderMigrationStatus() {
   const latestBackup = data.backups?.latest;
   const archiveAssociation = data.imported_archive?.association || {};
   const archiveAssociationSummary = archiveAssociation.summary || {};
-  els.migrationStatus.innerHTML = `
+  els.operationsStatus.innerHTML = `
     <div class="section-header">
       <div>
-        <h2>Migration Status</h2>
-        <p>${escapeHtml(account.name || "Zendesk Sell")} · ${escapeHtml(data.snapshot?.snapshot_name || "No snapshot")}</p>
+        <h2>Operations</h2>
+        <p>CRM health, cleanup, backups, links, archive, and verification.</p>
       </div>
     </div>
     <div class="metric-grid">
@@ -2179,7 +2177,7 @@ async function renderMigrationStatus() {
       ${metric("Open Flags", statusCounts.open || 0, Number(statusCounts.open || 0) ? "metric-alert" : "")}
     </div>
     ${productionGatePanel(data.production_gates)}
-    ${migrationReadiness(data.readiness || [])}
+    ${operationsReadiness(data.readiness || [])}
     ${nextActionPanel(data.next_action)}
     ${dailyOperatingGuidePanel(data.daily_guide)}
     ${decisionPrepPacketPanel(data.decision_prep)}
@@ -2189,30 +2187,6 @@ async function renderMigrationStatus() {
     ${cleanupExecutionPreviewPanel(data.cleanup_execution_preview)}
     ${cleanupExecutionPreviewPanel(data.recommended_execution_preview, "Recommended Path Simulation")}
     <div class="status-grid">
-      <div class="band">
-        <div class="band-header">
-          <h3>Zendesk Snapshot</h3>
-          ${statusPill("Core Imported", "ok")}
-        </div>
-        <dl class="kv">
-          <dt>Snapshot</dt><dd>${escapeHtml(data.snapshot?.snapshot_name || "Unknown")}</dd>
-          <dt>Created</dt><dd>${escapeHtml(formatDate(data.snapshot?.created_at) || "Unknown")}</dd>
-          <dt>Account</dt><dd>${escapeHtml(account.name || "Unknown")}</dd>
-          <dt>Exports</dt><dd>${formatNumber(data.snapshot?.export_count || 0)} captured files</dd>
-        </dl>
-      </div>
-      <div class="band">
-        <div class="band-header">
-          <h3>Final Zendesk Sweep</h3>
-          ${statusPill(sweep.status === "complete" ? "Complete" : "Waiting", sweep.status === "complete" ? "ok" : "warn")}
-        </div>
-        <p>${escapeHtml(sweep.message || "")}</p>
-        <dl class="kv">
-          <dt>Extended endpoints</dt><dd>${sweep.include_extended ? "Captured" : "Not captured yet"}</dd>
-          <dt>Document files</dt><dd>${sweep.download_documents ? "Download attempted" : "Not downloaded yet"}</dd>
-          <dt>Token available now</dt><dd>${sweep.token_available ? "Yes" : "No"}</dd>
-        </dl>
-      </div>
       <div class="band">
         <div class="band-header">
           <h3>Cleanup Review</h3>
@@ -2282,16 +2256,16 @@ async function renderMigrationStatus() {
       </div>
     </div>
   `;
-  wireReadinessButtons(els.migrationStatus);
-  wireNextAction(els.migrationStatus);
-  wireDecisionPrepPacket(els.migrationStatus);
-  wireCleanupGroupButtons(els.migrationStatus);
-  wireProjectDecisionForms(els.migrationStatus);
-  wireNavJumps(els.migrationStatus);
-  wireRecordButtons(els.migrationStatus);
-  wireTaskButtons(els.migrationStatus);
-  wireSavedViewButtons(els.migrationStatus, data.operational_work_queue?.saved_views || []);
-  wireWorkQueuePresets(els.migrationStatus);
+  wireReadinessButtons(els.operationsStatus);
+  wireNextAction(els.operationsStatus);
+  wireDecisionPrepPacket(els.operationsStatus);
+  wireCleanupGroupButtons(els.operationsStatus);
+  wireProjectDecisionForms(els.operationsStatus);
+  wireNavJumps(els.operationsStatus);
+  wireRecordButtons(els.operationsStatus);
+  wireTaskButtons(els.operationsStatus);
+  wireSavedViewButtons(els.operationsStatus, data.operational_work_queue?.saved_views || []);
+  wireWorkQueuePresets(els.operationsStatus);
   setStatus("Ready");
 }
 
@@ -2330,7 +2304,7 @@ function nextActionPanel(action) {
           ${
             decisionKey
               ? `<button type="button" class="text-button next-action-decision" data-key="${escapeHtml(decisionKey)}">${escapeHtml(action.primary_action || "Open Decision")}</button>`
-              : `<button type="button" class="text-button nav-jump" data-view="${escapeHtml(action.view || "migrationStatus")}">${escapeHtml(action.primary_action || "Open")}</button>`
+              : `<button type="button" class="text-button nav-jump" data-view="${escapeHtml(action.view || "operationsStatus")}">${escapeHtml(action.primary_action || "Open")}</button>`
           }
           ${
             decisionKey && action.recommended_value && action.secondary_action
@@ -3143,7 +3117,7 @@ function wireProjectDecisionForms(root) {
       setStatus(openNext ? "Saving and opening next decision" : "Saving project decision");
       const result = await postJson("/api/save_project_decision", { key, status, choice, note });
       const backupName = result.backup ? result.backup.split(/[\\/]/).pop() : "";
-      await renderMigrationStatus();
+      await renderOperationsStatus();
       const backupText = backupName ? `; backup ${backupName} created` : "";
       if (nextKey) {
         focusProjectDecision(nextKey, false);
@@ -3180,8 +3154,8 @@ function wireNextAction(root) {
 }
 
 function jumpToProjectDecision(key, fillRecommended) {
-  if (state.view !== "migrationStatus") {
-    setView("migrationStatus");
+  if (state.view !== "operationsStatus") {
+    setView("operationsStatus");
     window.setTimeout(() => focusProjectDecision(key, fillRecommended), 450);
     return;
   }
@@ -3510,7 +3484,7 @@ function productionGatePanel(gates) {
   `;
 }
 
-function migrationReadiness(items) {
+function operationsReadiness(items) {
   if (!items.length) return "";
   return `
     <div class="band">
@@ -4348,7 +4322,7 @@ function peopleOperatorAvatarFilterControl() {
 
 function provenanceFilterLabel(value) {
   return {
-    imported: "Imported from Zendesk",
+    imported: "Historical import",
     local: "Local only",
     changed: "Has local changes",
   }[value] || "";
@@ -5471,7 +5445,7 @@ function wireTaskButtons(root) {
       if (updated.detail && detailMatchesCurrent(updated.detail)) renderDetail(updated.detail);
       if (state.view === "followup") renderFollowup();
       if (state.view === "dashboard") renderDashboard();
-      if (state.view === "migrationStatus") renderMigrationStatus();
+      if (state.view === "operationsStatus") renderOperationsStatus();
       setStatus("Task saved");
     });
   });
@@ -5484,7 +5458,7 @@ function wireTaskButtons(root) {
       if (updated.detail && detailMatchesCurrent(updated.detail)) renderDetail(updated.detail);
       if (state.view === "followup") renderFollowup();
       if (state.view === "dashboard") renderDashboard();
-      if (state.view === "migrationStatus") renderMigrationStatus();
+      if (state.view === "operationsStatus") renderOperationsStatus();
       setStatus(completed ? "Task completed" : "Task reopened");
     });
   });
@@ -5501,7 +5475,7 @@ function wireTaskButtons(root) {
       if (updated.detail && detailMatchesCurrent(updated.detail)) renderDetail(updated.detail);
       if (state.view === "followup") renderFollowup();
       if (state.view === "dashboard") renderDashboard();
-      if (state.view === "migrationStatus") renderMigrationStatus();
+      if (state.view === "operationsStatus") renderOperationsStatus();
       setStatus("Local follow-up created");
     });
   });
@@ -5709,7 +5683,7 @@ function archiveReviewPanel(item) {
   return `
     <div class="detail-section archive-review-detail-panel">
       <div class="inline-header">
-        <h3>Review Status</h3>
+        <h3>Review Operations</h3>
         ${status ? `<span class="pill ${status === "archive_only" ? "green" : "gold"}">${escapeHtml(archiveReviewStatusLabel(status))}</span>` : `<span class="pill gold">Unreviewed</span>`}
       </div>
       <form id="archiveReviewForm" class="archive-review-form">
@@ -5793,7 +5767,7 @@ function archiveItemFacts(item) {
       : "";
   const fields = [
     ["Archive ID", item.id],
-    ["Zendesk ID", item.zendesk_record_id],
+    ["Legacy ID", item.zendesk_record_id],
     ["Source", item.source_collection],
     ["Status", item.status],
     ["Direction", item.direction],
@@ -7152,7 +7126,7 @@ function renderCleanupGroupDetail(detail) {
                         <strong>${escapeHtml(alias.source_name || "(blank tag)")}</strong>
                         <span class="muted">${escapeHtml(alias.resource_type || "unknown")}</span>
                       </div>
-                      <div class="muted">Zendesk tag #${escapeHtml(alias.zendesk_tag_id || "")}</div>
+                      <div class="muted">Legacy tag #${escapeHtml(alias.zendesk_tag_id || "")}</div>
                     </div>
                   `)
                   .join("")}
@@ -8454,7 +8428,7 @@ function taskRecordTypeOptions() {
 function taskSourceOptions() {
   return [
     ["", "All sources"],
-    ["imported", "Imported from Zendesk"],
+    ["imported", "Historical import"],
     ["local", "Local only"],
   ];
 }
@@ -8724,14 +8698,14 @@ async function renderExports() {
     <div class="section-header">
       <div>
         <h2>Exports</h2>
-        <p>Download local CRM data, reports, and portable backup artifacts</p>
+        <p>Download CRM data and portable backup artifacts</p>
       </div>
     </div>
     <div class="band export-package-band">
       <div class="band-header">
         <div>
-          <h3>${escapeHtml(packageInfo.label || "Complete Local CRM Package")}</h3>
-          <p>${escapeHtml(packageInfo.description || "Download the current local CRM package as one zip file.")}</p>
+          <h3>${escapeHtml(packageInfo.label || "Complete CRM Package")}</h3>
+          <p>${escapeHtml(packageInfo.description || "Download the current CRM package as one zip file.")}</p>
         </div>
         ${
           packageEnabled
@@ -8748,8 +8722,8 @@ async function renderExports() {
     <div class="band export-package-band">
       <div class="band-header">
         <div>
-          <h3>${escapeHtml(documentPackage.label || "Downloaded Document Files")}</h3>
-          <p>${escapeHtml(documentPackage.description || "Download recovered Zendesk document files as one zip file.")}</p>
+          <h3>${escapeHtml(documentPackage.label || "Document Files")}</h3>
+          <p>${escapeHtml(documentPackage.description || "Download CRM document files as one zip file.")}</p>
         </div>
         ${
           documentPackage.available && documentPackageEnabled

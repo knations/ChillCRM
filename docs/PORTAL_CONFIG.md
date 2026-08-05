@@ -51,7 +51,7 @@ reflected by runtime schema helpers:
 - `portal_next_steps`
 - `portal_client_notes`
 
-No production migration or client-access backfill has been applied by this
+No production schema change or client-access backfill has been applied by this
 foundation work.
 
 ## Rollback

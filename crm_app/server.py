@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import base64
 import csv
+import email.utils
 import hashlib
 import hmac
 import html
@@ -3432,15 +3433,41 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             self.send_text("Not found", 404)
             return
         content_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
+        stat = path.stat()
+        cache_control = self.file_cache_control(path)
+        last_modified = email.utils.formatdate(stat.st_mtime, usegmt=True)
+        if cache_control != "no-store" and self.client_has_fresh_file(stat.st_mtime):
+            self.send_response(304)
+            self.send_security_headers()
+            self.send_header("Cache-Control", cache_control)
+            self.send_header("Last-Modified", last_modified)
+            self.end_headers()
+            return
         payload = path.read_bytes()
         self.send_response(200)
         self.send_header("Content-Type", content_type)
         self.send_security_headers()
         self.send_header("Content-Length", str(len(payload)))
-        self.send_header("Cache-Control", self.file_cache_control(path))
+        self.send_header("Cache-Control", cache_control)
+        if cache_control != "no-store":
+            self.send_header("Last-Modified", last_modified)
         self.end_headers()
         if self.should_write_response_body():
             self.wfile.write(payload)
+
+    def client_has_fresh_file(self, modified_at: float) -> bool:
+        raw = str(self.headers.get("If-Modified-Since", "") if hasattr(self, "headers") else "").strip()
+        if not raw:
+            return False
+        try:
+            parsed = email.utils.parsedate_to_datetime(raw)
+        except (TypeError, ValueError):
+            return False
+        if parsed is None:
+            return False
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return parsed.timestamp() >= int(modified_at)
 
     def send_static_file(self, request_path: str) -> None:
         static_root = (APP_DIR / "static").resolve()

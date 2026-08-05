@@ -11,6 +11,7 @@ import sqlite3
 import sys
 import tempfile
 import zipfile
+from email.utils import formatdate
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -2078,6 +2079,35 @@ def main() -> int:
                 assert "valid UTF-8" in str(exc)
             assert handler.response_filename('../bad"\r\nname.csv', "export.csv") == "badname.csv"
             assert handler.response_filename("", "export.csv") == "export.csv"
+            cache_file = temp_path / "cache-test.js"
+            cache_file.write_text("console.log('cache test');\n", encoding="utf-8")
+            cached_handler = server.CRMRequestHandler.__new__(server.CRMRequestHandler)
+            cached_handler.path = "/static/cache-test.js?v=unit"
+            cached_handler.command = "GET"
+            cached_handler.headers = {"If-Modified-Since": formatdate(cache_file.stat().st_mtime + 60, usegmt=True)}
+            cached_handler.wfile = io.BytesIO()
+            cached_events = []
+            cached_handler.send_response = lambda status: cached_events.append(("status", status))
+            cached_handler.send_header = lambda key, value: cached_events.append(("header", key, value))
+            cached_handler.end_headers = lambda: cached_events.append(("end",))
+            cached_handler.send_file(cache_file)
+            assert ("status", 304) in cached_events
+            assert any(event[:2] == ("header", "Last-Modified") for event in cached_events)
+            assert cached_handler.wfile.getvalue() == b""
+            uncached_handler = server.CRMRequestHandler.__new__(server.CRMRequestHandler)
+            uncached_handler.path = "/static/cache-test.js"
+            uncached_handler.command = "GET"
+            uncached_handler.headers = {}
+            uncached_handler.wfile = io.BytesIO()
+            uncached_events = []
+            uncached_handler.send_response = lambda status: uncached_events.append(("status", status))
+            uncached_handler.send_header = lambda key, value: uncached_events.append(("header", key, value))
+            uncached_handler.end_headers = lambda: uncached_events.append(("end",))
+            uncached_handler.send_file(cache_file)
+            assert ("status", 200) in uncached_events
+            assert ("header", "Cache-Control", "no-store") in uncached_events
+            assert not any(event[:2] == ("header", "Last-Modified") for event in uncached_events)
+            assert b"cache test" in uncached_handler.wfile.getvalue()
             captured_errors = []
             body_handler.path = "/api/summary?secret=should-not-log"
             body_handler.command = "GET"

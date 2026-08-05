@@ -5034,7 +5034,7 @@ async function renderCreateForm(listType) {
   const createDetail = { type, record: {}, edit_options: options.edit_options || {} };
   els.detail.innerHTML = `
     <div class="detail-content">
-      ${detailHeader(`New ${labelize(type)}`, "Local CRM record", null, { mobileBackLabel: mobileDetailBackLabel() })}
+      ${detailHeader(`New ${labelize(type)}`, "ChillCRM record", null, { mobileBackLabel: mobileDetailBackLabel() })}
       <div class="detail-section">
         <div class="inline-header">
           <h3>Create</h3>

@@ -40,6 +40,8 @@ def main() -> int:
     assert "<h3>History</h3>" in app_js
     assert "showCallLogFormButton" in app_js
     assert 'id="callLogForm" class="call-log-form" hidden' in app_js
+    assert "<h3>Conversation</h3>" not in app_js
+    assert "Calls and internal notes for this person." not in app_js
     assert "function linkifyText" in app_js
     assert 'target="_blank" rel="noopener noreferrer"' in app_js
 

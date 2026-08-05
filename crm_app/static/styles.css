@@ -3143,27 +3143,23 @@ button {
   text-transform: uppercase;
 }
 
-.person-action-section,
-.person-conversation-section {
+.person-action-section {
   background: #fffdf8;
 }
 
-.person-action-section > .detail-section,
-.person-conversation-section > .detail-section {
+.person-action-section > .detail-section {
   border-top: 1px solid var(--line);
   margin-top: 14px;
   padding-top: 14px;
 }
 
-.person-action-section > .detail-section:first-child,
-.person-conversation-section > .detail-section:first-child {
+.person-action-section > .detail-section:first-child {
   border-top: 0;
   margin-top: 0;
   padding-top: 0;
 }
 
-.person-action-section .inline-header,
-.person-conversation-section .inline-header {
+.person-action-section .inline-header {
   margin-bottom: 10px;
 }
 

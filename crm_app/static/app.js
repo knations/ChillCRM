@@ -6345,18 +6345,9 @@ function personNextStepSection(detail) {
 
 function personConversationSection(detail) {
   return `
-    <div class="detail-section person-conversation-section">
-      <div class="inline-header person-section-heading">
-        <div>
-          <h3>Conversation</h3>
-          <p class="muted">Calls and internal notes for this person.</p>
-        </div>
-      </div>
-      ${addCallLogForm(detail)}
-      ${callLogsSection(detail.call_logs || [])}
-      ${addNoteForm(detail)}
-      ${notesSection(detail.notes || [])}
-    </div>
+    ${callLogsSection(detail.call_logs || [], { allowAdd: true })}
+    ${addNoteForm(detail)}
+    ${notesSection(detail.notes || [])}
   `;
 }
 
@@ -7425,31 +7416,25 @@ function addNoteForm(detail) {
   `;
 }
 
-function addCallLogForm(detail) {
-  if (detail.type !== "person") return "";
+function addCallLogForm() {
   return `
-    <div class="detail-section">
-      <div class="inline-header call-log-actions">
-        <button class="text-button" id="showCallLogFormButton" type="button">Add Call</button>
+    <form id="callLogForm" class="call-log-form" hidden>
+      <input name="summary" class="call-log-summary-input" type="text" placeholder="Call summary">
+      <div class="call-log-meta-row">
+        <select name="direction" class="call-log-direction-select">
+          <option value="">General</option>
+          <option value="outbound">Outbound</option>
+          <option value="inbound">Inbound</option>
+          <option value="voicemail">Voicemail</option>
+          <option value="other">Other</option>
+        </select>
+        <input name="call_at" class="call-log-time-input" type="datetime-local" value="${escapeHtml(nowDateTimeInputValue())}">
       </div>
-      <form id="callLogForm" class="call-log-form" hidden>
-        <input name="summary" class="call-log-summary-input" type="text" placeholder="Call summary">
-        <div class="call-log-meta-row">
-          <select name="direction" class="call-log-direction-select">
-            <option value="">General</option>
-            <option value="outbound">Outbound</option>
-            <option value="inbound">Inbound</option>
-            <option value="voicemail">Voicemail</option>
-            <option value="other">Other</option>
-          </select>
-          <input name="call_at" class="call-log-time-input" type="datetime-local" value="${escapeHtml(nowDateTimeInputValue())}">
-        </div>
-        <textarea name="notes" class="note-input" rows="5" placeholder="Conversation notes"></textarea>
-        <div class="call-log-save-row">
-          <button class="text-button" id="addCallLogButton" type="button">Save Call</button>
-        </div>
-      </form>
-    </div>
+      <textarea name="notes" class="note-input" rows="5" placeholder="Conversation notes"></textarea>
+      <div class="call-log-save-row">
+        <button class="text-button" id="addCallLogButton" type="button">Save Call</button>
+      </div>
+    </form>
   `;
 }
 
@@ -7470,11 +7455,15 @@ function addTaskForm(detail) {
   `;
 }
 
-function callLogsSection(callLogs) {
-  if (!callLogs.length) return "";
+function callLogsSection(callLogs, options = {}) {
+  if (!callLogs.length && !options.allowAdd) return "";
   return `
     <div class="detail-section">
-      <h3>Calls</h3>
+      <div class="inline-header call-log-actions">
+        <h3>Calls</h3>
+        ${options.allowAdd ? `<button class="text-button" id="showCallLogFormButton" type="button">Add Call</button>` : ""}
+      </div>
+      ${options.allowAdd ? addCallLogForm() : ""}
       ${callLogs
         .map((call) => `
           <div class="note call-log-card">

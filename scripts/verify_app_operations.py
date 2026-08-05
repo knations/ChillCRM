@@ -2082,6 +2082,14 @@ def main() -> int:
                 assert "valid UTF-8" in str(exc)
             assert handler.response_filename('../bad"\r\nname.csv', "export.csv") == "badname.csv"
             assert handler.response_filename("", "export.csv") == "export.csv"
+            assert handler.safe_redirect_url("https://example.supabase.co/storage/v1/object/sign/file") == "https://example.supabase.co/storage/v1/object/sign/file"
+            assert handler.safe_redirect_url("/api/profile_image?id=1") == "/api/profile_image?id=1"
+            for bad_redirect in ["javascript:alert(1)", "//evil.example/path", "https://good.example/\r\nX-Bad: yes", ""]:
+                try:
+                    handler.safe_redirect_url(bad_redirect)
+                    raise AssertionError(f"Bad redirect URL should be rejected: {bad_redirect!r}")
+                except ValueError as exc:
+                    assert "Redirect URL" in str(exc)
             cache_file = temp_path / "cache-test.js"
             cache_file.write_text("console.log('cache test');\n", encoding="utf-8")
             cached_handler = server.CRMRequestHandler.__new__(server.CRMRequestHandler)

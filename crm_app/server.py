@@ -3498,10 +3498,22 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             return "private, max-age=300, must-revalidate"
         return "no-store"
 
+    def safe_redirect_url(self, url: Any) -> str:
+        candidate = str(url or "").strip()
+        if not candidate or "\r" in candidate or "\n" in candidate:
+            raise ValueError("Redirect URL is not valid.")
+        if candidate.startswith("/") and not candidate.startswith("//"):
+            return candidate
+        parsed = urllib.parse.urlparse(candidate)
+        if parsed.scheme in {"http", "https"} and parsed.netloc:
+            return candidate
+        raise ValueError("Redirect URL is not valid.")
+
     def send_redirect(self, url: str, status: int = 302) -> None:
+        safe_url = self.safe_redirect_url(url)
         self.send_response(status)
         self.send_security_headers()
-        self.send_header("Location", url)
+        self.send_header("Location", safe_url)
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
 

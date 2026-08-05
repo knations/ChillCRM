@@ -57,8 +57,5 @@ Thumbs.db
 !.python-version
 
 # Local one-off operator helpers
-Run GitHub Permanent Credential Setup.command
-Run GitHub Token Keychain Push.command
-Run Resend API Key Setup.command
-Run Vercel Promote Current Deployment.command
+ops/local_private_launchers/
 scripts/promote_vercel_deployment_alias.py

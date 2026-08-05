@@ -394,7 +394,7 @@ def main() -> int:
     assert "CHILLCRM_ZAPIER_WEBHOOK_SECRET=placeholder_generated_webhook_secret" in vercel_env_example
     assert "Zapier shopping-cart purchase intake" in (PROJECT_ROOT / "docs" / "operating_notes.md").read_text(encoding="utf-8")
     assert (PROJECT_ROOT / "scripts" / "set_vercel_zapier_webhook_secret.py").exists()
-    assert (PROJECT_ROOT / "Run Vercel Zapier Webhook Setup.command").exists()
+    assert (PROJECT_ROOT / "ops" / "operator_launchers" / "Run Vercel Zapier Webhook Setup.command").exists()
     assert "purchasesSection(" in app_js
     assert ".purchases-section" in styles_css
     assert ".person-tag-picker" in styles_css

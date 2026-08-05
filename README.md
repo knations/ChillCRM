@@ -1,6 +1,18 @@
-# ZendDeskSellProject
+# CHILLCRM
 
-Local Zendesk Sell migration and CRM project.
+Production CRM and client pipeline command center for `https://chillcrm.app`.
+
+This repository now separates the daily production runtime from historical migration,
+verification, and provider-operation tooling. Start with
+[`docs/build_boundaries.md`](docs/build_boundaries.md) when deciding where new
+files or future cleanup work belong.
+
+## Build Boundaries
+
+- Production runtime: `api/`, `crm_app/`, `requirements.txt`, `vercel.json`, and deployment config.
+- Operator/migration tooling: `scripts/` and `ops/operator_launchers/`.
+- Private local data: ignored folders such as `crm_database/`, `reports/`, `record_files/`, backups, exports, `.env*`, and `.vercel/`.
+- Daily local starter: `Start Local CRM.command` remains at the project root.
 
 ## ChillPortal
 

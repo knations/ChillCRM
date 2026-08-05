@@ -35,6 +35,7 @@ Treat these as source code:
 - `crm_app/static/`
 - `tests/`
 - `scripts/` when the task is verification, migration, reporting, deployment support, or data tooling
+- `ops/operator_launchers/` only when the task is owner-approved provider or operator launcher maintenance
 
 Treat these as configuration:
 
@@ -46,6 +47,7 @@ Treat these as configuration:
 - `wrangler.*` for related Cloudflare services
 - `.env.example`
 - deployment manifests
+- `docs/build_boundaries.md`
 
 Treat these as read-only unless explicitly instructed:
 
@@ -69,6 +71,7 @@ Project-specific read-only paths:
 - `logs/`
 - `record_files/`
 - `profile_images/`
+- `ops/local_private_launchers/`
 - generated archives such as `.zip`, `.tar`, `.tar.gz`, and `.tgz`
 - production exports, customer/client data exports, CRM imports, migration snapshots, and local database files
 - synced reference materials

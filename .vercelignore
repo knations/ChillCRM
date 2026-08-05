@@ -13,4 +13,5 @@ crm_database/
 __pycache__/
 *.pyc
 scripts/
+ops/
 *.command

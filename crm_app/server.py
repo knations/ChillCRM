@@ -900,7 +900,7 @@ def verify_es256_signature(public_key_cose: bytes, signature: bytes, signed_data
             )
             public_key.verify(der_signature, signed_data, ec.ECDSA(hashes.SHA256()))
             return
-    except Exception:
+    except (InvalidSignature, TypeError, ValueError):
         pass
     raise ValueError("Passkey signature was not valid.")
 

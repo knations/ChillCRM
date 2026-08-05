@@ -2219,6 +2219,31 @@ def main() -> int:
             )
             assert passkey_challenge["origin"] == "https://chillcrm.app"
             assert passkey_challenge["rp_id"] == "chillcrm.app"
+            if server.ec is not None:
+                private_key = server.ec.generate_private_key(server.ec.SECP256R1())
+                numbers = private_key.public_key().public_numbers()
+                public_key_cose = {
+                    1: 2,
+                    3: -7,
+                    -1: 1,
+                    -2: numbers.x.to_bytes(32, "big"),
+                    -3: numbers.y.to_bytes(32, "big"),
+                }
+                encoded_public_key_cose = b"".join(
+                    [
+                        b"\xa5",
+                        b"\x01\x02",
+                        b"\x03\x26",
+                        b"\x20\x01",
+                        b"\x21\x58\x20" + public_key_cose[-2],
+                        b"\x22\x58\x20" + public_key_cose[-3],
+                    ]
+                )
+                try:
+                    server.verify_es256_signature(encoded_public_key_cose, b"0" * 64, b"not signed")
+                    raise AssertionError("Malformed passkey signature should be rejected.")
+                except ValueError as exc:
+                    assert "Passkey signature" in str(exc)
             try:
                 handler.passkey_login_options({"email": "owner@example.test"})
                 raise AssertionError("Passkey login should require a registered passkey.")

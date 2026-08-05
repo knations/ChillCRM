@@ -26,6 +26,8 @@ EXPECTED_INPUTS = [
 ]
 
 BLOCKER_TO_INPUT = {
+    "vercel_diagnostics_match_latest": "Redeploy current local runtime to Vercel and rerun hosted smoke",
+    "vercel_environment_readiness": "Redeploy current local runtime to Vercel and rerun hosted smoke",
     "newest_hosted_smoke": "Owner email and owner password",
     "hosted_deployment_freshness": "Redeploy current local runtime to Vercel and rerun hosted smoke",
     "owner_recovery_closure": "Owner access restored and recovery disable approval",

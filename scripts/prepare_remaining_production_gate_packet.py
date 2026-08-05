@@ -294,8 +294,8 @@ def build_rows() -> list[dict[str, Any]]:
             "Redeploy current local runtime to Vercel and rerun hosted smoke",
             "input_required",
             "Vercel token and owner password are secret. Use hidden prompts or one-shot environment variables only.",
-            "scripts/prepare_owner_approved_wave_packet.py; scripts/verify_hosted_redeploy_preflight.py; scripts/deploy_chillcrm_to_vercel.py; scripts/run_newest_hosted_smoke_with_vercel_bypass.py; scripts/verify_hosted_deployment_freshness.py",
-            "reports/owner_approved_wave_packet.md; reports/hosted_redeploy_preflight.md; reports/hosted_deployment_freshness.md; reports/vercel_hosted_app_smoke.md",
+            "scripts/prepare_owner_approved_wave_packet.py; scripts/verify_hosted_redeploy_preflight.py; scripts/verify_vercel_environment_readiness.py; scripts/inspect_vercel_deployment.py; scripts/refresh_vercel_git_deployment_status.py; scripts/deploy_chillcrm_to_vercel.py; scripts/run_newest_hosted_smoke_with_vercel_bypass.py; scripts/verify_hosted_deployment_freshness.py",
+            "reports/owner_approved_wave_packet.md; reports/hosted_redeploy_preflight.md; reports/vercel_environment_readiness.md; reports/vercel_deployment_diagnostics.md; reports/vercel_git_deployment_status.md; reports/hosted_deployment_freshness.md; reports/vercel_hosted_app_smoke.md",
         ),
         (
             "supabase_staging_data_parity",

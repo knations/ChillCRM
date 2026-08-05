@@ -26,6 +26,7 @@ The live health endpoint at `https://chillcrm.app/api/health` is green after the
 - Postgres SQL translation now casts `source_json` before `ILIKE` matching to avoid `jsonb ~~*` runtime errors.
 - Upload base64 decode handling now catches only decode/type errors and has negative verifier coverage.
 - Dashboard progress displays now use native `<progress>` elements, allowing CSP to remove `'unsafe-inline'` from `style-src`.
+- Remaining-gate execution coverage now maps current Vercel diagnostics/environment blockers to the redeploy/status-refresh input, and verifier assertions recognize explicit blocked Supabase parity evidence without marking it green.
 
 ## Verification Run
 
@@ -41,7 +42,7 @@ Green checks from the latest passes:
 
 Known non-code evidence gate:
 
-- `scripts/verify_app_operations.py` runs through the changed code paths and then stops at the existing final production readiness assertion after `CHILLCRM server error: RuntimeError on GET /api/summary`. Treat this as the standing private/provider readiness evidence gate until fresh owner/provider smoke evidence is supplied. Do not interpret it as a regression from the latest hardening commits unless an earlier assertion fails.
+- `scripts/verify_app_operations.py` runs through refreshed readiness-report assertions and then stops at the existing final production readiness assertion after `CHILLCRM server error: RuntimeError on GET /api/summary`. Treat this as the standing private/provider readiness evidence gate until fresh owner/provider smoke, Vercel diagnostics/environment, and Supabase staging parity evidence is supplied. Do not interpret it as a regression from the latest hardening commits unless an earlier assertion fails.
 
 ## Recommended Boundaries
 

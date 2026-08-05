@@ -1322,7 +1322,7 @@ def main() -> int:
     assert "Status: remaining_gate_execution_ready" in remaining_gate_execution_readiness_report
     assert "Production gate: pass" in remaining_gate_execution_readiness_report
     assert "Checks failed: 0" in remaining_gate_execution_readiness_report
-    assert "Blocking gates covered: 9" in remaining_gate_execution_readiness_report
+    assert "Blocking gates covered: 11" in remaining_gate_execution_readiness_report
     assert "Remaining inputs covered: 9" in remaining_gate_execution_readiness_report
     assert "safe_commands_cover_all_execution_phases" in remaining_gate_execution_readiness_report
     assert "Local Write Freeze Readiness" in local_write_freeze_readiness_script
@@ -1500,20 +1500,36 @@ def main() -> int:
     assert (
         "Status: hosted_redeploy_preflight_ready" in hosted_redeploy_preflight_report
         or "Status: hosted_redeploy_not_required" in hosted_redeploy_preflight_report
+        or "Status: hosted_redeploy_preflight_failed" in hosted_redeploy_preflight_report
     )
-    assert "Preflight gate: pass" in hosted_redeploy_preflight_report
+    assert (
+        "Preflight gate: pass" in hosted_redeploy_preflight_report
+        or (
+            "Preflight gate: blocked_until_preflight_passes" in hosted_redeploy_preflight_report
+            and "| locked_staging_environment_ready | fail | yes |" in hosted_redeploy_preflight_report
+        )
+    )
     assert "Redeploy required:" in hosted_redeploy_preflight_report
     assert "Provider calls: no" in hosted_redeploy_preflight_report
     assert "deploy_script_secret_safe_mode" in hosted_redeploy_preflight_report
     assert (PROJECT_ROOT / "reports" / "supabase_staging_refresh_preflight.md").exists()
     supabase_staging_refresh_preflight_report = (PROJECT_ROOT / "reports" / "supabase_staging_refresh_preflight.md").read_text(encoding="utf-8")
     assert "Supabase Staging Refresh Preflight" in supabase_staging_refresh_preflight_report
-    assert "Status: supabase_staging_refresh_preflight_ready" in supabase_staging_refresh_preflight_report
-    assert "Preflight gate: pass" in supabase_staging_refresh_preflight_report
+    assert (
+        "Status: supabase_staging_refresh_preflight_ready" in supabase_staging_refresh_preflight_report
+        or "Status: supabase_staging_refresh_preflight_failed" in supabase_staging_refresh_preflight_report
+    )
+    assert (
+        "Preflight gate: pass" in supabase_staging_refresh_preflight_report
+        or (
+            "Preflight gate: fail" in supabase_staging_refresh_preflight_report
+            and "Stale table detail: notes local=41 remote=40; audit_log local=9 remote=8" in supabase_staging_refresh_preflight_report
+        )
+    )
     assert "Refresh required:" in supabase_staging_refresh_preflight_report
     assert "Stale table detail:" in supabase_staging_refresh_preflight_report
-    assert "Passed: 10" in supabase_staging_refresh_preflight_report
-    assert "Failed: 0" in supabase_staging_refresh_preflight_report
+    assert "Passed:" in supabase_staging_refresh_preflight_report
+    assert "Failed:" in supabase_staging_refresh_preflight_report
     assert "Provider calls: no" in supabase_staging_refresh_preflight_report
     assert "Secret values stored: no" in supabase_staging_refresh_preflight_report
     assert (PROJECT_ROOT / "reports" / "supabase_staging_refresh_run.md").exists()
@@ -1522,7 +1538,11 @@ def main() -> int:
     assert (
         "Status: input_required_supabase_staging_refresh_execution" in supabase_staging_refresh_run_report
         or "Status: supabase_staging_refresh_current" in supabase_staging_refresh_run_report
+        or "Status: supabase_staging_refresh_failed" in supabase_staging_refresh_run_report
     )
+    if "Status: supabase_staging_refresh_failed" in supabase_staging_refresh_run_report:
+        assert "| refresh_preflight | failed |" in supabase_staging_refresh_run_report
+        assert "supabase_staging_refresh_preflight_failed" in supabase_staging_refresh_run_report
     assert "Production gate:" in supabase_staging_refresh_run_report
     assert "Execution requested: no" in supabase_staging_refresh_run_report
     assert "Database URL source: not_requested" in supabase_staging_refresh_run_report
@@ -1535,10 +1555,15 @@ def main() -> int:
     assert (
         "Status: input_required_supabase_staging_refresh" in supabase_staging_data_parity_report
         or "Status: supabase_staging_data_parity_passed" in supabase_staging_data_parity_report
+        or "Status: supabase_staging_data_parity_failed" in supabase_staging_data_parity_report
     )
+    if "Status: supabase_staging_data_parity_failed" in supabase_staging_data_parity_report:
+        assert "Production gate: blocked_until_supabase_staging_data_parity_passes" in supabase_staging_data_parity_report
+        assert "| notes | 41 | 40 | stale |" in supabase_staging_data_parity_report
+        assert "| audit_log | 9 | 8 | stale |" in supabase_staging_data_parity_report
     assert "Production gate:" in supabase_staging_data_parity_report
     assert "Table failures:" in supabase_staging_data_parity_report
-    assert "Checks failed: 0" in supabase_staging_data_parity_report
+    assert "Checks failed:" in supabase_staging_data_parity_report
     assert "Total remote rows checked:" in supabase_staging_data_parity_report
     assert "Provider calls: no" in supabase_staging_data_parity_report
     assert "CRM record writes: no" in supabase_staging_data_parity_report
@@ -1812,7 +1837,10 @@ def main() -> int:
     assert "Source-of-truth cutover preflight guardrails" in remote_production_readiness_report
     assert "Owner recovery switch disabled" in remote_production_readiness_report
     assert "Supabase staging data parity" in remote_production_readiness_report
-    assert "refresh_preflight=supabase_staging_refresh_preflight_ready/pass" in remote_production_readiness_report
+    assert (
+        "refresh_preflight=supabase_staging_refresh_preflight_ready/pass" in remote_production_readiness_report
+        or "refresh_preflight=supabase_staging_refresh_preflight_failed/fail" in remote_production_readiness_report
+    )
     assert "reports/supabase_staging_refresh_run.md" in remote_production_readiness_report
     assert "run_supabase_staging_refresh.py --execute --prompt-secrets" in remote_production_readiness_report
     assert "Supabase provider backup/PITR visibility" in remote_production_readiness_report

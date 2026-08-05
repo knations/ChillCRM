@@ -2219,6 +2219,15 @@ def main() -> int:
             configured_redirect_handler.supabase_url = lambda: "https://project-ref.supabase.co"
             assert configured_redirect_handler.safe_redirect_url("https://project-ref.supabase.co/storage/v1/object/sign/file") == "https://project-ref.supabase.co/storage/v1/object/sign/file"
             assert configured_redirect_handler.safe_redirect_url("/api/profile_image?id=1") == "/api/profile_image?id=1"
+            redirect_events = []
+            configured_redirect_handler.send_response = lambda status: redirect_events.append(("status", status))
+            configured_redirect_handler.send_header = lambda key, value: redirect_events.append(("header", key, value))
+            configured_redirect_handler.end_headers = lambda: redirect_events.append(("end",))
+            configured_redirect_handler.send_redirect("https://project-ref.supabase.co/storage/v1/object/sign/file")
+            assert ("status", 302) in redirect_events
+            assert ("header", "Location", "https://project-ref.supabase.co/storage/v1/object/sign/file") in redirect_events
+            assert ("header", "Cache-Control", "no-store") in redirect_events
+            assert ("header", "Content-Length", "0") in redirect_events
             for bad_redirect in [
                 "javascript:alert(1)",
                 "//evil.example/path",

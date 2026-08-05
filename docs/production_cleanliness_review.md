@@ -32,6 +32,7 @@ The live health endpoint at `https://chillcrm.app/api/health` is green after the
 - Hosted deployment package verification now uses explicit expected parse/import/local-smoke exception classes and creates its ignored report directory on fresh clones before writing evidence.
 - File serving now avoids loading uncached file payloads for `HEAD` responses, preserving headers while reducing unnecessary runtime work for static/private file probes.
 - Signed-file redirects now allow app-relative paths and configured Supabase storage hosts only, rejecting arbitrary external HTTPS destinations and credential-bearing URLs.
+- Signed-file redirects now explicitly declare zero-length response bodies while keeping redirects cache-locked.
 
 ## Verification Run
 

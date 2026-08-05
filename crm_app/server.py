@@ -3539,6 +3539,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         self.send_security_headers()
         self.send_header("Location", safe_url)
         self.send_header("Cache-Control", "no-store")
+        self.send_header("Content-Length", "0")
         self.end_headers()
 
     def signed_storage_url(self, bucket: str, storage_key: str) -> str:

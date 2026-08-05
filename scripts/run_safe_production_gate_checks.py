@@ -80,10 +80,13 @@ def env_or_prompt(env_name: str, label: str, *, prompt: bool, secret: bool) -> t
         return value, "env"
     if not prompt:
         return "", "missing"
-    if secret:
-        value = getpass.getpass(f"{label}: ").strip()
-    else:
-        value = input(f"{label}: ").strip()
+    try:
+        if secret:
+            value = getpass.getpass(f"{label}: ").strip()
+        else:
+            value = input(f"{label}: ").strip()
+    except (EOFError, OSError):
+        return "", "missing"
     return value, "prompt" if value else "missing"
 
 

@@ -38,6 +38,11 @@ def assert_numeric_sorted(values: list[object], reverse: bool = False) -> None:
     assert normalized == sorted(normalized, reverse=reverse)
 
 
+def assert_noninteractive_secret_prompt(source: str) -> None:
+    assert "getpass.getpass" in source
+    assert "except (EOFError, OSError)" in source
+
+
 def main() -> int:
     app_js = (PROJECT_ROOT / "crm_app" / "static" / "app.js").read_text(encoding="utf-8")
     server_py = (PROJECT_ROOT / "crm_app" / "server.py").read_text(encoding="utf-8")
@@ -75,6 +80,12 @@ def main() -> int:
     hosted_smoke_script = (PROJECT_ROOT / "scripts" / "verify_vercel_hosted_app.py").read_text(encoding="utf-8")
     hosted_smoke_wrapper = (PROJECT_ROOT / "scripts" / "run_newest_hosted_smoke_with_vercel_bypass.py").read_text(encoding="utf-8")
     vercel_diagnostics_script = (PROJECT_ROOT / "scripts" / "inspect_vercel_deployment.py").read_text(encoding="utf-8")
+    vercel_git_connection_script = (PROJECT_ROOT / "scripts" / "verify_vercel_git_connection.py").read_text(encoding="utf-8")
+    vercel_token_access_script = (PROJECT_ROOT / "scripts" / "verify_vercel_token_access.py").read_text(encoding="utf-8")
+    vercel_app_base_url_script = (PROJECT_ROOT / "scripts" / "set_vercel_app_base_url.py").read_text(encoding="utf-8")
+    vercel_zapier_script = (PROJECT_ROOT / "scripts" / "set_vercel_zapier_webhook_secret.py").read_text(encoding="utf-8")
+    vercel_twilio_script = (PROJECT_ROOT / "scripts" / "set_vercel_twilio_config.py").read_text(encoding="utf-8")
+    hosted_write_enablement_script = (PROJECT_ROOT / "scripts" / "enable_hosted_writes_production.py").read_text(encoding="utf-8")
     deploy_script = (PROJECT_ROOT / "scripts" / "deploy_chillcrm_to_vercel.py").read_text(encoding="utf-8")
     remaining_gates_packet_script = (PROJECT_ROOT / "scripts" / "prepare_remaining_production_gate_packet.py").read_text(encoding="utf-8")
     owner_gate_reply_validation_script = (PROJECT_ROOT / "scripts" / "validate_owner_gate_reply.py").read_text(encoding="utf-8")
@@ -89,6 +100,20 @@ def main() -> int:
     assert "CHILLCRM_DATABASE_ADAPTER" in server_py
     assert "CHILLCRM_LOCAL_WRITE_FREEZE" in server_py
     assert "local_write_freeze_status" in server_py
+    for private_prompt_script in [
+        write_audit_execution_script,
+        safe_gate_runner_script,
+        owner_confirmed_wave_script,
+        supabase_staging_refresh_run_script,
+        owner_recovery_disable_script,
+        vercel_git_connection_script,
+        vercel_token_access_script,
+        vercel_app_base_url_script,
+        vercel_zapier_script,
+        vercel_twilio_script,
+        hosted_write_enablement_script,
+    ]:
+        assert_noninteractive_secret_prompt(private_prompt_script)
     assert "should_block_local_write" in server_py
     assert "send_local_write_frozen" in server_py
     translated_sql = server.translate_sqlite_sql_for_postgres(

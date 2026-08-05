@@ -43,7 +43,10 @@ def prompt_secret(env_name: str, label: str, *, prompt: bool) -> tuple[str, str]
         return value, "env"
     if not prompt:
         return "", "missing"
-    value = getpass.getpass(f"{label}: ").strip()
+    try:
+        value = getpass.getpass(f"{label}: ").strip()
+    except (EOFError, OSError):
+        return "", "missing"
     return value, "prompt" if value else "missing"
 
 

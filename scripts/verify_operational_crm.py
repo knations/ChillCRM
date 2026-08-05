@@ -49,6 +49,12 @@ def main() -> int:
     assert f"Final {LEGACY_PROVIDER}" not in app_js
     assert "Complete CRM Package" in app_js
     assert "Document Files" in app_js
+    for retired_export in [
+        '("remote_admin_access_plan", "Remote Admin Access Plan")',
+        '("remote_admin_permissions_matrix", "Remote Admin Permissions Matrix")',
+        '("remote_admin_pilot_onboarding_plan", "Remote Admin Pilot Onboarding Plan")',
+    ]:
+        assert retired_export not in server_py
     assert "def operations_status" in server_py
     assert "def get_json_route_handlers" in server_py
     assert '"/api/operations_status": self.operations_status' in server_py

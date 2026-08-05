@@ -2711,6 +2711,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             "Path=/",
             "HttpOnly",
             "SameSite=Lax",
+            "Priority=High",
             f"Max-Age={self.session_ttl_seconds()}",
         ]
         if self.session_cookie_secure_enabled():
@@ -2718,7 +2719,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         return "; ".join(parts)
 
     def clear_session_cookie_header(self) -> str:
-        parts = [f"{AUTH_COOKIE_NAME}=", "Path=/", "HttpOnly", "SameSite=Lax", "Max-Age=0"]
+        parts = [f"{AUTH_COOKIE_NAME}=", "Path=/", "HttpOnly", "SameSite=Lax", "Priority=High", "Max-Age=0"]
         if self.session_cookie_secure_enabled():
             parts.append("Secure")
         return "; ".join(parts)

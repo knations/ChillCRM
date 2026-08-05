@@ -2078,6 +2078,8 @@ def main() -> int:
             assert session_payload["email"] == "owner@example.test"
             assert handler.session_cookie_header(session_token).startswith("chillcrm_session=")
             assert "HttpOnly" in handler.session_cookie_header(session_token)
+            assert "Priority=High" in handler.session_cookie_header(session_token)
+            assert "Priority=High" in handler.clear_session_cookie_header()
             owner_user = {"roles": ["owner"]}
             admin_user = {"roles": ["admin"]}
             staff_user = {"roles": ["staff"]}

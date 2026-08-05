@@ -92,10 +92,16 @@ def flatten_files(entries: Any, prefix: str = "") -> list[dict[str, str]]:
     return rows
 
 
-def write_report(deployment: dict[str, Any], events: list[dict[str, str]], files: list[dict[str, str]]) -> None:
+def write_report(
+    deployment: dict[str, Any],
+    events: list[dict[str, str]],
+    files: list[dict[str, str]],
+    *,
+    stem: str = "vercel_deployment_diagnostics",
+) -> None:
     REPORTS_DIR.mkdir(exist_ok=True)
-    md = REPORTS_DIR / "vercel_deployment_diagnostics.md"
-    csv_path = REPORTS_DIR / "vercel_deployment_diagnostics.csv"
+    md = REPORTS_DIR / f"{stem}.md"
+    csv_path = REPORTS_DIR / f"{stem}.csv"
     normalized_paths = {str(row.get("path") or "").removeprefix("src/") for row in files}
 
     lines = [
@@ -135,7 +141,8 @@ def write_report(deployment: dict[str, Any], events: list[dict[str, str]], files
         writer = csv.DictWriter(handle, fieldnames=["created", "type", "status", "text"])
         writer.writeheader()
         writer.writerows(events)
-    with (REPORTS_DIR / "vercel_deployment_files.csv").open("w", newline="", encoding="utf-8") as handle:
+    files_stem = "vercel_deployment_files" if stem == "vercel_deployment_diagnostics" else f"{stem}_files"
+    with (REPORTS_DIR / f"{files_stem}.csv").open("w", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(handle, fieldnames=["path", "type", "content_type"])
         writer.writeheader()
         writer.writerows(files)
@@ -155,7 +162,7 @@ def main() -> int:
             "status": "input_required",
             "text": "Missing Vercel API token. Set VERCEL_TOKEN or rerun with --prompt-token.",
         }
-        write_report({}, [event], [])
+        write_report({}, [event], [], stem="vercel_deployment_diagnostics_input_required")
         print(
             json.dumps(
                 {
@@ -178,7 +185,7 @@ def main() -> int:
             "status": "input_required",
             "text": "Deployment ID is required. Refresh Vercel deployment status or set VERCEL_DEPLOYMENT_ID.",
         }
-        write_report({}, [event], [])
+        write_report({}, [event], [], stem="vercel_deployment_diagnostics_input_required")
         print(
             json.dumps(
                 {

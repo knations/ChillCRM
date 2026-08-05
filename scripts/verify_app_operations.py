@@ -1217,6 +1217,7 @@ def main() -> int:
     assert "provider_calls" in deployment_freshness_script
     assert "--prompt-token" in vercel_diagnostics_script
     assert "input_required_vercel_token" in vercel_diagnostics_script
+    assert "vercel_deployment_diagnostics_input_required" in vercel_diagnostics_script
     assert "Missing Vercel API token" in vercel_diagnostics_script
     assert "except (EOFError, OSError)" in vercel_diagnostics_script
     assert "Hosted Redeploy Preflight" in hosted_redeploy_preflight_script
@@ -1639,6 +1640,7 @@ def main() -> int:
     assert "prepare_owner_approved_wave_packet.py" in safe_gate_runner_report
     assert "--prompt-secrets" in hosted_smoke_script
     assert "input_required" in hosted_smoke_script
+    assert "vercel_hosted_app_smoke_input_required" in hosted_smoke_script
     assert "Missing {', '.join(missing_inputs)}" in hosted_smoke_script
     assert "except (EOFError, OSError)" in hosted_smoke_script
     assert "app_user_self_password_change" in hosted_smoke_script
@@ -1674,6 +1676,7 @@ def main() -> int:
     assert "secrets_read_or_stored" in vercel_environment_script
     assert "--prompt-token" in vercel_environment_script
     assert "input_required_rows" in vercel_environment_script
+    assert "vercel_environment_readiness_input_required" in vercel_environment_script
     assert "Missing Vercel API token" in vercel_environment_script
     assert "except (EOFError, OSError)" in vercel_environment_script
     assert (PROJECT_ROOT / "reports" / "vercel_environment_readiness.md").exists()

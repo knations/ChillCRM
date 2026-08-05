@@ -153,7 +153,7 @@ def login_opener(base_url: str, email: str, password: str, bypass_secret: str) -
     return opener
 
 
-def write_report(base_url: str, rows: list[dict[str, str]]) -> None:
+def write_report(base_url: str, rows: list[dict[str, str]], *, stem: str = "vercel_hosted_app_smoke") -> None:
     REPORTS_DIR.mkdir(exist_ok=True)
     passed = sum(1 for row in rows if row["status"] == "passed")
     failed = sum(1 for row in rows if row["status"] != "passed")
@@ -171,8 +171,8 @@ def write_report(base_url: str, rows: list[dict[str, str]]) -> None:
     ]
     for row in rows:
         md.append(f"| {row['step']} | {row['status']} | {row['evidence'].replace('|', '/')} |")
-    (REPORTS_DIR / "vercel_hosted_app_smoke.md").write_text("\n".join(md) + "\n", encoding="utf-8")
-    with (REPORTS_DIR / "vercel_hosted_app_smoke.csv").open("w", newline="", encoding="utf-8") as handle:
+    (REPORTS_DIR / f"{stem}.md").write_text("\n".join(md) + "\n", encoding="utf-8")
+    with (REPORTS_DIR / f"{stem}.csv").open("w", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(handle, fieldnames=["step", "status", "evidence"])
         writer.writeheader()
         writer.writerows(rows)
@@ -188,8 +188,8 @@ def main() -> int:
         base_url = normalize_base_url(args.url)
     except RuntimeError as exc:
         rows = [{"step": "private_inputs", "status": "input_required", "evidence": str(exc)}]
-        write_report("missing", rows)
-        print(json.dumps({"url": "", "passed": 0, "failed": 1, "input_required": 1, "report": str(REPORTS_DIR / "vercel_hosted_app_smoke.md")}, indent=2))
+        write_report("missing", rows, stem="vercel_hosted_app_smoke_input_required")
+        print(json.dumps({"url": "", "passed": 0, "failed": 1, "input_required": 1, "report": str(REPORTS_DIR / "vercel_hosted_app_smoke_input_required.md")}, indent=2))
         return 1
 
     email = prompt_text("Admin email", "AUTH_BOOTSTRAP_ADMIN_EMAIL", prompt=args.prompt_secrets)
@@ -213,7 +213,7 @@ def main() -> int:
                 "evidence": f"Missing {', '.join(missing_inputs)}. Supply environment values or rerun with --prompt-secrets.",
             }
         ]
-        write_report(base_url, rows)
+        write_report(base_url, rows, stem="vercel_hosted_app_smoke_input_required")
         print(
             json.dumps(
                 {
@@ -221,7 +221,7 @@ def main() -> int:
                     "passed": 0,
                     "failed": 1,
                     "input_required": 1,
-                    "report": str(REPORTS_DIR / "vercel_hosted_app_smoke.md"),
+                    "report": str(REPORTS_DIR / "vercel_hosted_app_smoke_input_required.md"),
                 },
                 indent=2,
             )

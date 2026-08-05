@@ -355,14 +355,14 @@ def main() -> int:
     REPORTS_DIR.mkdir(exist_ok=True)
     if not token:
         rows = input_required_rows(project_id, team_slug, "VERCEL_TOKEN", "Missing Vercel API token. Set VERCEL_TOKEN or rerun with --prompt-token.")
-        write_csv(REPORTS_DIR / "vercel_environment_readiness.csv", rows)
-        write_report(REPORTS_DIR / "vercel_environment_readiness.md", rows)
+        write_csv(REPORTS_DIR / "vercel_environment_readiness_input_required.csv", rows)
+        write_report(REPORTS_DIR / "vercel_environment_readiness_input_required.md", rows)
         print(json.dumps(next(row for row in rows if row["row_type"] == "summary"), indent=2))
         return 1
     if not project_id:
         rows = input_required_rows(project_id, team_slug, "VERCEL_PROJECT_ID", "Vercel project id is required. Link the project or pass --project-id.")
-        write_csv(REPORTS_DIR / "vercel_environment_readiness.csv", rows)
-        write_report(REPORTS_DIR / "vercel_environment_readiness.md", rows)
+        write_csv(REPORTS_DIR / "vercel_environment_readiness_input_required.csv", rows)
+        write_report(REPORTS_DIR / "vercel_environment_readiness_input_required.md", rows)
         print(json.dumps(next(row for row in rows if row["row_type"] == "summary"), indent=2))
         return 1
     payload = request_json(f"/v10/projects/{project_id}/env", token, {"slug": team_slug})

@@ -2017,6 +2017,30 @@ def main() -> int:
             handler.record_login_success("owner@example.test")
             assert handler.login_throttle_status("owner@example.test")["locked"] is False
             handler.headers = {}
+            assert server.MAX_JSON_BODY_BYTES >= server.RECORD_FILE_MAX_BYTES + 1_000_000
+            body_handler = server.CRMRequestHandler.__new__(server.CRMRequestHandler)
+            body_handler.headers = {"Content-Length": "2"}
+            body_handler.rfile = io.BytesIO(b"{}")
+            assert body_handler.read_json_body() == {}
+            body_handler.headers = {"Content-Length": str(server.MAX_JSON_BODY_BYTES + 1)}
+            body_handler.rfile = io.BytesIO(b"")
+            try:
+                body_handler.read_body_text()
+                raise AssertionError("Oversized body should be rejected.")
+            except server.RequestBodyTooLarge as exc:
+                assert "too large" in str(exc)
+            body_handler.headers = {"Content-Length": "not-a-number"}
+            try:
+                body_handler.read_body_text()
+                raise AssertionError("Invalid Content-Length should be rejected.")
+            except ValueError as exc:
+                assert "Invalid request body length" in str(exc)
+            captured_errors = []
+            body_handler.path = "/api/summary?secret=should-not-log"
+            body_handler.command = "GET"
+            body_handler.send_json = lambda payload, status=200, headers=None: captured_errors.append((payload, status, headers))
+            body_handler.send_server_error(RuntimeError("sensitive database detail"))
+            assert captured_errors == [({"error": "Internal server error.", "code": "internal_server_error"}, 500, None)]
             auth_user = handler.authenticate_app_user("owner@example.test", "unit-test-password")
             assert auth_user is not None
             assert auth_user["email"] == "owner@example.test"

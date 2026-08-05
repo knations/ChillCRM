@@ -18,6 +18,7 @@ import secrets
 import shutil
 import ssl
 import sqlite3
+import sys
 import time
 import urllib.parse
 import urllib.error
@@ -537,6 +538,11 @@ PROFILE_IMAGE_ALLOWED_CONTENT_TYPES = {
 }
 PROFILE_IMAGE_MAX_BYTES = 2_500_000
 RECORD_FILE_MAX_BYTES = 3_000_000
+MAX_JSON_BODY_BYTES = 5_000_000
+
+
+class RequestBodyTooLarge(ValueError):
+    pass
 
 
 def postgres_statement_timeout_ms() -> int:
@@ -3278,6 +3284,12 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         if self.should_write_response_body():
             self.wfile.write(encoded)
 
+    def send_server_error(self, exc: Exception) -> None:
+        path = urllib.parse.urlparse(getattr(self, "path", "")).path or "/"
+        method = getattr(self, "command", "REQUEST")
+        print(f"CHILLCRM server error: {exc.__class__.__name__} on {method} {path}", file=sys.stderr)
+        self.send_json({"error": "Internal server error.", "code": "internal_server_error"}, 500)
+
     def should_write_response_body(self) -> bool:
         return getattr(self, "command", "GET") != "HEAD"
 
@@ -3825,7 +3837,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             else:
                 self.send_text("Not found", 404)
         except Exception as exc:
-            self.send_json({"error": str(exc)}, 500)
+            self.send_server_error(exc)
 
     def do_HEAD(self) -> None:
         self.do_GET()
@@ -3981,15 +3993,22 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                 self.send_json(self.verify_passkey_registration(payload, auth_user))
             else:
                 self.send_text("Not found", 404)
+        except RequestBodyTooLarge as exc:
+            self.send_json({"error": str(exc), "code": "request_body_too_large"}, 413)
         except ValueError as exc:
             self.send_json({"error": str(exc)}, 400)
         except Exception as exc:
-            self.send_json({"error": str(exc)}, 500)
+            self.send_server_error(exc)
 
     def read_body_text(self) -> str:
-        length = int(self.headers.get("Content-Length", "0"))
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+        except ValueError as exc:
+            raise ValueError("Invalid request body length.") from exc
         if length <= 0:
             return ""
+        if length > MAX_JSON_BODY_BYTES:
+            raise RequestBodyTooLarge("Request body is too large.")
         return self.rfile.read(length).decode("utf-8")
 
     def read_json_body(self) -> dict[str, Any]:

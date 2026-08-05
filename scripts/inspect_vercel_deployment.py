@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import argparse
 import csv
 import getpass
 import json
@@ -10,6 +11,7 @@ import os
 import sys
 import urllib.parse
 import urllib.request
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -20,11 +22,21 @@ VERCEL_API = "https://api.vercel.com"
 DEFAULT_TEAM_SLUG = "kevin-nations-projects"
 
 
-def prompt_secret(label: str, env_name: str) -> str:
+def now_utc() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def prompt_secret(label: str, env_name: str, *, prompt: bool = False) -> tuple[str, str]:
     value = os.environ.get(env_name, "").strip()
     if value:
-        return value
-    return getpass.getpass(f"{label}: ").strip()
+        return value, "env"
+    if not prompt:
+        return "", "missing"
+    try:
+        value = getpass.getpass(f"{label}: ").strip()
+    except (EOFError, OSError):
+        return "", "missing"
+    return value, "prompt" if value else "missing"
 
 
 def request_json(path: str, token: str, query: dict[str, str] | None = None) -> Any:
@@ -93,8 +105,8 @@ def write_report(deployment: dict[str, Any], events: list[dict[str, str]], files
         "",
         "## Deployment",
         "",
-        f"- ID: `{deployment.get('uid') or deployment.get('id')}`.",
-        f"- State: `{deployment.get('readyState') or deployment.get('status')}`.",
+        f"- ID: `{deployment.get('uid') or deployment.get('id') or 'missing'}`.",
+        f"- State: `{deployment.get('readyState') or deployment.get('status') or 'missing'}`.",
         f"- URL: `https://{deployment.get('url')}`." if deployment.get("url") else "- URL: pending.",
         "",
         "## Recent Events",
@@ -130,12 +142,57 @@ def write_report(deployment: dict[str, Any], events: list[dict[str, str]], files
 
 
 def main() -> int:
-    token = prompt_secret("Vercel token", "VERCEL_TOKEN")
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--prompt-token", action="store_true", help="Prompt privately for Vercel token if VERCEL_TOKEN is not set.")
+    args = parser.parse_args()
+
+    token, token_source = prompt_secret("Vercel token", "VERCEL_TOKEN", prompt=args.prompt_token)
     deployment_id = (os.environ.get("VERCEL_DEPLOYMENT_ID") or deployment_id_from_report()).strip()
     if not token:
-        raise RuntimeError("Vercel token is required.")
+        event = {
+            "created": now_utc(),
+            "type": "vercel_token",
+            "status": "input_required",
+            "text": "Missing Vercel API token. Set VERCEL_TOKEN or rerun with --prompt-token.",
+        }
+        write_report({}, [event], [])
+        print(
+            json.dumps(
+                {
+                    "status": "input_required_vercel_token",
+                    "deployment_id": deployment_id or "",
+                    "token_source": token_source,
+                    "events": 1,
+                    "files": 0,
+                    "secret_values_stored": "no",
+                    "provider_calls": "no",
+                },
+                indent=2,
+            )
+        )
+        return 1
     if not deployment_id:
-        raise RuntimeError("Deployment ID is required.")
+        event = {
+            "created": now_utc(),
+            "type": "deployment_id",
+            "status": "input_required",
+            "text": "Deployment ID is required. Refresh Vercel deployment status or set VERCEL_DEPLOYMENT_ID.",
+        }
+        write_report({}, [event], [])
+        print(
+            json.dumps(
+                {
+                    "status": "input_required_vercel_deployment_id",
+                    "token_source": token_source,
+                    "events": 1,
+                    "files": 0,
+                    "secret_values_stored": "no",
+                    "provider_calls": "no",
+                },
+                indent=2,
+            )
+        )
+        return 1
 
     team_slug = os.environ.get("VERCEL_TEAM_SLUG", DEFAULT_TEAM_SLUG)
     query = {"slug": team_slug}

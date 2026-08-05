@@ -74,6 +74,7 @@ def main() -> int:
     supabase_staging_data_parity_script = (PROJECT_ROOT / "scripts" / "verify_supabase_staging_data_parity.py").read_text(encoding="utf-8")
     hosted_smoke_script = (PROJECT_ROOT / "scripts" / "verify_vercel_hosted_app.py").read_text(encoding="utf-8")
     hosted_smoke_wrapper = (PROJECT_ROOT / "scripts" / "run_newest_hosted_smoke_with_vercel_bypass.py").read_text(encoding="utf-8")
+    vercel_diagnostics_script = (PROJECT_ROOT / "scripts" / "inspect_vercel_deployment.py").read_text(encoding="utf-8")
     deploy_script = (PROJECT_ROOT / "scripts" / "deploy_chillcrm_to_vercel.py").read_text(encoding="utf-8")
     remaining_gates_packet_script = (PROJECT_ROOT / "scripts" / "prepare_remaining_production_gate_packet.py").read_text(encoding="utf-8")
     owner_gate_reply_validation_script = (PROJECT_ROOT / "scripts" / "validate_owner_gate_reply.py").read_text(encoding="utf-8")
@@ -1214,6 +1215,10 @@ def main() -> int:
     assert "DEPLOYED_RUNTIME_PATHS" in deployment_freshness_script
     assert "crm_app" in deployment_freshness_script
     assert "provider_calls" in deployment_freshness_script
+    assert "--prompt-token" in vercel_diagnostics_script
+    assert "input_required_vercel_token" in vercel_diagnostics_script
+    assert "Missing Vercel API token" in vercel_diagnostics_script
+    assert "except (EOFError, OSError)" in vercel_diagnostics_script
     assert "Hosted Redeploy Preflight" in hosted_redeploy_preflight_script
     assert "hosted_redeploy_preflight_ready" in hosted_redeploy_preflight_script
     assert "verify_hosted_app_deployment_package.py" in hosted_redeploy_preflight_script

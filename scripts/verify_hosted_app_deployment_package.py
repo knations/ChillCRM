@@ -120,7 +120,7 @@ def main() -> int:
         include_ok = required_includes.issubset(include_files)
         row(rows, "vercel_includes_hosted_assets", "pass" if include_ok else "fail", ", ".join(sorted(include_files)) or "missing")
         vercelignore = (PROJECT_ROOT / ".vercelignore").read_text(encoding="utf-8") if (PROJECT_ROOT / ".vercelignore").exists() else ""
-        excluded_dirs = [".venv/", "raw_api_exports/", "backups/", "crm_database/", "reports/"]
+        excluded_dirs = [".venv/", "raw_api_exports/", "backups/", "crm_database/", "reports/", "scripts/", "*.command"]
         exclude_ok = all(item in vercelignore for item in excluded_dirs)
         row(rows, "vercel_excludes_local_data", "pass" if exclude_ok else "fail", "local-only paths ignored" if exclude_ok else "missing local-only ignore")
     except Exception as exc:

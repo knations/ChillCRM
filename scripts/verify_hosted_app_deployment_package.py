@@ -59,14 +59,14 @@ def write_report(path: Path, rows: list[dict[str, Any]]) -> None:
     lines = [
         "# Hosted App Deployment Package Verification",
         "",
-        "This verifies the local deployment package for hosted staging. It does not deploy to Vercel, contact Supabase, upload files, create users, expose localhost, or change CRM records.",
+        "This verifies the local deployment package for the hosted app. It does not deploy to Vercel, contact Supabase, upload files, create users, expose localhost, or change CRM records.",
         "",
         "## Summary",
         "",
         f"- Passed: {passed}",
         f"- Failed: {failed}",
         "- Target package: Vercel Python Function adapter plus Supabase/Postgres runtime variables.",
-        "- Source of truth remains local SQLite until hosted Supabase validation passes.",
+        "- Local data, backups, exports, and evidence reports are intentionally excluded from the deployable runtime package.",
         "",
         "## Checks",
         "",
@@ -82,10 +82,9 @@ def write_report(path: Path, rows: list[dict[str, Any]]) -> None:
             "## Next Hosted Gates",
             "",
             "- Run the full hosted Vercel smoke test after any schema, adapter, deployment-package, or provider-environment change.",
-            "- Keep the latest owner Users UI deployment gated until full hosted login/role smoke passes.",
-            "- Complete Supabase provider backup/restore, full actor-aware CRM-write audit, monitoring, and owner-shakedown gates before remote write unlock.",
-            "- Keep the deployed Vercel staging app behind Vercel Authentication and CRM auth until owner-shakedown gates pass.",
-            "- Keep remote staging write/file/package locks enabled until the validation matrix passes.",
+            "- Keep CRM auth and role checks active on the hosted app.",
+            "- Keep bulk local export packages outside the hosted runtime unless a specific owner-approved diagnostic package is needed.",
+            "- Rerun secret-boundary verification before each production deployment that changes config, auth, file access, or webhooks.",
         ]
     )
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
@@ -117,11 +116,11 @@ def main() -> int:
         build_ok = api_build.get("use") == "@vercel/python"
         row(rows, "vercel_python_builder", "pass" if build_ok else "fail", api_build.get("use") or "missing")
         include_files = set((api_build.get("config") or {}).get("includeFiles") or [])
-        required_includes = {"config/supabase-prod-ca-2021.crt", "crm_app/**", "docs/**", "reports/**"}
+        required_includes = {"config/supabase-prod-ca-2021.crt", "crm_app/**", "docs/**"}
         include_ok = required_includes.issubset(include_files)
         row(rows, "vercel_includes_hosted_assets", "pass" if include_ok else "fail", ", ".join(sorted(include_files)) or "missing")
         vercelignore = (PROJECT_ROOT / ".vercelignore").read_text(encoding="utf-8") if (PROJECT_ROOT / ".vercelignore").exists() else ""
-        excluded_dirs = [".venv/", "raw_api_exports/", "backups/", "crm_database/"]
+        excluded_dirs = [".venv/", "raw_api_exports/", "backups/", "crm_database/", "reports/"]
         exclude_ok = all(item in vercelignore for item in excluded_dirs)
         row(rows, "vercel_excludes_local_data", "pass" if exclude_ok else "fail", "local-only paths ignored" if exclude_ok else "missing local-only ignore")
     except Exception as exc:

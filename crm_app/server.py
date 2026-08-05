@@ -3201,20 +3201,45 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         encoded = json.dumps(payload, ensure_ascii=False, default=json_response_default).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_security_headers()
         for key, value in (headers or {}).items():
             self.send_header(key, value)
         self.send_header("Cache-Control", "no-store")
         self.send_header("Content-Length", str(len(encoded)))
         self.end_headers()
-        self.wfile.write(encoded)
+        if self.should_write_response_body():
+            self.wfile.write(encoded)
+
+    def should_write_response_body(self) -> bool:
+        return getattr(self, "command", "GET") != "HEAD"
+
+    def send_security_headers(self) -> None:
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("X-Frame-Options", "DENY")
+        self.send_header("Referrer-Policy", "same-origin")
+        self.send_header("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+        self.send_header(
+            "Content-Security-Policy",
+            "default-src 'self'; "
+            "img-src 'self' data: https://*.supabase.co; "
+            "style-src 'self' 'unsafe-inline'; "
+            "script-src 'self'; "
+            "connect-src 'self'; "
+            "frame-ancestors 'none'; "
+            "base-uri 'self'; "
+            "form-action 'self'",
+        )
 
     def send_text(self, text: str, status: int = 200, content_type: str = "text/plain") -> None:
         encoded = text.encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", f"{content_type}; charset=utf-8")
+        self.send_security_headers()
+        self.send_header("Cache-Control", "no-store")
         self.send_header("Content-Length", str(len(encoded)))
         self.end_headers()
-        self.wfile.write(encoded)
+        if self.should_write_response_body():
+            self.wfile.write(encoded)
 
     def send_xml(self, text: str, status: int = 200) -> None:
         self.send_text(text, status=status, content_type="application/xml")
@@ -3223,10 +3248,13 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         encoded = self.csv_bytes(rows)
         self.send_response(200)
         self.send_header("Content-Type", "text/csv; charset=utf-8")
+        self.send_security_headers()
         self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
+        self.send_header("Cache-Control", "no-store")
         self.send_header("Content-Length", str(len(encoded)))
         self.end_headers()
-        self.wfile.write(encoded)
+        if self.should_write_response_body():
+            self.wfile.write(encoded)
 
     def csv_bytes(self, rows: list[dict[str, Any]]) -> bytes:
         output = io.StringIO()
@@ -3247,19 +3275,24 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         safe_filename = filename.replace('"', "")
         self.send_response(200)
         self.send_header("Content-Type", "text/vcard; charset=utf-8")
+        self.send_security_headers()
         self.send_header("Content-Disposition", f'inline; filename="{safe_filename}"')
         self.send_header("Cache-Control", "private, no-store")
         self.send_header("Content-Length", str(len(encoded)))
         self.end_headers()
-        self.wfile.write(encoded)
+        if self.should_write_response_body():
+            self.wfile.write(encoded)
 
     def send_zip(self, filename: str, payload: bytes) -> None:
         self.send_response(200)
         self.send_header("Content-Type", "application/zip")
+        self.send_security_headers()
         self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
+        self.send_header("Cache-Control", "no-store")
         self.send_header("Content-Length", str(len(payload)))
         self.end_headers()
-        self.wfile.write(payload)
+        if self.should_write_response_body():
+            self.wfile.write(payload)
 
     def send_file(self, path: Path) -> None:
         if not path.exists() or not path.is_file():
@@ -3269,13 +3302,32 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         payload = path.read_bytes()
         self.send_response(200)
         self.send_header("Content-Type", content_type)
+        self.send_security_headers()
         self.send_header("Content-Length", str(len(payload)))
-        self.send_header("Cache-Control", "no-store")
+        self.send_header("Cache-Control", self.file_cache_control(path))
         self.end_headers()
-        self.wfile.write(payload)
+        if self.should_write_response_body():
+            self.wfile.write(payload)
+
+    def send_static_file(self, request_path: str) -> None:
+        static_root = (APP_DIR / "static").resolve()
+        relative_path = urllib.parse.unquote(request_path.removeprefix("/static/"))
+        target = (static_root / relative_path).resolve()
+        if static_root != target and static_root not in target.parents:
+            self.send_text("Not found", 404)
+            return
+        self.send_file(target)
+
+    def file_cache_control(self, path: Path) -> str:
+        parsed = urllib.parse.urlparse(getattr(self, "path", ""))
+        is_versioned_static = parsed.path.startswith("/static/") and bool(urllib.parse.parse_qs(parsed.query).get("v"))
+        if is_versioned_static and path.suffix.lower() in {".css", ".js", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".ico"}:
+            return "public, max-age=31536000, immutable"
+        return "no-store"
 
     def send_redirect(self, url: str, status: int = 302) -> None:
         self.send_response(status)
+        self.send_security_headers()
         self.send_header("Location", url)
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
@@ -3611,7 +3663,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             elif path == "/":
                 self.send_file(APP_DIR / "static" / "index.html")
             elif path.startswith("/static/"):
-                self.send_file(APP_DIR / path.lstrip("/"))
+                self.send_static_file(path)
             elif path == "/api/summary":
                 self.send_json(self.summary())
             elif path == "/api/owner_brief":
@@ -3705,6 +3757,9 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                 self.send_text("Not found", 404)
         except Exception as exc:
             self.send_json({"error": str(exc)}, 500)
+
+    def do_HEAD(self) -> None:
+        self.do_GET()
 
     def do_POST(self) -> None:
         parsed = urllib.parse.urlparse(self.path)
@@ -4023,7 +4078,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             profile_field = None
             profile_value = None
         owner_user_id = self.optional_int(settings.get("owner_user_id"))
-        if list_type not in {"people", "companies", "leads"}:
+        if list_type not in {"companies", "leads"}:
             owner_user_id = None
         date_field = self.clean_optional(settings.get("date_field"))
         date_from = self.clean_activity_date_filter(settings.get("date_from"))
@@ -10930,8 +10985,12 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         }
         self.send_response(200)
         self.send_header("Content-Type", "application/zip")
+        self.send_security_headers()
         self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
+        self.send_header("Cache-Control", "no-store")
         self.end_headers()
+        if not self.should_write_response_body():
+            return
         with zipfile.ZipFile(self.wfile, "w", compression=zipfile.ZIP_STORED) as archive:
             archive.writestr("document_files_manifest.csv", self.csv_bytes(package_manifest["documents"]))
             archive.writestr("package_manifest.json", json.dumps(package_manifest, indent=2, ensure_ascii=False))

@@ -291,7 +291,12 @@ def main() -> int:
     person_detail_body_start = app_js.index("function personDetailBody(detail)")
     person_detail_main_sections = app_js[person_detail_body_start : app_js.index("const sidebarSections", person_detail_body_start)]
     assert "activitySection(detail.activity || [])" not in person_detail_main_sections
-    assert person_detail_main_sections.index("keyValues(record)") < person_detail_main_sections.index("personTimelineSection(detail.timeline || [])")
+    assert person_detail_main_sections.index("personTimelineSection(detail.timeline || [])") < person_detail_main_sections.index("personVaultSection(detail)")
+    assert person_detail_main_sections.index("personVaultSection(detail)") < person_detail_main_sections.index("editForm(detail)")
+    person_vault_start = app_js.index("function personVaultSection(detail)")
+    person_vault_section = app_js[person_vault_start : app_js.index("function personPortalSection", person_vault_start)]
+    assert "keyValues(rawRecord)" in person_vault_section
+    assert "delete rawRecord.owner_user_id" in person_vault_section
     assert "<h3>Contact Actions</h3>" not in app_js
     assert "<h3>Edit</h3>" not in app_js
     assert app_js.index('${contactActions(detail)}') < app_js.index('${editForm(detail)}') < app_js.index('${recordFileHero(detail)}')
@@ -365,6 +370,17 @@ def main() -> int:
     assert "globalSearchClear" in index_html
     assert ".search-form" in styles_css
     assert 'self.send_header("Cache-Control", "no-store")' in server_py
+    assert "def send_security_headers" in server_py
+    assert '"Content-Security-Policy"' in server_py
+    assert '"X-Frame-Options", "DENY"' in server_py
+    assert '"X-Content-Type-Options", "nosniff"' in server_py
+    assert "def send_static_file" in server_py
+    assert 'request_path.removeprefix("/static/")' in server_py
+    assert "static_root not in target.parents" in server_py
+    assert '"public, max-age=31536000, immutable"' in server_py
+    assert "def should_write_response_body" in server_py
+    assert 'getattr(self, "command", "GET") != "HEAD"' in server_py
+    assert "def do_HEAD" in server_py
     assert '"mode": "quick"' in server_py
     assert "Fast search covers records and direct relationships" in server_py
     assert "mobileDetailBackLabel(" in app_js
@@ -860,7 +876,9 @@ def main() -> int:
     assert "contactActions(detail)" in app_js
     assert "contact-copy-button" in app_js
     assert "copyTextToClipboard" in app_js
-    assert "mailto:" in app_js
+    assert "googlegmail:///co?to=" in app_js
+    assert "gmail-compose-button" in app_js
+    assert "mailto:" not in app_js
     assert "tel:" in app_js
     assert "listDateFilterControls" in app_js
     assert "listDateField" in app_js
@@ -1739,7 +1757,7 @@ def main() -> int:
     assert "update_deal_sales_profile" in server_py
     assert "CHILLCRM Sales -" in server_py
     assert "salesCommandCenterPanel" in app_js
-    assert "Deals Missing Next Action" in app_js
+    assert "Needs Next Action" in app_js
     assert "dealNextActionPanel" in app_js
     assert "Add Next Action" in app_js
     assert "dealSalesProfileSection" in app_js
@@ -2191,11 +2209,9 @@ def main() -> int:
             }
         )
         assert relationship_updated["ok"] is True
-        assert relationship_updated["detail"]["record"]["owner_user_id"] == owner_id
-        assert relationship_updated["detail"]["owner"]["source_id"] == owner_id
+        assert relationship_updated["detail"]["record"].get("owner_user_id") == current_person[0]
         assert relationship_updated["detail"]["record"]["company_id"] == company_id
         assert relationship_updated["detail"]["company"]["source_id"] == company_id
-        assert relationship_updated["detail"]["edit_options"]["owners"]
         deal = handler.list_records({"type": ["deals"], "page_size": ["1"]})["records"][0]
         deal_id = deal["source_id"]
         deal_detail = handler.record_detail({"type": ["deal"], "id": [str(deal_id)]})
@@ -2272,6 +2288,7 @@ def main() -> int:
         )
         assert overlap_lead["detail"]["record"]["possible_person_id"] == overlap_person["detail"]["record"]["source_id"]
         with sqlite3.connect(test_db) as conn:
+            conn.row_factory = sqlite3.Row
             overlap_flag = conn.execute(
                 """
                 SELECT id, flag_type, record_type, record_id, related_record_type, related_record_id, flag_key
@@ -3159,7 +3176,6 @@ def main() -> int:
         people_by_status = handler.list_records({"type": ["people"], "sort": ["status"], "direction": ["asc"], "page_size": ["20"]})
         companies_by_status = handler.list_records({"type": ["companies"], "sort": ["status"], "direction": ["asc"], "page_size": ["20"]})
         leads_by_status = handler.list_records({"type": ["leads"], "sort": ["status"], "direction": ["asc"], "page_size": ["20"]})
-        people_by_owner = handler.list_records({"type": ["people"], "sort": ["owner"], "direction": ["asc"], "page_size": ["20"]})
         companies_by_owner = handler.list_records({"type": ["companies"], "sort": ["owner"], "direction": ["asc"], "page_size": ["20"]})
         leads_by_owner = handler.list_records({"type": ["leads"], "sort": ["owner"], "direction": ["asc"], "page_size": ["20"]})
         deals_by_value = handler.list_records({"type": ["deals"], "sort": ["value"], "direction": ["desc"], "page_size": ["20"]})
@@ -3169,7 +3185,6 @@ def main() -> int:
         assert people_by_status["sort"] == "status"
         assert companies_by_status["sort"] == "status"
         assert leads_by_status["sort"] == "status"
-        assert people_by_owner["sort"] == "owner"
         assert companies_by_owner["sort"] == "owner"
         assert leads_by_owner["sort"] == "owner"
         assert deals_by_value["sort"] == "value"
@@ -3180,7 +3195,6 @@ def main() -> int:
         assert_sorted([record["status"] for record in people_by_status["records"]])
         assert_sorted([record["status"] for record in companies_by_status["records"]])
         assert_sorted([record["status"] for record in leads_by_status["records"]])
-        assert_sorted([record["owner_name"] for record in people_by_owner["records"]])
         assert_sorted([record["owner_name"] for record in companies_by_owner["records"]])
         assert_sorted([record["owner_name"] for record in leads_by_owner["records"]])
         assert_numeric_sorted([record["value"] for record in deals_by_value["records"]], reverse=True)
@@ -3188,16 +3202,6 @@ def main() -> int:
             expected_current_people = conn.execute("SELECT count(*) FROM people WHERE customer_status = 'current'").fetchone()[0]
             expected_current_companies = conn.execute("SELECT count(*) FROM companies WHERE customer_status = 'current'").fetchone()[0]
             expected_unqualified_leads = conn.execute("SELECT count(*) FROM leads WHERE status = 'Unqualified'").fetchone()[0]
-            people_owner_id, expected_owned_people = conn.execute(
-                """
-                SELECT owner_user_id, count(*)
-                FROM people
-                WHERE owner_user_id IS NOT NULL
-                GROUP BY owner_user_id
-                ORDER BY count(*) DESC, owner_user_id
-                LIMIT 1
-                """
-            ).fetchone()
             lead_owner_id, expected_owned_leads = conn.execute(
                 """
                 SELECT owner_user_id, count(*)
@@ -3400,27 +3404,26 @@ def main() -> int:
         assert any(issue["issue"] == "missing_value" for issue in missing_deal_detail["record"]["quality_issues"])
         if missing_deal_detail["record"].get("person_id") is not None or missing_deal_detail["record"].get("company_id") is not None:
             assert all(issue["issue"] != "missing_relationship" for issue in missing_deal_detail["record"]["quality_issues"])
-        owned_people = handler.list_records(
-            {"type": ["people"], "owner_user_id": [str(people_owner_id)], "page_size": ["20"]}
+        people_owner_ignored = handler.list_records(
+            {"type": ["people"], "owner_user_id": [str(lead_owner_id)], "sort": ["owner"], "page_size": ["20"]}
         )
         owned_leads = handler.list_records(
             {"type": ["leads"], "owner_user_id": [str(lead_owner_id)], "page_size": ["20"]}
         )
         owner_ignored_deals = handler.list_records(
-            {"type": ["deals"], "owner_user_id": [str(people_owner_id)], "page_size": ["20"]}
+            {"type": ["deals"], "owner_user_id": [str(lead_owner_id)], "page_size": ["20"]}
         )
-        assert owned_people["owner_user_id"] == people_owner_id
+        assert people_owner_ignored["owner_user_id"] is None
+        assert people_owner_ignored["owner_options"] == []
+        assert people_owner_ignored["sort"] == "updated_at"
         assert owned_leads["owner_user_id"] == lead_owner_id
-        assert owned_people["total"] == expected_owned_people
         assert owned_leads["total"] == expected_owned_leads
         assert owner_ignored_deals["owner_user_id"] is None
         assert owner_ignored_deals["owner_options"] == []
-        assert all(record["owner_user_id"] == people_owner_id for record in owned_people["records"])
         assert all(record["owner_user_id"] == lead_owner_id for record in owned_leads["records"])
-        assert all(record["owner_name"] for record in owned_people["records"])
-        assert any(str(option["value"]) == str(people_owner_id) for option in owned_people["owner_options"])
-        owner_detail = handler.record_detail({"type": ["person"], "id": [str(owned_people["records"][0]["source_id"])]})
-        assert owner_detail["owner"]["source_id"] == people_owner_id
+        assert any(str(option["value"]) == str(lead_owner_id) for option in owned_leads["owner_options"])
+        owner_detail = handler.record_detail({"type": ["lead"], "id": [str(owned_leads["records"][0]["source_id"])]})
+        assert owner_detail["owner"]["source_id"] == lead_owner_id
         assert owner_detail["owner"]["name"]
         exported_unqualified_leads = handler.export_list_rows(
             {
@@ -3447,10 +3450,18 @@ def main() -> int:
                 "profile_value": [person_growth_value],
             }
         )
-        exported_owned_people = handler.export_list_rows(
+        exported_people_owner_ignored = handler.export_list_rows(
             {
                 "type": ["people"],
-                "owner_user_id": [str(people_owner_id)],
+                "owner_user_id": [str(lead_owner_id)],
+                "sort": ["owner"],
+                "direction": ["asc"],
+            }
+        )
+        exported_owned_leads = handler.export_list_rows(
+            {
+                "type": ["leads"],
+                "owner_user_id": [str(lead_owner_id)],
                 "sort": ["owner"],
                 "direction": ["asc"],
             }
@@ -3476,14 +3487,15 @@ def main() -> int:
         assert len(exported_unqualified_leads["rows"]) == expected_unqualified_leads
         assert len(exported_application_deals["rows"]) == expected_application_deals
         assert len(exported_profile_people["rows"]) == expected_people
-        assert len(exported_owned_people["rows"]) == expected_owned_people
+        assert len(exported_people_owner_ignored["rows"]) == people_owner_ignored["total"]
+        assert len(exported_owned_leads["rows"]) == expected_owned_leads
         assert len(exported_recent_people["rows"]) == expected_recent_people
         assert len(exported_quality_deals["rows"]) == expected_deals_missing_value
         assert all(row["status"] == "Unqualified" for row in exported_unqualified_leads["rows"])
         assert all(row["stage_name"] == "Application" for row in exported_application_deals["rows"])
         assert all(row["Desired Growth"] == person_growth_value for row in exported_profile_people["rows"])
-        assert all(row["owner_user_id"] == people_owner_id for row in exported_owned_people["rows"])
-        assert all(row["owner_name"] for row in exported_owned_people["rows"])
+        assert all(row["owner_user_id"] == lead_owner_id for row in exported_owned_leads["rows"])
+        assert all(row["owner_name"] for row in exported_owned_leads["rows"])
         assert all((row["updated_at"] or "")[:10] >= "2026-01-01" for row in exported_recent_people["rows"])
         assert all(not row["value"] for row in exported_quality_deals["rows"])
         corrected_quality_person = handler.update_record(
@@ -3521,17 +3533,18 @@ def main() -> int:
         owner_saved_view = handler.save_view(
             {
                 "type": "people",
-                "name": "Verification Owner People",
+                "name": "Verification Ignored Owner People",
                 "settings": {
-                    "owner_user_id": str(people_owner_id),
+                    "owner_user_id": str(lead_owner_id),
                     "sort": "owner",
                     "direction": "asc",
                 },
             }
         )
         assert owner_saved_view["ok"] is True
-        assert owner_saved_view["view"]["record_count"] == expected_owned_people
-        assert owner_saved_view["view"]["settings"]["owner_user_id"] == str(people_owner_id)
+        assert owner_saved_view["view"]["record_count"] == people_owner_ignored["total"]
+        assert owner_saved_view["view"]["settings"]["owner_user_id"] == ""
+        assert owner_saved_view["view"]["settings"]["sort"] == "updated_at"
         assert handler.delete_view({"id": owner_saved_view["view"]["id"]})["ok"] is True
         date_saved_view = handler.save_view(
             {
@@ -3630,7 +3643,6 @@ def main() -> int:
                     "name": "Operations Verification Person",
                     "email": "ops-person@example.com",
                     "company_id": str(company_id),
-                    "owner_user_id": str(owner_id),
                     "customer_status": "current",
                     "prospect_status": "lead",
                 },
@@ -3639,7 +3651,7 @@ def main() -> int:
         assert created_person["ok"] is True
         created_person_id = created_person["detail"]["record"]["source_id"]
         assert created_person["detail"]["company"]["name"] == "Operations Verification Co"
-        assert created_person["detail"]["owner"]["source_id"] == owner_id
+        assert created_person["detail"]["owner"] is None
         assert created_person["detail"]["record"]["customer_status"] == "current"
         assert created_person["detail"]["record"]["prospect_status"] == "lead"
         assert created_person["detail"]["provenance"]["source"] == "local"

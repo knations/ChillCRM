@@ -8,8 +8,7 @@
         "includeFiles": [
           "config/supabase-prod-ca-2021.crt",
           "crm_app/**",
-          "docs/**",
-          "reports/**"
+          "docs/**"
         ]
       }
     }

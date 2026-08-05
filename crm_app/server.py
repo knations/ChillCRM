@@ -3455,7 +3455,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         parsed = urllib.parse.urlparse(getattr(self, "path", ""))
         is_versioned_static = parsed.path.startswith("/static/") and bool(urllib.parse.parse_qs(parsed.query).get("v"))
         if is_versioned_static and path.suffix.lower() in {".css", ".js", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".ico"}:
-            return "public, max-age=31536000, immutable"
+            return "private, max-age=300, must-revalidate"
         return "no-store"
 
     def send_redirect(self, url: str, status: int = 302) -> None:

@@ -5,6 +5,7 @@ exports/
 logs/
 reports/
 profile_images/
+record_files/
 staging_database/
 crm_database/
 *.sqlite

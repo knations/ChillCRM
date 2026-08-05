@@ -1963,6 +1963,16 @@ def main() -> int:
                 and row.get("actor_roles")
                 for row in actor_record_activity
             )
+            try:
+                actor_handler.decode_profile_image_upload({"content_type": "image/png", "image_base64": "not-valid"})
+                raise AssertionError("Invalid profile image base64 should be rejected.")
+            except ValueError as exc:
+                assert "not valid base64" in str(exc)
+            try:
+                actor_handler.decode_record_file_upload({"filename": "bad.pdf", "content_type": "application/pdf", "file_base64": "not-valid"})
+                raise AssertionError("Invalid record file base64 should be rejected.")
+            except ValueError as exc:
+                assert "not valid base64" in str(exc)
             tiny_png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII="
             profile_upload = actor_handler.upload_profile_image(
                 {

@@ -23660,7 +23660,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             raise ValueError("Choose an image before uploading.")
         try:
             image_bytes = base64.b64decode(encoded, validate=True)
-        except Exception as exc:
+        except (binascii.Error, ValueError) as exc:
             raise ValueError("Profile image upload was not valid base64.") from exc
         if not image_bytes:
             raise ValueError("Choose an image before uploading.")
@@ -23707,7 +23707,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             raise ValueError("Choose a file before uploading.")
         try:
             file_bytes = base64.b64decode(encoded, validate=True)
-        except Exception as exc:
+        except (binascii.Error, ValueError) as exc:
             raise ValueError("File upload was not valid base64.") from exc
         if not file_bytes:
             raise ValueError("Choose a file before uploading.")

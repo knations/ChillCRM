@@ -54,3 +54,10 @@ Thumbs.db
 
 # Local Python version files are fine to commit when intentional.
 !.python-version
+
+# Local one-off operator helpers
+Run GitHub Permanent Credential Setup.command
+Run GitHub Token Keychain Push.command
+Run Resend API Key Setup.command
+Run Vercel Promote Current Deployment.command
+scripts/promote_vercel_deployment_alias.py

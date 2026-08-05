@@ -9860,6 +9860,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             "record_name": record_name,
             "summary": self.audit_activity_summary(row),
             "occurred_at": row["created_at"],
+            "action": action,
         }
         row_keys = set(row.keys())
         if "app_user_id" in row_keys:
@@ -18384,6 +18385,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         body: Any = "",
         meta: list[Any] | None = None,
         url: Any = "",
+        url_label: Any = "",
         record_type: Any = "",
         record_id: Any = None,
         source_id: Any = None,
@@ -18403,6 +18405,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             "occurred_at": self.clean_optional(occurred_at) or "",
             "meta": cleaned_meta,
             "url": self.clean_optional(url) or "",
+            "url_label": self.clean_optional(url_label) or "",
             "record_type": self.clean_optional(record_type) or "",
             "record_id": record_id,
             "source_id": source_id,
@@ -18424,6 +18427,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
     ) -> list[dict[str, Any]]:
         events: list[dict[str, Any]] = []
         seen: set[str] = set()
+        call_note_ids = {str(call.get("source_id")) for call in call_logs if call.get("source_id")}
 
         def add(event: dict[str, Any], key: str) -> None:
             if key in seen:
@@ -18449,6 +18453,9 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             )
 
         for call in call_logs:
+            recording_url = self.clean_optional(call.get("recording_url")) or ""
+            note_urls = self.extract_urls(" ".join(str(part or "") for part in [call.get("summary"), call.get("notes")]))
+            call_url = recording_url or (note_urls[0] if note_urls else "")
             add(
                 self.timeline_event(
                     "call",
@@ -18460,7 +18467,8 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                         call.get("provider"),
                         call.get("duration_seconds") is not None and f"{call.get('duration_seconds')} seconds",
                     ],
-                    url=call.get("recording_url"),
+                    url=call_url,
+                    url_label="Recording" if recording_url else "Open Link" if call_url else "",
                     source_id=call.get("source_id"),
                 ),
                 f"call:{call.get('source_id')}",
@@ -18555,6 +18563,10 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             )
 
         for resource in linked_resources:
+            source_type = str(resource.get("source_type") or "")
+            source_label = str(resource.get("source_label") or "")
+            if source_type == "note" and source_label.startswith("Note #") and source_label.removeprefix("Note #") in call_note_ids:
+                continue
             add(
                 self.timeline_event(
                     "link",
@@ -18573,6 +18585,8 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             activity_record_id = item.get("record_id")
             current_person_activity = activity_record_type == "person" and str(activity_record_id or "") == str(record.get("id") or "")
             if event_type == "call_log" and current_person_activity:
+                continue
+            if event_type == "audit" and current_person_activity and item.get("action") in {"add_call_log", "update_call_log"}:
                 continue
             if event_type in {"note", "task", "task_completed"} and current_person_activity:
                 continue

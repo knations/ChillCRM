@@ -6395,14 +6395,6 @@ function personPortalSection(portal, personId) {
   const nextSteps = portal.next_steps || [];
   const clientNotes = portal.client_notes || [];
   const sharedDocuments = portal.shared_documents || [];
-  const counts = portal.counts || {};
-  const publishedNotes = Number(counts.published_client_notes || 0);
-  const readinessItems = [
-    { label: "Portal status set", ready: selectedStatus === "active" },
-    { label: "At least one shared document", ready: sharedDocuments.length > 0 },
-    { label: "At least one client next step", ready: nextSteps.some((step) => (step.status || "open") === "open") },
-    { label: "At least one published client note", ready: publishedNotes > 0 },
-  ];
   const previewUrl = `/portal?person_id=${encodeURIComponent(personId || "")}`;
   return `
     <div class="detail-section person-portal-section">
@@ -6412,11 +6404,6 @@ function personPortalSection(portal, personId) {
           <p class="muted portal-section-subtitle">Client-visible prep only. Internal notes, calls, tasks, and audit stay private.</p>
         </div>
         <span class="pill ${portal.enabled ? "green" : ""}">${escapeHtml(status)}</span>
-      </div>
-      <div class="portal-readiness-list">
-        ${readinessItems.map((item) => `
-          <span class="portal-readiness-pill ${item.ready ? "ready" : ""}">${item.ready ? "Ready" : "Needed"} · ${escapeHtml(item.label)}</span>
-        `).join("")}
       </div>
       <div class="portal-module-grid">
         ${modules.map((module) => `
@@ -6536,6 +6523,7 @@ function personTimelineEvent(event) {
   const title = event.title || label;
   const body = event.body && event.body !== title ? event.body : "";
   const action = timelineRecordAction(event);
+  const urlLabel = event.url_label || (type === "call" ? "Recording" : "Open");
   return `
     <div class="person-timeline-event ${timelineEventClass(type)}">
       <div class="person-timeline-marker" aria-hidden="true"></div>
@@ -6550,7 +6538,7 @@ function personTimelineEvent(event) {
           meta.length || event.url || action
             ? `<div class="person-timeline-foot">
                 ${meta.map((item) => `<span>${escapeHtml(item)}</span>`).join("")}
-                ${event.url ? `<a href="${safeHref(event.url)}" target="_blank" rel="noopener noreferrer">${type === "call" ? "Recording" : "Open"}</a>` : ""}
+                ${event.url ? `<a href="${safeHref(event.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(urlLabel)}</a>` : ""}
                 ${action}
               </div>`
             : ""

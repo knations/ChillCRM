@@ -34,6 +34,58 @@ def read_json(url: str) -> tuple[int, dict[str, object]]:
 
 
 def main() -> int:
+    app_js = (PROJECT_ROOT / "crm_app" / "static" / "app.js").read_text(encoding="utf-8")
+    assert "portal-readiness-pill" not in app_js
+    assert "Needed ·" not in app_js
+
+    timeline_probe = handler.__new__(handler)
+    timeline = timeline_probe.person_timeline(
+        {"id": 7, "name": "Timeline Probe", "created_at": "2026-08-05T10:00:00+00:00"},
+        purchases=[],
+        call_logs=[
+            {
+                "source_id": 44,
+                "summary": "Call at 11:30",
+                "notes": "Reviewed next move: https://example.com/recording",
+                "occurred_at": "2026-08-05T11:30:00+00:00",
+                "direction_label": "General",
+                "recording_url": "",
+            }
+        ],
+        notes=[],
+        tasks=[],
+        activity=[
+            {
+                "activity_type": "audit",
+                "action": "add_call_log",
+                "record_type": "person",
+                "record_id": 7,
+                "summary": "Added call log",
+                "occurred_at": "2026-08-05T11:31:00+00:00",
+            }
+        ],
+        tags=[],
+        linked_resources=[
+            {
+                "source_type": "note",
+                "source_label": "Note #44",
+                "kind": "Profile/Web Link",
+                "url": "https://example.com/recording",
+                "context": "Reviewed next move: https://example.com/recording",
+                "created_at": "2026-08-05T11:30:00+00:00",
+            }
+        ],
+        record_files=[],
+        archive_items=[],
+        deals=[],
+    )
+    call_events = [event for event in timeline if event.get("event_type") == "call"]
+    assert len(call_events) == 1
+    assert call_events[0]["url"] == "https://example.com/recording"
+    assert call_events[0]["url_label"] == "Open Link"
+    assert not [event for event in timeline if event.get("event_type") == "link"]
+    assert not [event for event in timeline if event.get("event_type") == "audit" and event.get("title") == "Added call log"]
+
     env_backup = {
         key: os.environ.get(key)
         for key in [

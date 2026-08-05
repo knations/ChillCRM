@@ -389,6 +389,7 @@ function escapeHtml(value) {
 function safeHref(value) {
   const raw = String(value ?? "").trim();
   if (!raw) return "#";
+  if (/[\u0000-\u001F\u007F]/.test(raw)) return "#";
   if (raw.startsWith("/") && !raw.startsWith("//")) return escapeHtml(raw);
   if (raw.startsWith("#")) return escapeHtml(raw);
   try {

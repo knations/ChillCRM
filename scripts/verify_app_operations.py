@@ -1616,7 +1616,10 @@ def main() -> int:
     assert "/api/production_gates" in hosted_smoke_script
     assert "Owner Intake" in hosted_smoke_script
     assert "owner_gate_intake_packet.md" in hosted_smoke_script
-    assert "STAGING_WRITE_AUDIT_PROBE_PREFIX" in hosted_smoke_script
+    assert "MINIMUM_EXPECTED_COUNTS" in hosted_smoke_script
+    assert "CHILLCRM_EXPECT_RUNTIME_ENVIRONMENT" in hosted_smoke_script
+    assert "hosted writes are unlocked; CRM write probe skipped" in hosted_smoke_script
+    assert "STAGING_WRITE_AUDIT_PROBE_PREFIX" not in hosted_smoke_script
     assert "hosted_count_evidence" in hosted_smoke_script
     assert "CHILLCRM_USE_OWNER_RECOVERY" in hosted_smoke_wrapper
     assert "Owner recovery new password" in hosted_smoke_wrapper

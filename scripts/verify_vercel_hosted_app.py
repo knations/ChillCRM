@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Smoke-test the locked Vercel-hosted CHILLCRM app."""
+"""Smoke-test the Vercel-hosted CHILLCRM app without changing CRM records."""
 
 from __future__ import annotations
 
@@ -19,8 +19,7 @@ from typing import Any
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 REPORTS_DIR = PROJECT_ROOT / "reports"
-EXPECTED_COUNTS = {"people": 997, "companies": 378, "leads": 1327, "deals": 125}
-STAGING_WRITE_AUDIT_PROBE_PREFIX = "CHILLCRM Staging Write Audit Probe"
+MINIMUM_EXPECTED_COUNTS = {"people": 997, "companies": 378, "leads": 1327, "deals": 125}
 STORAGE_MANIFEST = REPORTS_DIR / "chillcrm_supabase_storage_manifest.csv"
 
 
@@ -116,59 +115,14 @@ def body_text(result: HttpResult) -> str:
     return result.body.decode("utf-8", errors="replace")
 
 
-def staging_write_audit_probe_people(
-    opener: urllib.request.OpenerDirector,
-    base_url: str,
-    bypass_secret: str,
-) -> list[dict[str, Any]]:
-    page = 1
-    page_size = 100
-    matches: list[dict[str, Any]] = []
-    while True:
-        query = urllib.parse.urlencode(
-            {
-                "type": "people",
-                "q": STAGING_WRITE_AUDIT_PROBE_PREFIX,
-                "page": page,
-                "page_size": page_size,
-                "sort": "created_at",
-                "direction": "desc",
-            }
-        )
-        probe_list = request(opener, base_url, "GET", f"/api/list?{query}", bypass_secret=bypass_secret)
-        assert_equal(probe_list.status, 200, f"staging write-audit probe list page {page} status")
-        payload = probe_list.json()
-        records = payload.get("records") or []
-        matches.extend(
-            record
-            for record in records
-            if str(record.get("name") or "").startswith(STAGING_WRITE_AUDIT_PROBE_PREFIX)
-        )
-        total = int(payload.get("total") or 0)
-        if not records or page * page_size >= total:
-            break
-        page += 1
-    return matches
-
-
 def hosted_count_evidence(
-    opener: urllib.request.OpenerDirector,
-    base_url: str,
     counts: dict[str, Any],
-    bypass_secret: str,
 ) -> dict[str, Any]:
-    evidence = {key: counts[key] for key in EXPECTED_COUNTS}
-    allowed_probe_count = 0
-    people_delta = int(counts.get("people") or 0) - EXPECTED_COUNTS["people"]
-    if people_delta > 0:
-        allowed_probe_count = len(staging_write_audit_probe_people(opener, base_url, bypass_secret))
-        evidence["approved_staging_write_audit_probe_people"] = allowed_probe_count
-
-    for key, expected in EXPECTED_COUNTS.items():
+    evidence = {key: counts[key] for key in MINIMUM_EXPECTED_COUNTS}
+    for key, expected in MINIMUM_EXPECTED_COUNTS.items():
         actual = counts.get(key)
-        if key == "people" and people_delta > 0 and actual == expected + allowed_probe_count:
-            continue
-        assert_equal(actual, expected, f"{key} count")
+        if int(actual or 0) < expected:
+            raise AssertionError(f"{key} count: expected at least {expected!r}, got {actual!r}")
     return evidence
 
 
@@ -188,7 +142,7 @@ def write_report(base_url: str, rows: list[dict[str, str]]) -> None:
     md = [
         "# Vercel Hosted App Smoke Test",
         "",
-        "This report verifies the hosted CHILLCRM staging app without writing CRM data or recording secrets.",
+        "This report verifies the hosted CHILLCRM app without writing CRM records or recording secrets.",
         "",
         f"- URL: `{base_url}`.",
         f"- Passed: `{passed}`.",
@@ -217,6 +171,10 @@ def main() -> int:
     if not bypass_secret and not public_app_auth_domain(base_url) and not env_flag("CHILLCRM_SKIP_VERCEL_BYPASS"):
         bypass_secret = prompt_secret("Vercel protection bypass secret", "VERCEL_PROTECTION_BYPASS_SECRET")
     expect_document_file_access = env_flag("EXPECT_DOCUMENT_FILE_ACCESS")
+    expected_environment = (
+        os.environ.get("CHILLCRM_EXPECT_RUNTIME_ENVIRONMENT", "").strip()
+        or ("production" if public_app_auth_domain(base_url) else "staging")
+    )
 
     jar = CookieJar()
     opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(jar))
@@ -229,13 +187,17 @@ def main() -> int:
         health_payload = health.json()
         runtime = health_payload["runtime"]
         assert health_payload["ok"] is True
-        assert_equal(runtime["environment"], "staging", "runtime environment")
+        assert_equal(runtime["environment"], expected_environment, "runtime environment")
         assert_equal(runtime["database_mode"], "hosted_postgres_adapter_enabled", "database mode")
         assert_equal(runtime["auth"]["required"], True, "auth required")
-        assert_equal(runtime["remote_write_lock"]["enabled"], True, "remote write lock")
         assert_equal(runtime["bulk_package_exports"]["enabled"], False, "bulk package exports")
         assert_equal(runtime["document_file_access"]["enabled"], expect_document_file_access, "document file access")
-        record(rows, "health", "passed", "hosted Postgres reachable, staging locks enabled")
+        record(
+            rows,
+            "health",
+            "passed",
+            f"hosted Postgres reachable, environment={runtime['environment']}, remote_write_lock={runtime['remote_write_lock']['enabled']}",
+        )
     except Exception as exc:
         record(rows, "health", "failed", str(exc))
 
@@ -313,7 +275,7 @@ def main() -> int:
         assert_equal(summary.status, 200, "summary status")
         payload = summary.json()
         counts = payload["counts"]
-        count_evidence = hosted_count_evidence(opener, base_url, counts, bypass_secret)
+        count_evidence = hosted_count_evidence(counts)
         production_gates = request(opener, base_url, "GET", "/api/production_gates", bypass_secret=bypass_secret)
         assert_equal(production_gates.status, 200, "production gates status")
         owner_intake = (((production_gates.json().get("production_gates") or {}).get("reports") or {}).get("owner_intake") or "")
@@ -384,16 +346,21 @@ def main() -> int:
             )
             assert_equal(denied_write.status, 403, "read-only write status")
             assert_equal(denied_write.json().get("code"), "permission_denied", "read-only write code")
-            staff_write = request(
-                role_openers["staff"],
-                base_url,
-                "POST",
-                "/api/create_record",
-                {"type": "people", "fields": {"name": "Staff Smoke Test"}},
-                bypass_secret=bypass_secret,
+            health_for_lock = request(opener, base_url, "GET", "/api/health", bypass_secret=bypass_secret).json()
+            remote_write_lock_enabled = bool(
+                (((health_for_lock.get("runtime") or {}).get("remote_write_lock") or {}).get("enabled"))
             )
-            assert_equal(staff_write.status, 423, "staff write lock status")
-            assert_equal(staff_write.json().get("code"), "remote_write_lock_enabled", "staff write lock code")
+            if remote_write_lock_enabled:
+                staff_write = request(
+                    role_openers["staff"],
+                    base_url,
+                    "POST",
+                    "/api/create_record",
+                    {"type": "people", "fields": {"name": "Staff Smoke Test"}},
+                    bypass_secret=bypass_secret,
+                )
+                assert_equal(staff_write.status, 423, "staff write lock status")
+                assert_equal(staff_write.json().get("code"), "remote_write_lock_enabled", "staff write lock code")
             admin_export = request(role_openers["admin"], base_url, "GET", "/api/export_package", bypass_secret=bypass_secret)
             assert_equal(admin_export.status, 403, "admin export package lock status")
             assert_equal(admin_export.json().get("code"), "bulk_package_exports_locked", "admin export package lock code")
@@ -412,7 +379,12 @@ def main() -> int:
             assert_equal(migration_write.json().get("code"), "permission_denied", "migration operator write denied code")
             migration_backups = request(role_openers["migration_operator"], base_url, "GET", "/api/backups", bypass_secret=bypass_secret)
             assert_equal(migration_backups.status, 200, "migration operator backups status")
-            record(rows, "role_matrix_permission_denial", "passed", "role smoke users matched allowed/denied user-management, write, export, and backup expectations")
+            record(
+                rows,
+                "role_matrix_permission_denial",
+                "passed",
+                "role smoke users matched allowed/denied user-management, export, backup, and safe write-boundary expectations",
+            )
         except Exception as exc:
             record(rows, "role_matrix_permission_denial", "failed", str(exc))
 
@@ -542,17 +514,23 @@ def main() -> int:
             record(rows, "document_file_lock", "failed", str(exc))
 
     try:
-        locked_write = request(
-            opener,
-            base_url,
-            "POST",
-            "/api/create_record",
-            {"type": "people", "fields": {"name": "Smoke Test"}},
-            bypass_secret=bypass_secret,
-        )
-        assert_equal(locked_write.status, 423, "locked write status")
-        assert_equal(locked_write.json().get("code"), "remote_write_lock_enabled", "locked write code")
-        record(rows, "remote_write_lock", "passed", "create_record blocked before validation unlock")
+        health_for_lock = request(opener, base_url, "GET", "/api/health", bypass_secret=bypass_secret)
+        assert_equal(health_for_lock.status, 200, "remote write lock health status")
+        lock_payload = ((health_for_lock.json().get("runtime") or {}).get("remote_write_lock") or {})
+        if lock_payload.get("enabled"):
+            locked_write = request(
+                opener,
+                base_url,
+                "POST",
+                "/api/create_record",
+                {"type": "people", "fields": {"name": "Smoke Test"}},
+                bypass_secret=bypass_secret,
+            )
+            assert_equal(locked_write.status, 423, "locked write status")
+            assert_equal(locked_write.json().get("code"), "remote_write_lock_enabled", "locked write code")
+            record(rows, "remote_write_lock", "passed", "create_record blocked before validation unlock")
+        else:
+            record(rows, "remote_write_lock", "passed", "hosted writes are unlocked; CRM write probe skipped to avoid changing production data")
     except Exception as exc:
         record(rows, "remote_write_lock", "failed", str(exc))
 

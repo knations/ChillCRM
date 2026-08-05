@@ -35,6 +35,13 @@ The live health endpoint at `https://chillcrm.app/api/health` is green after the
 - Signed-file redirects now explicitly declare zero-length response bodies while keeping redirects cache-locked.
 - Response formatting, security headers, CSV serialization, safe download filenames, static cache rules, and file freshness checks now live in `crm_app/responses.py` with backend boundary verifier coverage.
 - Retired remote-hosting and managed-provider decision exports were removed from the active app server so current exports stay focused on operational CRM use.
+- Retired remote-admin planning exports are hidden from the current export manifest, with verifier coverage preventing them from returning to the normal app export list.
+- Static route/action permission maps now live in `crm_app/access_control.py`, keeping auth policy visible without burying it inside the main request handler.
+- Mac operator launchers now anchor themselves to the CHILLCRM project root before running scripts, preventing private-token flows from looking for `scripts/` inside `ops/operator_launchers/`.
+
+## Parked Cleanup
+
+- Some historical setup, staging, and cutover export routes remain callable in `crm_app/server.py` for rollback/reference safety. They are no longer advertised in the normal export manifest. Remove the underlying routes/functions only in a dedicated retirement pass with explicit approval, because that is a broad behavior deletion rather than a cosmetic cleanup.
 
 ## Verification Run
 

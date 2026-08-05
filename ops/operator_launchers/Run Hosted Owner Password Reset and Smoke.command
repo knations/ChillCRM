@@ -1,7 +1,9 @@
 #!/bin/zsh
 set -u
 
-cd "$(dirname "$0")"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+cd "${PROJECT_ROOT}"
 
 PYTHON_BIN="python3"
 if [[ -x ".venv/bin/python" ]]; then

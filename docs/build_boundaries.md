@@ -9,6 +9,7 @@ These files are the live app surface:
 - `api/index.py`
 - `crm_app/server.py`
 - `crm_app/database.py`
+- `crm_app/file_assets.py`
 - `crm_app/request_io.py`
 - `crm_app/runtime_health.py`
 - `crm_app/static/`

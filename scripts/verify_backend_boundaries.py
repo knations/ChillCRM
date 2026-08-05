@@ -11,6 +11,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 import crm_app.database as database
+import crm_app.file_assets as file_assets
 import crm_app.request_io as request_io
 import crm_app.runtime_health as runtime_health
 import crm_app.server as server
@@ -19,17 +20,20 @@ import crm_app.server as server
 def main() -> int:
     server_py = (PROJECT_ROOT / "crm_app" / "server.py").read_text(encoding="utf-8")
     database_py = (PROJECT_ROOT / "crm_app" / "database.py").read_text(encoding="utf-8")
+    file_assets_py = (PROJECT_ROOT / "crm_app" / "file_assets.py").read_text(encoding="utf-8")
     request_io_py = (PROJECT_ROOT / "crm_app" / "request_io.py").read_text(encoding="utf-8")
     runtime_health_py = (PROJECT_ROOT / "crm_app" / "runtime_health.py").read_text(encoding="utf-8")
     app_js = (PROJECT_ROOT / "crm_app" / "static" / "app.js").read_text(encoding="utf-8")
     index_html = (PROJECT_ROOT / "crm_app" / "static" / "index.html").read_text(encoding="utf-8")
 
     assert "from crm_app.database import" in server_py
+    assert "from crm_app import file_assets" in server_py
     assert "from crm_app import runtime_health" in server_py
     assert "from crm_app import request_io" in server_py
     assert "class PostgresCompatConnection" not in server_py
     assert "def translate_sqlite_sql_for_postgres" not in server_py
     assert "def read_webhook_body" in request_io_py
+    assert "def decode_profile_image_upload" in file_assets_py
     assert "payment=(), usb=(), fullscreen=(self)" in server_py
     assert "class PostgresCompatConnection" in database_py
     assert "def translate_sqlite_sql_for_postgres" in database_py
@@ -53,6 +57,9 @@ def main() -> int:
         headers={"Content-Length": "32", "Content-Type": "application/x-www-form-urlencoded"},
         max_body_bytes=100,
     )["email"] == "test@example.com"
+    assert file_assets.profile_image_magic_matches("image/png", b"\x89PNG\r\n\x1a\nsample")
+    assert file_assets.safe_original_filename("../Bad:name?.pdf") == "Bad_name_.pdf"
+    assert file_assets.record_file_storage_key("person", 7, "abcdef1234567890abcdef123456", "Call Notes", "text/plain").endswith("Call Notes.txt")
 
     active_public_text = "\n".join([app_js, index_html])
     legacy_provider = "Zen" + "desk"

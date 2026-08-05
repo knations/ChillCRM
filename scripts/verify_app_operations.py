@@ -81,6 +81,7 @@ def main() -> int:
     hosted_smoke_wrapper = (PROJECT_ROOT / "scripts" / "run_newest_hosted_smoke_with_vercel_bypass.py").read_text(encoding="utf-8")
     vercel_diagnostics_script = (PROJECT_ROOT / "scripts" / "inspect_vercel_deployment.py").read_text(encoding="utf-8")
     vercel_git_connection_script = (PROJECT_ROOT / "scripts" / "verify_vercel_git_connection.py").read_text(encoding="utf-8")
+    vercel_git_deployment_script = (PROJECT_ROOT / "scripts" / "refresh_vercel_git_deployment_status.py").read_text(encoding="utf-8")
     vercel_token_access_script = (PROJECT_ROOT / "scripts" / "verify_vercel_token_access.py").read_text(encoding="utf-8")
     vercel_app_base_url_script = (PROJECT_ROOT / "scripts" / "set_vercel_app_base_url.py").read_text(encoding="utf-8")
     vercel_zapier_script = (PROJECT_ROOT / "scripts" / "set_vercel_zapier_webhook_secret.py").read_text(encoding="utf-8")
@@ -108,6 +109,7 @@ def main() -> int:
         supabase_staging_refresh_run_script,
         owner_recovery_disable_script,
         vercel_git_connection_script,
+        vercel_git_deployment_script,
         vercel_token_access_script,
         vercel_app_base_url_script,
         vercel_zapier_script,

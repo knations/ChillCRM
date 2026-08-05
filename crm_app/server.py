@@ -1988,7 +1988,8 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                     permission_action=action_key,
                 )
                 conn.commit()
-        except Exception:
+        except Exception as exc:
+            print(f"CHILLCRM audit warning: permission_denied audit failed: {exc.__class__.__name__}", file=sys.stderr)
             return
 
     def permission_action_for_get(self, path: str) -> str | None:

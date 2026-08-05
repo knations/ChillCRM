@@ -28,6 +28,7 @@ The live health endpoint at `https://chillcrm.app/api/health` is green after the
 - Dashboard progress displays now use native `<progress>` elements, allowing CSP to remove `'unsafe-inline'` from `style-src`.
 - Remaining-gate execution coverage now maps current Vercel diagnostics/environment blockers to the redeploy/status-refresh input, and verifier assertions recognize explicit blocked Supabase parity evidence without marking it green.
 - Vercel deployment diagnostics now narrow optional event/file fetch failures to expected Vercel API, network timeout, and JSON decode errors instead of silently swallowing every exception.
+- Permission-denial audit failures now leave a server-side warning instead of disappearing silently, while the browser still receives the same non-sensitive permission-denied response.
 
 ## Verification Run
 

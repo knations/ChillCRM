@@ -1090,6 +1090,7 @@ def main() -> int:
     assert "hosted_redeploy_preflight.md" in server_py
     assert "remaining_gate_execution_readiness.md" in server_py
     assert "local_write_freeze_readiness.md" in server_py
+    assert "CHILLCRM audit warning: permission_denied audit failed" in server_py
     assert "Owner Intake" in app_js
     assert "auth-control" in styles_css
     assert "auth-change-password" in styles_css

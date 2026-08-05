@@ -3435,32 +3435,42 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         content_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
         stat = path.stat()
         cache_control = self.file_cache_control(path)
+        cacheable = cache_control != "no-store"
+        payload = path.read_bytes()
         last_modified = email.utils.formatdate(stat.st_mtime, usegmt=True)
-        if cache_control != "no-store" and self.client_has_fresh_file(stat.st_mtime):
+        etag = f'"{hashlib.sha256(payload).hexdigest()[:32]}"' if cacheable else ""
+        if cacheable and self.client_has_fresh_file(stat.st_mtime, etag):
             self.send_response(304)
             self.send_security_headers()
             self.send_header("Cache-Control", cache_control)
             self.send_header("Last-Modified", last_modified)
+            self.send_header("ETag", etag)
             self.end_headers()
             return
-        payload = path.read_bytes()
         self.send_response(200)
         self.send_header("Content-Type", content_type)
         self.send_security_headers()
         self.send_header("Content-Length", str(len(payload)))
         self.send_header("Cache-Control", cache_control)
-        if cache_control != "no-store":
+        if cacheable:
             self.send_header("Last-Modified", last_modified)
+            self.send_header("ETag", etag)
         self.end_headers()
         if self.should_write_response_body():
             self.wfile.write(payload)
 
-    def client_has_fresh_file(self, modified_at: float) -> bool:
-        raw = str(self.headers.get("If-Modified-Since", "") if hasattr(self, "headers") else "").strip()
-        if not raw:
+    def client_has_fresh_file(self, modified_at: float, etag: str = "") -> bool:
+        headers = getattr(self, "headers", {})
+        if_none_match = str(headers.get("If-None-Match", "") if hasattr(headers, "get") else "").strip()
+        if etag and if_none_match:
+            supplied = {item.strip() for item in if_none_match.split(",")}
+            if etag in supplied or "*" in supplied:
+                return True
+        if_modified_since = str(headers.get("If-Modified-Since", "") if hasattr(headers, "get") else "").strip()
+        if not if_modified_since:
             return False
         try:
-            parsed = email.utils.parsedate_to_datetime(raw)
+            parsed = email.utils.parsedate_to_datetime(if_modified_since)
         except (TypeError, ValueError):
             return False
         if parsed is None:

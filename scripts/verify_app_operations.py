@@ -2093,7 +2093,13 @@ def main() -> int:
             cached_handler.send_file(cache_file)
             assert ("status", 304) in cached_events
             assert any(event[:2] == ("header", "Last-Modified") for event in cached_events)
+            assert any(event[:2] == ("header", "ETag") for event in cached_events)
             assert cached_handler.wfile.getvalue() == b""
+            etag_handler = server.CRMRequestHandler.__new__(server.CRMRequestHandler)
+            etag_handler.headers = {"If-None-Match": '"known-etag"'}
+            assert etag_handler.client_has_fresh_file(cache_file.stat().st_mtime, '"known-etag"') is True
+            etag_handler.headers = {"If-None-Match": '"other-etag"'}
+            assert etag_handler.client_has_fresh_file(cache_file.stat().st_mtime, '"known-etag"') is False
             uncached_handler = server.CRMRequestHandler.__new__(server.CRMRequestHandler)
             uncached_handler.path = "/static/cache-test.js"
             uncached_handler.command = "GET"
@@ -2107,6 +2113,7 @@ def main() -> int:
             assert ("status", 200) in uncached_events
             assert ("header", "Cache-Control", "no-store") in uncached_events
             assert not any(event[:2] == ("header", "Last-Modified") for event in uncached_events)
+            assert not any(event[:2] == ("header", "ETag") for event in uncached_events)
             assert b"cache test" in uncached_handler.wfile.getvalue()
             captured_errors = []
             body_handler.path = "/api/summary?secret=should-not-log"

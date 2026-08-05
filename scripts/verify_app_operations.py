@@ -86,6 +86,7 @@ def main() -> int:
     vercel_zapier_script = (PROJECT_ROOT / "scripts" / "set_vercel_zapier_webhook_secret.py").read_text(encoding="utf-8")
     vercel_twilio_script = (PROJECT_ROOT / "scripts" / "set_vercel_twilio_config.py").read_text(encoding="utf-8")
     hosted_write_enablement_script = (PROJECT_ROOT / "scripts" / "enable_hosted_writes_production.py").read_text(encoding="utf-8")
+    vercel_alias_promotion_script = (PROJECT_ROOT / "scripts" / "promote_vercel_deployment_alias.py").read_text(encoding="utf-8")
     deploy_script = (PROJECT_ROOT / "scripts" / "deploy_chillcrm_to_vercel.py").read_text(encoding="utf-8")
     remaining_gates_packet_script = (PROJECT_ROOT / "scripts" / "prepare_remaining_production_gate_packet.py").read_text(encoding="utf-8")
     owner_gate_reply_validation_script = (PROJECT_ROOT / "scripts" / "validate_owner_gate_reply.py").read_text(encoding="utf-8")
@@ -112,6 +113,10 @@ def main() -> int:
         vercel_zapier_script,
         vercel_twilio_script,
         hosted_write_enablement_script,
+        deploy_script,
+        hosted_smoke_wrapper,
+        vercel_alias_promotion_script,
+        supabase_backup_script,
     ]:
         assert_noninteractive_secret_prompt(private_prompt_script)
     assert "should_block_local_write" in server_py

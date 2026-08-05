@@ -27,7 +27,10 @@ def prompt_secret(label: str, env_name: str) -> str:
     value = os.environ.get(env_name, "").strip()
     if value:
         return value
-    return getpass.getpass(f"{label}: ").strip()
+    try:
+        return getpass.getpass(f"{label}: ").strip()
+    except (EOFError, OSError):
+        return ""
 
 
 def env_flag(name: str) -> bool:

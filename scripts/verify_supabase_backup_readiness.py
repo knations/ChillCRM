@@ -520,7 +520,10 @@ def main() -> int:
 
     token = os.environ.get(args.access_token_env, "").strip()
     if not token and args.prompt_token:
-        token = getpass.getpass("Supabase access token: ").strip()
+        try:
+            token = getpass.getpass("Supabase access token: ").strip()
+        except (EOFError, OSError):
+            token = ""
     rows = build_rows(args, token)
     REPORTS_DIR.mkdir(exist_ok=True)
     write_csv(REPORTS_DIR / "supabase_backup_readiness.csv", rows)

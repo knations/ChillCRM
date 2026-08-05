@@ -82,7 +82,10 @@ def prompt_secret(label: str, env_key: str | None = None) -> str:
     value = os.environ.get(env_key or "", "").strip() if env_key else ""
     if value:
         return value
-    return getpass.getpass(f"{label}: ").strip()
+    try:
+        return getpass.getpass(f"{label}: ").strip()
+    except (EOFError, OSError):
+        return ""
 
 
 def request_json(

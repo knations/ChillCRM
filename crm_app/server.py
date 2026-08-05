@@ -2747,6 +2747,45 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             "/api/twilio/voice",
         }
 
+    def normalized_origin(self, value: str) -> str:
+        parsed = urllib.parse.urlparse(str(value or "").strip())
+        if not parsed.scheme or not parsed.netloc:
+            return ""
+        scheme = parsed.scheme.lower()
+        host = (parsed.hostname or "").strip(".").lower()
+        if not host:
+            return ""
+        port = parsed.port
+        default_port = (scheme == "https" and port == 443) or (scheme == "http" and port == 80)
+        netloc = host if port is None or default_port else f"{host}:{port}"
+        return f"{scheme}://{netloc}"
+
+    def trusted_post_origins(self) -> set[str]:
+        origins = {
+            self.normalized_origin(self.request_origin()),
+            self.normalized_origin(self.app_base_url_for_request()),
+            "https://chillcrm.app",
+            "https://www.chillcrm.app",
+        }
+        return {origin for origin in origins if origin}
+
+    def post_origin_allowed(self) -> bool:
+        headers = getattr(self, "headers", {})
+        supplied = str(headers.get("Origin", "") if hasattr(headers, "get") else "").strip()
+        if not supplied:
+            return True
+        return self.normalized_origin(supplied) in self.trusted_post_origins()
+
+    def send_origin_denied(self) -> None:
+        self.send_json(
+            {
+                "ok": False,
+                "error": "Request origin is not allowed.",
+                "code": "origin_not_allowed",
+            },
+            403,
+        )
+
     def zapier_purchase_webhook_secret(self) -> str:
         return os.environ.get("CHILLCRM_ZAPIER_WEBHOOK_SECRET", "").strip() or os.environ.get("ZAPIER_WEBHOOK_SECRET", "").strip()
 
@@ -3851,6 +3890,9 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         path = parsed.path
 
         try:
+            if not self.post_origin_allowed():
+                self.send_origin_denied()
+                return
             if path == "/api/auth/login":
                 self.login_response(self.read_json_body())
                 return

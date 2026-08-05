@@ -2000,6 +2000,18 @@ def main() -> int:
             assert handler.should_require_auth_for_post("/api/auth/passkey/login/options") is False
             assert handler.should_require_auth_for_post("/api/auth/passkey/login/verify") is False
             assert handler.should_require_auth_for_post("/api/auth/passkey/register/options") is True
+            handler.headers = {"Host": "chillcrm.app", "X-Forwarded-Proto": "https", "Origin": "https://chillcrm.app"}
+            assert handler.post_origin_allowed() is True
+            handler.headers = {"Host": "chillcrm.app", "X-Forwarded-Proto": "https", "Origin": "https://chillcrm.app:443"}
+            assert handler.post_origin_allowed() is True
+            handler.headers = {"Host": "chillcrm.app", "X-Forwarded-Proto": "https", "Origin": "https://evil.example"}
+            assert handler.post_origin_allowed() is False
+            handler.headers = {"Host": "chillcrm.app", "X-Forwarded-Proto": "https"}
+            assert handler.post_origin_allowed() is True
+            captured_origin_denials = []
+            handler.send_json = lambda payload, status=200, headers=None: captured_origin_denials.append((payload, status, headers))
+            handler.send_origin_denied()
+            assert captured_origin_denials == [({"ok": False, "error": "Request origin is not allowed.", "code": "origin_not_allowed"}, 403, None)]
             os.environ["CHILLCRM_ZAPIER_WEBHOOK_SECRET"] = "unit-test-webhook-secret"
             handler.headers = {"Authorization": "Bearer unit-test-webhook-secret"}
             assert handler.zapier_purchase_webhook_authorization_error() is None

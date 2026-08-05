@@ -1266,6 +1266,9 @@ def main() -> int:
     assert "vercel_deployment_diagnostics_input_required" in vercel_diagnostics_script
     assert "Missing Vercel API token" in vercel_diagnostics_script
     assert "except (EOFError, OSError)" in vercel_diagnostics_script
+    assert "import urllib.error" in vercel_diagnostics_script
+    assert "except (json.JSONDecodeError, TimeoutError, urllib.error.HTTPError, urllib.error.URLError)" in vercel_diagnostics_script
+    assert "except Exception:" not in vercel_diagnostics_script
     assert "Hosted Redeploy Preflight" in hosted_redeploy_preflight_script
     assert "hosted_redeploy_preflight_ready" in hosted_redeploy_preflight_script
     assert "verify_hosted_app_deployment_package.py" in hosted_redeploy_preflight_script

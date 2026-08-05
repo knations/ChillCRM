@@ -27,6 +27,7 @@ The live health endpoint at `https://chillcrm.app/api/health` is green after the
 - Upload base64 decode handling now catches only decode/type errors and has negative verifier coverage.
 - Dashboard progress displays now use native `<progress>` elements, allowing CSP to remove `'unsafe-inline'` from `style-src`.
 - Remaining-gate execution coverage now maps current Vercel diagnostics/environment blockers to the redeploy/status-refresh input, and verifier assertions recognize explicit blocked Supabase parity evidence without marking it green.
+- Vercel deployment diagnostics now narrow optional event/file fetch failures to expected Vercel API, network timeout, and JSON decode errors instead of silently swallowing every exception.
 
 ## Verification Run
 

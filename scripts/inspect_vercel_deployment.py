@@ -9,6 +9,7 @@ import getpass
 import json
 import os
 import sys
+import urllib.error
 import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
@@ -209,7 +210,7 @@ def main() -> int:
     for endpoint in (f"/v2/deployments/{deployment_id}/events", f"/v3/deployments/{deployment_id}/events"):
         try:
             payload = request_json(endpoint, token, query)
-        except Exception:
+        except (json.JSONDecodeError, TimeoutError, urllib.error.HTTPError, urllib.error.URLError):
             continue
         if isinstance(payload, dict):
             events = payload.get("events") or payload.get("logs") or []
@@ -224,7 +225,7 @@ def main() -> int:
     try:
         files_payload = request_json(f"/v6/deployments/{deployment_id}/files", token, query)
         files = flatten_files(files_payload)
-    except Exception:
+    except (json.JSONDecodeError, TimeoutError, urllib.error.HTTPError, urllib.error.URLError):
         files = []
 
     write_report(deployment, events, files)

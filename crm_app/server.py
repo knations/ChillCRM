@@ -2688,8 +2688,14 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         payload = verify_signed_session_token(token, secret)
         if not payload:
             return None
+        try:
+            user_id = int(payload.get("uid") or 0)
+        except (TypeError, ValueError):
+            return None
+        if user_id <= 0:
+            return None
         with self.db() as conn:
-            user = self.load_app_user(conn, int(payload.get("uid") or 0))
+            user = self.load_app_user(conn, user_id)
         if not user or str(user.get("status") or "").lower() != "active":
             return None
         return user

@@ -2180,6 +2180,10 @@ def main() -> int:
             assert "HttpOnly" in handler.session_cookie_header(session_token)
             assert "Priority=High" in handler.session_cookie_header(session_token)
             assert "Priority=High" in handler.clear_session_cookie_header()
+            malformed_session = server.signed_session_token({"uid": "not-a-user-id", "exp": 4_102_444_800}, "unit-test-session-secret")
+            handler.headers = {"Cookie": f"{server.AUTH_COOKIE_NAME}={malformed_session}"}
+            assert handler.current_auth_user() is None
+            handler.headers = {}
             owner_user = {"roles": ["owner"]}
             admin_user = {"roles": ["admin"]}
             staff_user = {"roles": ["staff"]}

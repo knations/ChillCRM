@@ -2074,6 +2074,8 @@ def main() -> int:
                 raise AssertionError("Invalid UTF-8 request body should be rejected.")
             except ValueError as exc:
                 assert "valid UTF-8" in str(exc)
+            assert handler.response_filename('../bad"\r\nname.csv', "export.csv") == "badname.csv"
+            assert handler.response_filename("", "export.csv") == "export.csv"
             captured_errors = []
             body_handler.path = "/api/summary?secret=should-not-log"
             body_handler.command = "GET"

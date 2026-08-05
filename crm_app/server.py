@@ -3370,12 +3370,18 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
     def send_xml(self, text: str, status: int = 200) -> None:
         self.send_text(text, status=status, content_type="application/xml")
 
+    def response_filename(self, filename: Any, fallback: str = "download") -> str:
+        safe = Path(str(filename or "").replace("\\", "/")).name.strip()
+        safe = re.sub(r"[\r\n\"]+", "", safe).strip(" .")
+        return safe[:180] or fallback
+
     def send_csv(self, filename: str, rows: list[dict[str, Any]]) -> None:
         encoded = self.csv_bytes(rows)
+        safe_filename = self.response_filename(filename, "export.csv")
         self.send_response(200)
         self.send_header("Content-Type", "text/csv; charset=utf-8")
         self.send_security_headers()
-        self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
+        self.send_header("Content-Disposition", f'attachment; filename="{safe_filename}"')
         self.send_header("Cache-Control", "no-store")
         self.send_header("Content-Length", str(len(encoded)))
         self.end_headers()
@@ -3398,7 +3404,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
 
     def send_vcard(self, filename: str, text: str) -> None:
         encoded = text.encode("utf-8")
-        safe_filename = filename.replace('"', "")
+        safe_filename = self.response_filename(filename, "contact.vcf")
         self.send_response(200)
         self.send_header("Content-Type", "text/vcard; charset=utf-8")
         self.send_security_headers()
@@ -3410,10 +3416,11 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             self.wfile.write(encoded)
 
     def send_zip(self, filename: str, payload: bytes) -> None:
+        safe_filename = self.response_filename(filename, "package.zip")
         self.send_response(200)
         self.send_header("Content-Type", "application/zip")
         self.send_security_headers()
-        self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
+        self.send_header("Content-Disposition", f'attachment; filename="{safe_filename}"')
         self.send_header("Cache-Control", "no-store")
         self.send_header("Content-Length", str(len(payload)))
         self.end_headers()
@@ -11149,7 +11156,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", "application/zip")
         self.send_security_headers()
-        self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
+        self.send_header("Content-Disposition", f'attachment; filename="{self.response_filename(filename, "document_files.zip")}"')
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
         if not self.should_write_response_body():

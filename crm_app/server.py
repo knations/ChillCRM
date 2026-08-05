@@ -3525,8 +3525,12 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         if candidate.startswith("/") and not candidate.startswith("//"):
             return candidate
         parsed = urllib.parse.urlparse(candidate)
-        if parsed.scheme in {"http", "https"} and parsed.netloc:
-            return candidate
+        if parsed.scheme in {"http", "https"} and parsed.netloc and not parsed.username and not parsed.password:
+            host = (parsed.hostname or "").strip(".").lower()
+            configured_storage_host = hostname_from_url_or_host(self.supabase_url())
+            host_allowed = host == configured_storage_host if configured_storage_host else host.endswith(".supabase.co")
+            if host_allowed:
+                return candidate
         raise ValueError("Redirect URL is not valid.")
 
     def send_redirect(self, url: str, status: int = 302) -> None:

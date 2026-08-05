@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import argparse
 import csv
 import getpass
 import json
@@ -33,11 +34,28 @@ class HttpResult:
         return json.loads(self.body.decode("utf-8")) if self.body else {}
 
 
-def prompt_secret(label: str, env_name: str) -> str:
+def prompt_secret(label: str, env_name: str, *, prompt: bool = False) -> str:
     value = os.environ.get(env_name, "").strip()
     if value:
         return value
-    return getpass.getpass(f"{label}: ").strip()
+    if not prompt:
+        return ""
+    try:
+        return getpass.getpass(f"{label}: ").strip()
+    except (EOFError, OSError):
+        return ""
+
+
+def prompt_text(label: str, env_name: str, *, prompt: bool = False) -> str:
+    value = os.environ.get(env_name, "").strip()
+    if value:
+        return value
+    if not prompt:
+        return ""
+    try:
+        return input(f"{label}: ").strip()
+    except EOFError:
+        return ""
 
 
 def normalize_base_url(value: str) -> str:
@@ -138,7 +156,7 @@ def login_opener(base_url: str, email: str, password: str, bypass_secret: str) -
 def write_report(base_url: str, rows: list[dict[str, str]]) -> None:
     REPORTS_DIR.mkdir(exist_ok=True)
     passed = sum(1 for row in rows if row["status"] == "passed")
-    failed = sum(1 for row in rows if row["status"] == "failed")
+    failed = sum(1 for row in rows if row["status"] != "passed")
     md = [
         "# Vercel Hosted App Smoke Test",
         "",
@@ -161,15 +179,54 @@ def write_report(base_url: str, rows: list[dict[str, str]]) -> None:
 
 
 def main() -> int:
-    base_url = normalize_base_url(
-        sys.argv[1] if len(sys.argv) > 1 else os.environ.get("CHILLCRM_VERCEL_URL", "")
-    )
-    email = os.environ.get("AUTH_BOOTSTRAP_ADMIN_EMAIL", "").strip() or input("Admin email: ").strip()
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("url", nargs="?", default=os.environ.get("CHILLCRM_VERCEL_URL", ""))
+    parser.add_argument("--prompt-secrets", action="store_true", help="Prompt privately for missing owner credentials or Vercel bypass secret.")
+    args = parser.parse_args()
+
+    try:
+        base_url = normalize_base_url(args.url)
+    except RuntimeError as exc:
+        rows = [{"step": "private_inputs", "status": "input_required", "evidence": str(exc)}]
+        write_report("missing", rows)
+        print(json.dumps({"url": "", "passed": 0, "failed": 1, "input_required": 1, "report": str(REPORTS_DIR / "vercel_hosted_app_smoke.md")}, indent=2))
+        return 1
+
+    email = prompt_text("Admin email", "AUTH_BOOTSTRAP_ADMIN_EMAIL", prompt=args.prompt_secrets)
     recovery_password = os.environ.get("CHILLCRM_OWNER_RECOVERY_PASSWORD", "").strip()
-    password = recovery_password or prompt_secret("Bootstrap password", "AUTH_BOOTSTRAP_ADMIN_PASSWORD")
+    password = recovery_password or prompt_secret("Bootstrap password", "AUTH_BOOTSTRAP_ADMIN_PASSWORD", prompt=args.prompt_secrets)
     bypass_secret = os.environ.get("VERCEL_PROTECTION_BYPASS_SECRET", "").strip()
     if not bypass_secret and not public_app_auth_domain(base_url) and not env_flag("CHILLCRM_SKIP_VERCEL_BYPASS"):
-        bypass_secret = prompt_secret("Vercel protection bypass secret", "VERCEL_PROTECTION_BYPASS_SECRET")
+        bypass_secret = prompt_secret("Vercel protection bypass secret", "VERCEL_PROTECTION_BYPASS_SECRET", prompt=args.prompt_secrets)
+    missing_inputs = []
+    if not email:
+        missing_inputs.append("AUTH_BOOTSTRAP_ADMIN_EMAIL")
+    if not password:
+        missing_inputs.append("AUTH_BOOTSTRAP_ADMIN_PASSWORD")
+    if not bypass_secret and not public_app_auth_domain(base_url) and not env_flag("CHILLCRM_SKIP_VERCEL_BYPASS"):
+        missing_inputs.append("VERCEL_PROTECTION_BYPASS_SECRET")
+    if missing_inputs:
+        rows = [
+            {
+                "step": "private_inputs",
+                "status": "input_required",
+                "evidence": f"Missing {', '.join(missing_inputs)}. Supply environment values or rerun with --prompt-secrets.",
+            }
+        ]
+        write_report(base_url, rows)
+        print(
+            json.dumps(
+                {
+                    "url": base_url,
+                    "passed": 0,
+                    "failed": 1,
+                    "input_required": 1,
+                    "report": str(REPORTS_DIR / "vercel_hosted_app_smoke.md"),
+                },
+                indent=2,
+            )
+        )
+        return 1
     expect_document_file_access = env_flag("EXPECT_DOCUMENT_FILE_ACCESS")
     expected_environment = (
         os.environ.get("CHILLCRM_EXPECT_RUNTIME_ENVIRONMENT", "").strip()

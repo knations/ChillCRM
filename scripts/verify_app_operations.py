@@ -1637,6 +1637,10 @@ def main() -> int:
     assert "verify_source_of_truth_cutover_preflight.py" in safe_gate_runner_report
     assert "validate_owner_gate_reply.py" in safe_gate_runner_report
     assert "prepare_owner_approved_wave_packet.py" in safe_gate_runner_report
+    assert "--prompt-secrets" in hosted_smoke_script
+    assert "input_required" in hosted_smoke_script
+    assert "Missing {', '.join(missing_inputs)}" in hosted_smoke_script
+    assert "except (EOFError, OSError)" in hosted_smoke_script
     assert "app_user_self_password_change" in hosted_smoke_script
     assert "owner_password_recovery" in hosted_smoke_script
     assert "CHILLCRM_OWNER_RECOVERY_PASSWORD" in hosted_smoke_script

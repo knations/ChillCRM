@@ -50,7 +50,8 @@ def main() -> int:
     assert "Complete CRM Package" in app_js
     assert "Document Files" in app_js
     assert "def operations_status" in server_py
-    assert 'elif path == "/api/operations_status"' in server_py
+    assert "def get_json_route_handlers" in server_py
+    assert '"/api/operations_status": self.operations_status' in server_py
     assert "from crm_app import runtime_health" in server_py
     assert "from crm_app.database import" in server_py
     assert "class PostgresCompatConnection" in database_py

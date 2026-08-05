@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import argparse
 import base64
-import binascii
 import csv
 import email.utils
 import hashlib
@@ -34,6 +33,14 @@ from pathlib import Path
 from typing import Any
 
 try:
+    from crm_app.auth_tokens import (
+        b64url_decode,
+        b64url_encode,
+        password_hash,
+        signed_session_token,
+        verify_password,
+        verify_signed_session_token,
+    )
     from crm_app.database import (
         POSTGRES_ADAPTER_VALUES,
         PostgresCompatConnection,
@@ -45,11 +52,20 @@ try:
         translate_sqlite_parameters,
         translate_sqlite_sql_for_postgres,
     )
+    from crm_app import exporting
     from crm_app import file_assets
     from crm_app.request_io import RequestBodyTooLarge
     from crm_app import runtime_health
     from crm_app import request_io
 except ImportError:  # pragma: no cover - supports direct local execution
+    from auth_tokens import (  # type: ignore
+        b64url_decode,
+        b64url_encode,
+        password_hash,
+        signed_session_token,
+        verify_password,
+        verify_signed_session_token,
+    )
     from database import (  # type: ignore
         POSTGRES_ADAPTER_VALUES,
         PostgresCompatConnection,
@@ -61,6 +77,7 @@ except ImportError:  # pragma: no cover - supports direct local execution
         translate_sqlite_parameters,
         translate_sqlite_sql_for_postgres,
     )
+    import exporting  # type: ignore
     import file_assets  # type: ignore
     from request_io import RequestBodyTooLarge  # type: ignore
     import runtime_health  # type: ignore
@@ -595,36 +612,6 @@ def production_hostname(value: str) -> bool:
     return hostname_from_url_or_host(value) in PRODUCTION_HOSTS
 
 
-def b64url_encode(payload: bytes) -> str:
-    return base64.urlsafe_b64encode(payload).decode("ascii").rstrip("=")
-
-
-def b64url_decode(payload: str) -> bytes:
-    padding = "=" * (-len(payload) % 4)
-    return base64.urlsafe_b64decode((payload + padding).encode("ascii"))
-
-
-def password_hash(password: str, iterations: int = 260_000) -> str:
-    salt = secrets.token_bytes(16)
-    digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, iterations)
-    return f"pbkdf2_sha256${iterations}${b64url_encode(salt)}${b64url_encode(digest)}"
-
-
-def verify_password(password: str, stored_hash: str | None) -> bool:
-    if not stored_hash:
-        return False
-    try:
-        algorithm, iteration_text, salt_text, digest_text = stored_hash.split("$", 3)
-        if algorithm != "pbkdf2_sha256":
-            return False
-        iterations = int(iteration_text)
-        expected = b64url_decode(digest_text)
-        actual = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), b64url_decode(salt_text), iterations)
-        return hmac.compare_digest(actual, expected)
-    except (binascii.Error, TypeError, ValueError):
-        return False
-
-
 def json_response_default(value: Any) -> Any:
     if isinstance(value, Decimal):
         if not value.is_finite():
@@ -633,26 +620,6 @@ def json_response_default(value: Any) -> Any:
     if isinstance(value, (date, datetime)):
         return value.isoformat()
     raise TypeError(f"Object of type {value.__class__.__name__} is not JSON serializable")
-
-
-def signed_session_token(payload: dict[str, Any], secret: str) -> str:
-    encoded_payload = b64url_encode(json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8"))
-    signature = hmac.new(secret.encode("utf-8"), encoded_payload.encode("ascii"), hashlib.sha256).digest()
-    return f"{encoded_payload}.{b64url_encode(signature)}"
-
-
-def verify_signed_session_token(token: str, secret: str) -> dict[str, Any] | None:
-    try:
-        encoded_payload, encoded_signature = token.split(".", 1)
-        expected = b64url_encode(hmac.new(secret.encode("utf-8"), encoded_payload.encode("ascii"), hashlib.sha256).digest())
-        if not hmac.compare_digest(encoded_signature, expected):
-            return None
-        payload = json.loads(b64url_decode(encoded_payload))
-        if int(payload.get("exp") or 0) < int(time.time()):
-            return None
-        return payload
-    except (binascii.Error, json.JSONDecodeError, TypeError, UnicodeDecodeError, ValueError):
-        return None
 
 
 class CborDecodeError(ValueError):
@@ -3558,6 +3525,92 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             return
         self.send_file(path)
 
+    def get_json_route_handlers(self, params: dict[str, list[str]]) -> dict[str, Any]:
+        return {
+            "/api/summary": self.summary,
+            "/api/owner_brief": self.owner_brief,
+            "/api/operations_status": self.operations_status,
+            "/api/production_gates": lambda: {"production_gates": self.production_gate_status()},
+            "/api/project_decisions": self.project_decisions,
+            "/api/list": lambda: self.list_records(params),
+            "/api/pipeline_board": lambda: self.pipeline_board(params),
+            "/api/detail": lambda: self.record_detail(params),
+            "/api/tasks": lambda: self.tasks(params),
+            "/api/activity": lambda: self.activity(params),
+            "/api/archive": lambda: self.archive_items(params),
+            "/api/archive_item": lambda: self.archive_item_detail(params),
+            "/api/tags": lambda: self.tags(params),
+            "/api/custom_fields": lambda: self.custom_fields(params),
+            "/api/linked_resources": lambda: self.linked_resources(params),
+            "/api/profile_filters": lambda: self.profile_filters(params),
+            "/api/create_options": lambda: self.create_options(params),
+            "/api/saved_views": lambda: self.saved_views(params),
+            "/api/export_manifest": self.export_manifest,
+            "/api/search": lambda: self.search(params),
+            "/api/cleanup": self.cleanup,
+            "/api/cleanup_execution_preview": self.cleanup_execution_preview,
+            "/api/cleanup_groups": lambda: self.cleanup_groups(params),
+            "/api/review_flags": lambda: self.review_flags(params),
+            "/api/backups": self.backups,
+            "/api/app_users": self.app_users_payload,
+        }
+
+    def get_csv_route_handlers(self, params: dict[str, list[str]]) -> dict[str, Any]:
+        return {
+            "/api/export": lambda: self.export_rows(params),
+            "/api/export_list": lambda: self.export_list_rows(params),
+            "/api/export_cleanup_groups": lambda: self.export_cleanup_group_rows(params),
+        }
+
+    def post_json_route_handlers(self, payload: dict[str, Any], auth_user: dict[str, Any] | None, action_key: str | None) -> dict[str, Any]:
+        return {
+            "/api/update_record": lambda: self.update_record(payload, auth_user, action_key),
+            "/api/create_record": lambda: self.create_record(payload, auth_user, action_key),
+            "/api/set_record_lifecycle": lambda: self.set_record_lifecycle(payload, auth_user, action_key),
+            "/api/create_tag": lambda: self.create_tag(payload, auth_user, action_key),
+            "/api/rename_tag": lambda: self.rename_tag(payload, auth_user, action_key),
+            "/api/delete_tag": lambda: self.delete_tag(payload, auth_user, action_key),
+            "/api/update_tags": lambda: self.update_tags(payload, auth_user, action_key),
+            "/api/update_person_operator_avatar": lambda: self.update_person_operator_avatar(payload, auth_user, action_key),
+            "/api/update_deal_sales_profile": lambda: self.update_deal_sales_profile(payload, auth_user, action_key),
+            "/api/update_addresses": lambda: self.update_addresses(payload, auth_user, action_key),
+            "/api/upload_profile_image": lambda: self.upload_profile_image(payload, auth_user, action_key),
+            "/api/upload_record_file": lambda: self.upload_record_file(payload, auth_user, action_key),
+            "/api/remove_profile_image": lambda: self.remove_profile_image(payload, auth_user, action_key),
+            "/api/add_note": lambda: self.add_note(payload, auth_user, action_key),
+            "/api/add_call_log": lambda: self.add_call_log(payload, auth_user, action_key),
+            "/api/update_note": lambda: self.update_note(payload, auth_user, action_key),
+            "/api/update_call_log": lambda: self.update_call_log(payload, auth_user, action_key),
+            "/api/add_task": lambda: self.add_task(payload, auth_user, action_key),
+            "/api/save_portal_profile": lambda: self.save_portal_profile(payload, auth_user, action_key),
+            "/api/add_portal_next_step": lambda: self.add_portal_next_step(payload, auth_user, action_key),
+            "/api/update_portal_next_step": lambda: self.update_portal_next_step(payload, auth_user, action_key),
+            "/api/add_portal_client_note": lambda: self.add_portal_client_note(payload, auth_user, action_key),
+            "/api/update_portal_client_note": lambda: self.update_portal_client_note(payload, auth_user, action_key),
+            "/api/set_portal_document_share": lambda: self.set_portal_document_share(payload, auth_user, action_key),
+            "/api/update_task": lambda: self.update_task(payload, auth_user, action_key),
+            "/api/copy_imported_task_to_local": lambda: self.copy_imported_task_to_local(payload, auth_user, action_key),
+            "/api/link_archive_item": lambda: self.link_archive_item(payload, auth_user, action_key),
+            "/api/save_archive_review": lambda: self.save_archive_review(payload, auth_user, action_key),
+            "/api/complete_task": lambda: self.complete_task(payload, auth_user, action_key),
+            "/api/resolve_flag": lambda: self.resolve_flag(payload, auth_user, action_key),
+            "/api/save_cleanup_decision": lambda: self.save_cleanup_decision(payload, auth_user, action_key),
+            "/api/merge_duplicate_people": lambda: self.merge_duplicate_people(payload, auth_user, action_key),
+            "/api/save_project_decision": lambda: self.save_project_decision(payload, auth_user, action_key),
+            "/api/webhooks/zapier_purchase": lambda: self.zapier_purchase_webhook(payload),
+            "/api/save_view": lambda: self.save_view(payload),
+            "/api/delete_view": lambda: self.delete_view(payload),
+            "/api/backup": lambda: {"backup": str(self.create_backup("manual"))},
+            "/api/restore_backup": lambda: self.restore_backup(payload),
+            "/api/app_users/save": lambda: self.save_app_user(payload, auth_user),
+            "/api/app_users/deactivate": lambda: self.change_app_user_status(payload, "deactivated", auth_user),
+            "/api/app_users/reactivate": lambda: self.change_app_user_status(payload, "active", auth_user),
+            "/api/app_users/set_password": lambda: self.set_app_user_password(payload, auth_user),
+            "/api/auth/change_password": lambda: self.change_current_app_user_password(payload, auth_user),
+            "/api/auth/passkey/register/options": lambda: self.passkey_registration_options(auth_user),
+            "/api/auth/passkey/register/verify": lambda: self.verify_passkey_registration(payload, auth_user),
+        }
+
     def do_GET(self) -> None:
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path
@@ -3599,25 +3652,9 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                 self.send_file(APP_DIR / "static" / "index.html")
             elif path.startswith("/static/"):
                 self.send_static_file(path)
-            elif path == "/api/summary":
-                self.send_json(self.summary())
-            elif path == "/api/owner_brief":
-                self.send_json(self.owner_brief())
-            elif path == "/api/operations_status":
-                self.send_json(self.operations_status())
-            elif path == "/api/production_gates":
-                self.send_json({"production_gates": self.production_gate_status()})
             elif path in {"/health", "/api/health"}:
                 payload, status = self.health_status()
                 self.send_json(payload, status)
-            elif path == "/api/project_decisions":
-                self.send_json(self.project_decisions())
-            elif path == "/api/list":
-                self.send_json(self.list_records(params))
-            elif path == "/api/pipeline_board":
-                self.send_json(self.pipeline_board(params))
-            elif path == "/api/detail":
-                self.send_json(self.record_detail(params))
             elif path == "/api/vcard":
                 card = self.vcard_contact_card(params)
                 if card.get("error"):
@@ -3628,33 +3665,8 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                 self.send_profile_image(params)
             elif path == "/api/record_file":
                 self.send_record_file(params)
-            elif path == "/api/tasks":
-                self.send_json(self.tasks(params))
-            elif path == "/api/activity":
-                self.send_json(self.activity(params))
-            elif path == "/api/archive":
-                self.send_json(self.archive_items(params))
-            elif path == "/api/archive_item":
-                self.send_json(self.archive_item_detail(params))
             elif path == "/api/archive_file":
                 self.send_archive_file(params)
-            elif path == "/api/tags":
-                self.send_json(self.tags(params))
-            elif path == "/api/custom_fields":
-                self.send_json(self.custom_fields(params))
-            elif path == "/api/linked_resources":
-                self.send_json(self.linked_resources(params))
-            elif path == "/api/profile_filters":
-                self.send_json(self.profile_filters(params))
-            elif path == "/api/create_options":
-                self.send_json(self.create_options(params))
-            elif path == "/api/saved_views":
-                self.send_json(self.saved_views(params))
-            elif path == "/api/export_manifest":
-                self.send_json(self.export_manifest())
-            elif path == "/api/export":
-                export = self.export_rows(params)
-                self.send_csv(export["filename"], export["rows"])
             elif path == "/api/export_package":
                 if not self.bulk_package_exports_enabled():
                     self.send_bulk_package_export_locked(path)
@@ -3666,29 +3678,18 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                     self.send_bulk_package_export_locked(path)
                     return
                 self.send_document_files_package()
-            elif path == "/api/export_list":
-                export = self.export_list_rows(params)
-                self.send_csv(export["filename"], export["rows"])
-            elif path == "/api/export_cleanup_groups":
-                export = self.export_cleanup_group_rows(params)
-                self.send_csv(export["filename"], export["rows"])
-            elif path == "/api/search":
-                self.send_json(self.search(params))
-            elif path == "/api/cleanup":
-                self.send_json(self.cleanup())
-            elif path == "/api/cleanup_execution_preview":
-                self.send_json(self.cleanup_execution_preview())
-            elif path == "/api/cleanup_groups":
-                self.send_json(self.cleanup_groups(params))
-            elif path == "/api/review_flags":
-                self.send_json(self.review_flags(params))
-            elif path == "/api/backups":
-                self.send_json(self.backups())
-            elif path == "/api/app_users":
-                self.send_json(self.app_users_payload())
             elif path.startswith("/reports/"):
                 self.send_file(REPORTS_DIR / Path(path).name)
             else:
+                json_handler = self.get_json_route_handlers(params).get(path)
+                if json_handler:
+                    self.send_json(json_handler())
+                    return
+                csv_handler = self.get_csv_route_handlers(params).get(path)
+                if csv_handler:
+                    export = csv_handler()
+                    self.send_csv(export["filename"], export["rows"])
+                    return
                 self.send_text("Not found", 404)
         except Exception as exc:
             self.send_server_error(exc)
@@ -3758,96 +3759,9 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                     self.send_json(payload, status)
                     return
             payload = self.read_json_body()
-            if path == "/api/update_record":
-                self.send_json(self.update_record(payload, auth_user, action_key))
-            elif path == "/api/create_record":
-                self.send_json(self.create_record(payload, auth_user, action_key))
-            elif path == "/api/set_record_lifecycle":
-                self.send_json(self.set_record_lifecycle(payload, auth_user, action_key))
-            elif path == "/api/create_tag":
-                self.send_json(self.create_tag(payload, auth_user, action_key))
-            elif path == "/api/rename_tag":
-                self.send_json(self.rename_tag(payload, auth_user, action_key))
-            elif path == "/api/delete_tag":
-                self.send_json(self.delete_tag(payload, auth_user, action_key))
-            elif path == "/api/update_tags":
-                self.send_json(self.update_tags(payload, auth_user, action_key))
-            elif path == "/api/update_person_operator_avatar":
-                self.send_json(self.update_person_operator_avatar(payload, auth_user, action_key))
-            elif path == "/api/update_deal_sales_profile":
-                self.send_json(self.update_deal_sales_profile(payload, auth_user, action_key))
-            elif path == "/api/update_addresses":
-                self.send_json(self.update_addresses(payload, auth_user, action_key))
-            elif path == "/api/upload_profile_image":
-                self.send_json(self.upload_profile_image(payload, auth_user, action_key))
-            elif path == "/api/upload_record_file":
-                self.send_json(self.upload_record_file(payload, auth_user, action_key))
-            elif path == "/api/remove_profile_image":
-                self.send_json(self.remove_profile_image(payload, auth_user, action_key))
-            elif path == "/api/add_note":
-                self.send_json(self.add_note(payload, auth_user, action_key))
-            elif path == "/api/add_call_log":
-                self.send_json(self.add_call_log(payload, auth_user, action_key))
-            elif path == "/api/update_note":
-                self.send_json(self.update_note(payload, auth_user, action_key))
-            elif path == "/api/update_call_log":
-                self.send_json(self.update_call_log(payload, auth_user, action_key))
-            elif path == "/api/add_task":
-                self.send_json(self.add_task(payload, auth_user, action_key))
-            elif path == "/api/save_portal_profile":
-                self.send_json(self.save_portal_profile(payload, auth_user, action_key))
-            elif path == "/api/add_portal_next_step":
-                self.send_json(self.add_portal_next_step(payload, auth_user, action_key))
-            elif path == "/api/update_portal_next_step":
-                self.send_json(self.update_portal_next_step(payload, auth_user, action_key))
-            elif path == "/api/add_portal_client_note":
-                self.send_json(self.add_portal_client_note(payload, auth_user, action_key))
-            elif path == "/api/update_portal_client_note":
-                self.send_json(self.update_portal_client_note(payload, auth_user, action_key))
-            elif path == "/api/set_portal_document_share":
-                self.send_json(self.set_portal_document_share(payload, auth_user, action_key))
-            elif path == "/api/update_task":
-                self.send_json(self.update_task(payload, auth_user, action_key))
-            elif path == "/api/copy_imported_task_to_local":
-                self.send_json(self.copy_imported_task_to_local(payload, auth_user, action_key))
-            elif path == "/api/link_archive_item":
-                self.send_json(self.link_archive_item(payload, auth_user, action_key))
-            elif path == "/api/save_archive_review":
-                self.send_json(self.save_archive_review(payload, auth_user, action_key))
-            elif path == "/api/complete_task":
-                self.send_json(self.complete_task(payload, auth_user, action_key))
-            elif path == "/api/resolve_flag":
-                self.send_json(self.resolve_flag(payload, auth_user, action_key))
-            elif path == "/api/save_cleanup_decision":
-                self.send_json(self.save_cleanup_decision(payload, auth_user, action_key))
-            elif path == "/api/merge_duplicate_people":
-                self.send_json(self.merge_duplicate_people(payload, auth_user, action_key))
-            elif path == "/api/save_project_decision":
-                self.send_json(self.save_project_decision(payload, auth_user, action_key))
-            elif path == "/api/webhooks/zapier_purchase":
-                self.send_json(self.zapier_purchase_webhook(payload))
-            elif path == "/api/save_view":
-                self.send_json(self.save_view(payload))
-            elif path == "/api/delete_view":
-                self.send_json(self.delete_view(payload))
-            elif path == "/api/backup":
-                self.send_json({"backup": str(self.create_backup("manual"))})
-            elif path == "/api/restore_backup":
-                self.send_json(self.restore_backup(payload))
-            elif path == "/api/app_users/save":
-                self.send_json(self.save_app_user(payload, auth_user))
-            elif path == "/api/app_users/deactivate":
-                self.send_json(self.change_app_user_status(payload, "deactivated", auth_user))
-            elif path == "/api/app_users/reactivate":
-                self.send_json(self.change_app_user_status(payload, "active", auth_user))
-            elif path == "/api/app_users/set_password":
-                self.send_json(self.set_app_user_password(payload, auth_user))
-            elif path == "/api/auth/change_password":
-                self.send_json(self.change_current_app_user_password(payload, auth_user))
-            elif path == "/api/auth/passkey/register/options":
-                self.send_json(self.passkey_registration_options(auth_user))
-            elif path == "/api/auth/passkey/register/verify":
-                self.send_json(self.verify_passkey_registration(payload, auth_user))
+            post_handler = self.post_json_route_handlers(payload, auth_user, action_key).get(path)
+            if post_handler:
+                self.send_json(post_handler())
             else:
                 self.send_text("Not found", 404)
         except RequestBodyTooLarge as exc:
@@ -10747,7 +10661,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             "package": {
                 "label": "Complete CRM Package",
                 "url": "/api/export_package",
-                "filename": "chillcrm_complete_package.zip",
+                "filename": exporting.COMPLETE_PACKAGE_FILENAME,
                 "description": "Downloads the current CRM data, operational CSV exports, key reports, and project docs in one zip file.",
                 "contents": ["CRM data", "CSV exports", "key reports", "project docs"],
                 "enabled": bulk_export["enabled"],
@@ -10756,7 +10670,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             "document_package": {
                 "label": "Document Files",
                 "url": "/api/export_document_files_package",
-                "filename": "chillcrm_document_files.zip",
+                "filename": exporting.DOCUMENT_FILES_PACKAGE_FILENAME,
                 "description": "Downloads CRM document files as one zip file.",
                 "file_count": document_package["file_count"],
                 "bytes": document_package["bytes"],
@@ -10771,37 +10685,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         }
 
     def export_package_status(self) -> dict[str, Any]:
-        manifest = self.export_manifest()
-        package = manifest.get("package") or {}
-        document_package = manifest.get("document_package") or {}
-        bulk_export = manifest.get("bulk_export") or self.bulk_package_export_status()
-        bulk_enabled = bool(bulk_export.get("enabled"))
-        package_ready = bool(package.get("url")) and bulk_enabled
-        document_ready = bool(document_package.get("available")) and bulk_enabled
-        total_count = 2
-        ready_count = int(package_ready) + int(document_ready)
-        return {
-            "status": "complete" if ready_count == total_count else "locked" if not bulk_enabled else "attention",
-            "ready_count": ready_count,
-            "total_count": total_count,
-            "bulk_export": bulk_export,
-            "core_package": {
-                "label": package.get("label"),
-                "url": package.get("url"),
-                "filename": package.get("filename"),
-                "ready": package_ready,
-                "enabled": bulk_enabled,
-            },
-            "document_package": {
-                "label": document_package.get("label"),
-                "url": document_package.get("url"),
-                "filename": document_package.get("filename"),
-                "ready": document_ready,
-                "enabled": bulk_enabled,
-                "file_count": int(document_package.get("file_count") or 0),
-                "bytes": int(document_package.get("bytes") or 0),
-            },
-        }
+        return exporting.export_package_status(self.export_manifest(), self.bulk_package_export_status())
 
     def document_file_package_entries(self) -> list[dict[str, Any]]:
         allowed_root = (PROJECT_ROOT / "raw_api_exports").resolve()
@@ -10851,33 +10735,16 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         }
 
     def document_file_package_manifest_rows(self, entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        return [
-            {
-                "archive_item_id": entry["id"],
-                "title": entry.get("title"),
-                "record_type": entry.get("record_type"),
-                "record_id": entry.get("record_id"),
-                "source_collection": entry.get("source_collection"),
-                "zendesk_record_id": entry.get("zendesk_record_id"),
-                "occurred_at": entry.get("occurred_at"),
-                "local_file": entry.get("local_file"),
-                "package_path": entry.get("archive_path"),
-                "bytes": entry.get("bytes"),
-            }
-            for entry in entries
-        ]
+        return exporting.document_file_package_manifest_rows(entries)
 
     def send_document_files_package(self) -> None:
         entries = self.document_file_package_entries()
         stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-        filename = f"chillcrm_document_files_{stamp}.zip"
-        package_manifest = {
-            "generated_at": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
-            "source": "CHILLCRM document files",
-            "file_count": len(entries),
-            "bytes": sum(int(entry.get("bytes") or 0) for entry in entries),
-            "documents": self.document_file_package_manifest_rows(entries),
-        }
+        filename = exporting.document_files_package_filename(stamp)
+        package_manifest = exporting.document_file_package_manifest(
+            datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+            entries,
+        )
         self.send_response(200)
         self.send_header("Content-Type", "application/zip")
         self.send_security_headers()
@@ -10895,16 +10762,9 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
     def export_package(self) -> dict[str, Any]:
         generated_at = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
         stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-        filename = f"chillcrm_complete_package_{stamp}.zip"
+        filename = exporting.complete_package_filename(stamp)
         manifest = self.export_manifest()
-        package_manifest: dict[str, Any] = {
-            "generated_at": generated_at,
-            "source": "CHILLCRM",
-            "database": None,
-            "csv_exports": [],
-            "reports": [],
-            "docs": [],
-        }
+        package_manifest = exporting.complete_package_manifest(generated_at)
         buffer = io.BytesIO()
         with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as archive:
             if self.db_path.exists():
@@ -10931,18 +10791,9 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                     }
                 )
 
-            retired_report_tokens = (
-                "zendesk",
-                "migration_completion",
-                "hosted_database_migration",
-                "staging_refresh",
-                "staging_data",
-                "source_of_truth_cutover",
-                "cutover_rollback",
-            )
             for report_path in sorted(REPORTS_DIR.glob("*")):
                 if report_path.is_file() and report_path.suffix.lower() in {".md", ".csv", ".sql"}:
-                    if any(token in report_path.name.lower() for token in retired_report_tokens):
+                    if not exporting.include_report_in_package(report_path.name):
                         continue
                     archive_name = f"reports/{report_path.name}"
                     archive.write(report_path, archive_name)

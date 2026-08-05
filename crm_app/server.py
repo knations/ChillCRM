@@ -517,6 +517,9 @@ CLEANUP_POLICY_LANES = {
 URL_RE = re.compile(r"https?://[^\s<>'\"]+")
 POSTGRES_ADAPTER_VALUES = {"postgres", "hosted_postgres", "supabase"}
 AUTH_COOKIE_NAME = "chillcrm_session"
+AUTH_LOGIN_MAX_FAILURES = 6
+AUTH_LOGIN_FAILURE_WINDOW_SECONDS = 10 * 60
+AUTH_LOGIN_LOCK_SECONDS = 10 * 60
 PASSKEY_USER_VERIFICATION_REQUIRED = True
 WEBAUTHN_REGISTER_CHALLENGE_KIND = "passkey_register"
 WEBAUTHN_LOGIN_CHALLENGE_KIND = "passkey_login"
@@ -1361,6 +1364,7 @@ def ensure_runtime_schema(db_path: Path) -> None:
 
 class CRMRequestHandler(BaseHTTPRequestHandler):
     db_path: Path = DEFAULT_DB
+    login_throttle_attempts: dict[str, dict[str, float]] = {}
     write_locked_post_paths = frozenset(
         {
             "/api/update_record",
@@ -2917,6 +2921,55 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             401,
         )
 
+    def request_client_ip(self) -> str:
+        headers = getattr(self, "headers", {}) or {}
+        forwarded = str(headers.get("X-Forwarded-For") or "").split(",")[0].strip()
+        if forwarded:
+            return forwarded
+        real_ip = str(headers.get("X-Real-IP") or "").strip()
+        if real_ip:
+            return real_ip
+        client_address = getattr(self, "client_address", ("unknown", 0))
+        return str(client_address[0] if client_address else "unknown")
+
+    def login_throttle_key(self, email: str) -> str:
+        return f"{email.lower()}|{self.request_client_ip()}"
+
+    def login_throttle_status(self, email: str) -> dict[str, Any]:
+        now = time.time()
+        key = self.login_throttle_key(email)
+        attempt = self.login_throttle_attempts.get(key)
+        if not attempt:
+            return {"locked": False, "retry_after": 0, "attempts": 0}
+        locked_until = float(attempt.get("locked_until") or 0)
+        if locked_until > now:
+            return {
+                "locked": True,
+                "retry_after": max(1, int(locked_until - now)),
+                "attempts": int(attempt.get("attempts") or 0),
+            }
+        first_seen = float(attempt.get("first_seen") or now)
+        if now - first_seen > AUTH_LOGIN_FAILURE_WINDOW_SECONDS:
+            self.login_throttle_attempts.pop(key, None)
+            return {"locked": False, "retry_after": 0, "attempts": 0}
+        return {"locked": False, "retry_after": 0, "attempts": int(attempt.get("attempts") or 0)}
+
+    def record_login_failure(self, email: str) -> dict[str, Any]:
+        now = time.time()
+        key = self.login_throttle_key(email)
+        attempt = self.login_throttle_attempts.get(key) or {"attempts": 0, "first_seen": now, "locked_until": 0.0}
+        first_seen = float(attempt.get("first_seen") or now)
+        if now - first_seen > AUTH_LOGIN_FAILURE_WINDOW_SECONDS:
+            attempt = {"attempts": 0, "first_seen": now, "locked_until": 0.0}
+        attempt["attempts"] = int(attempt.get("attempts") or 0) + 1
+        if int(attempt["attempts"]) >= AUTH_LOGIN_MAX_FAILURES:
+            attempt["locked_until"] = now + AUTH_LOGIN_LOCK_SECONDS
+        self.login_throttle_attempts[key] = attempt
+        return self.login_throttle_status(email)
+
+    def record_login_success(self, email: str) -> None:
+        self.login_throttle_attempts.pop(self.login_throttle_key(email), None)
+
     def login_response(self, payload: dict[str, Any]) -> None:
         if not self.auth_required_enabled():
             self.send_json({"ok": True, "auth": self.auth_status_payload(None)})
@@ -2929,10 +2982,25 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         if not email or not password:
             self.send_json({"ok": False, "error": "Email and password are required.", "code": "login_fields_required"}, 400)
             return
+        throttle = self.login_throttle_status(email)
+        if throttle["locked"]:
+            self.send_json(
+                {
+                    "ok": False,
+                    "error": "Too many sign-in attempts. Wait a few minutes and try again.",
+                    "code": "login_rate_limited",
+                    "retry_after_seconds": throttle["retry_after"],
+                },
+                429,
+                headers={"Retry-After": str(throttle["retry_after"])},
+            )
+            return
         user = self.authenticate_app_user(email, password)
         if not user:
+            self.record_login_failure(email)
             self.send_json({"ok": False, "error": "Invalid email or password.", "code": "invalid_login"}, 401)
             return
+        self.record_login_success(email)
         token = self.create_session_token(user)
         self.send_json({"ok": True, "auth": self.auth_status_payload(user)}, headers={"Set-Cookie": self.session_cookie_header(token)})
 

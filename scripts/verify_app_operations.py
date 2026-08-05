@@ -2003,6 +2003,20 @@ def main() -> int:
             assert invalid_webhook_secret["code"] == "webhook_secret_invalid"
             handler.headers = {}
             assert handler.authenticate_app_user("owner@example.test", "wrong") is None
+            server.CRMRequestHandler.login_throttle_attempts.clear()
+            handler.headers = {"X-Forwarded-For": "203.0.113.10"}
+            assert handler.request_client_ip() == "203.0.113.10"
+            assert handler.login_throttle_status("owner@example.test")["locked"] is False
+            for _ in range(server.AUTH_LOGIN_MAX_FAILURES - 1):
+                assert handler.record_login_failure("owner@example.test")["locked"] is False
+            locked_login = handler.record_login_failure("owner@example.test")
+            assert locked_login["locked"] is True
+            assert locked_login["retry_after"] > 0
+            assert handler.login_throttle_status("owner@example.test")["locked"] is True
+            assert handler.login_throttle_status("other@example.test")["locked"] is False
+            handler.record_login_success("owner@example.test")
+            assert handler.login_throttle_status("owner@example.test")["locked"] is False
+            handler.headers = {}
             auth_user = handler.authenticate_app_user("owner@example.test", "unit-test-password")
             assert auth_user is not None
             assert auth_user["email"] == "owner@example.test"

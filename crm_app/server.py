@@ -3453,9 +3453,12 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         stat = path.stat()
         cache_control = self.file_cache_control(path)
         cacheable = cache_control != "no-store"
-        payload = path.read_bytes()
+        payload: bytes | None = None
         last_modified = email.utils.formatdate(stat.st_mtime, usegmt=True)
-        etag = f'"{hashlib.sha256(payload).hexdigest()[:32]}"' if cacheable else ""
+        etag = ""
+        if cacheable:
+            payload = path.read_bytes()
+            etag = f'"{hashlib.sha256(payload).hexdigest()[:32]}"'
         if cacheable and self.client_has_fresh_file(stat.st_mtime, etag):
             self.send_response(304)
             self.send_security_headers()
@@ -3464,16 +3467,19 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             self.send_header("ETag", etag)
             self.end_headers()
             return
+        if self.should_write_response_body() and payload is None:
+            payload = path.read_bytes()
+        content_length = len(payload) if payload is not None else stat.st_size
         self.send_response(200)
         self.send_header("Content-Type", content_type)
         self.send_security_headers()
-        self.send_header("Content-Length", str(len(payload)))
+        self.send_header("Content-Length", str(content_length))
         self.send_header("Cache-Control", cache_control)
         if cacheable:
             self.send_header("Last-Modified", last_modified)
             self.send_header("ETag", etag)
         self.end_headers()
-        if self.should_write_response_body():
+        if self.should_write_response_body() and payload is not None:
             self.wfile.write(payload)
 
     def client_has_fresh_file(self, modified_at: float, etag: str = "") -> bool:

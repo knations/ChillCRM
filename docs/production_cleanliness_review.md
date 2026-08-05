@@ -30,6 +30,7 @@ The live health endpoint at `https://chillcrm.app/api/health` is green after the
 - Vercel deployment diagnostics now narrow optional event/file fetch failures to expected Vercel API, network timeout, and JSON decode errors instead of silently swallowing every exception.
 - Permission-denial audit failures now leave a server-side warning instead of disappearing silently, while the browser still receives the same non-sensitive permission-denied response.
 - Hosted deployment package verification now uses explicit expected parse/import/local-smoke exception classes and creates its ignored report directory on fresh clones before writing evidence.
+- File serving now avoids loading uncached file payloads for `HEAD` responses, preserving headers while reducing unnecessary runtime work for static/private file probes.
 
 ## Verification Run
 

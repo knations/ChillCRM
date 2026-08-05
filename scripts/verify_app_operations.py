@@ -2256,6 +2256,19 @@ def main() -> int:
             assert not any(event[:2] == ("header", "Last-Modified") for event in uncached_events)
             assert not any(event[:2] == ("header", "ETag") for event in uncached_events)
             assert b"cache test" in uncached_handler.wfile.getvalue()
+            head_handler = server.CRMRequestHandler.__new__(server.CRMRequestHandler)
+            head_handler.path = "/static/cache-test.js"
+            head_handler.command = "HEAD"
+            head_handler.headers = {}
+            head_handler.wfile = io.BytesIO()
+            head_events = []
+            head_handler.send_response = lambda status: head_events.append(("status", status))
+            head_handler.send_header = lambda key, value: head_events.append(("header", key, value))
+            head_handler.end_headers = lambda: head_events.append(("end",))
+            head_handler.send_file(cache_file)
+            assert ("status", 200) in head_events
+            assert ("header", "Content-Length", str(cache_file.stat().st_size)) in head_events
+            assert head_handler.wfile.getvalue() == b""
             captured_errors = []
             body_handler.path = "/api/summary?secret=should-not-log"
             body_handler.command = "GET"

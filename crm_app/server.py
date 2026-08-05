@@ -18579,46 +18579,6 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                 f"link:{resource.get('url')}:{resource.get('source_label')}",
             )
 
-        for item in activity:
-            event_type = str(item.get("activity_type") or "activity")
-            activity_record_type = str(item.get("record_type") or "")
-            activity_record_id = item.get("record_id")
-            current_person_activity = activity_record_type == "person" and str(activity_record_id or "") == str(record.get("id") or "")
-            if event_type == "call_log" and current_person_activity:
-                continue
-            if event_type == "audit" and current_person_activity and item.get("action") in {"add_call_log", "update_call_log"}:
-                continue
-            if event_type in {"note", "task", "task_completed"} and current_person_activity:
-                continue
-            if event_type == "deal":
-                continue
-            add(
-                self.timeline_event(
-                    event_type,
-                    item.get("summary") or labelize(event_type),
-                    item.get("occurred_at"),
-                    meta=[
-                        activity_record_type and labelize(activity_record_type),
-                        item.get("actor_email"),
-                    ],
-                    record_type=activity_record_type,
-                    record_id=activity_record_id,
-                ),
-                f"activity:{event_type}:{activity_record_type}:{activity_record_id}:{item.get('occurred_at')}:{item.get('summary')}",
-            )
-
-        if tags:
-            add(
-                self.timeline_event(
-                    "tags",
-                    "Current tags",
-                    record.get("updated_at") or record.get("created_at"),
-                    body=", ".join(tags),
-                    meta=[f"{len(tags)} tags"],
-                ),
-                "tags:current",
-            )
-
         if record.get("created_at"):
             add(
                 self.timeline_event(

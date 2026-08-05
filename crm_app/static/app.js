@@ -7465,34 +7465,50 @@ function callLogsSection(callLogs, options = {}) {
       </div>
       ${options.allowAdd ? addCallLogForm() : ""}
       ${callLogs
-        .map((call) => `
+        .map((call) => {
+          const callTime = call.call_at || call.created_at;
+          const callMeta = `${formatDateTime(callTime)}${call.direction_label ? ` · ${escapeHtml(call.direction_label)}` : ""}`;
+          return `
           <div class="note call-log-card">
-            <div class="call-log-head">
-              <input class="call-log-edit-summary" type="text" value="${escapeHtml(call.summary || "")}" placeholder="Call summary">
-              <div class="call-log-meta-row">
-                <select class="call-log-edit-direction">
-                  <option value="" ${!call.direction ? "selected" : ""}>General</option>
-                  <option value="outbound" ${call.direction === "outbound" ? "selected" : ""}>Outbound</option>
-                  <option value="inbound" ${call.direction === "inbound" ? "selected" : ""}>Inbound</option>
-                  <option value="voicemail" ${call.direction === "voicemail" ? "selected" : ""}>Voicemail</option>
-                  <option value="other" ${call.direction === "other" ? "selected" : ""}>Other</option>
-                </select>
-                <input class="call-log-edit-at" type="datetime-local" value="${escapeHtml(dateTimeInputValue(call.call_at || call.created_at))}">
-              </div>
+            <div class="call-log-read-head">
+              <strong>${escapeHtml(call.summary || "Call")}</strong>
+              <span class="muted">${callMeta}</span>
             </div>
-            <textarea class="call-log-edit-notes note-input compact-input" rows="5" placeholder="Conversation notes">${escapeHtml(call.notes || "")}</textarea>
+            ${call.notes ? `<p class="call-log-note-text">${linkifyText(call.notes)}</p>` : ""}
             ${call.recording_url ? `
               <div class="call-recording-line">
                 <a href="${safeHref(call.recording_url)}" target="_blank" rel="noopener noreferrer">Call Recording</a>
                 <span class="muted">${escapeHtml([call.provider, call.duration_seconds ? `${call.duration_seconds}s` : ""].filter(Boolean).join(" · "))}</span>
               </div>
             ` : ""}
-            <div class="task-line">
-              <div class="muted">${formatDateTime(call.call_at || call.created_at)}${call.updated_at && call.updated_at !== call.created_at ? ` · Updated ${formatDateTime(call.updated_at)}` : ""}${call.direction_label ? ` · ${escapeHtml(call.direction_label)}` : ""}</div>
-              ${call.editable ? `<button class="text-button save-call-log-button" data-id="${call.source_id}">Save</button>` : `<span class="pill">Imported</span>`}
-            </div>
+            ${
+              call.editable
+                ? `<details class="call-log-edit-details">
+                    <summary>Edit Call</summary>
+                    <div class="call-log-head">
+                      <input class="call-log-edit-summary" type="text" value="${escapeHtml(call.summary || "")}" placeholder="Call summary">
+                      <div class="call-log-meta-row">
+                        <select class="call-log-edit-direction">
+                          <option value="" ${!call.direction ? "selected" : ""}>General</option>
+                          <option value="outbound" ${call.direction === "outbound" ? "selected" : ""}>Outbound</option>
+                          <option value="inbound" ${call.direction === "inbound" ? "selected" : ""}>Inbound</option>
+                          <option value="voicemail" ${call.direction === "voicemail" ? "selected" : ""}>Voicemail</option>
+                          <option value="other" ${call.direction === "other" ? "selected" : ""}>Other</option>
+                        </select>
+                        <input class="call-log-edit-at" type="datetime-local" value="${escapeHtml(dateTimeInputValue(callTime))}">
+                      </div>
+                    </div>
+                    <textarea class="call-log-edit-notes note-input compact-input" rows="5" placeholder="Conversation notes">${escapeHtml(call.notes || "")}</textarea>
+                    <div class="task-line">
+                      <div class="muted">${call.updated_at && call.updated_at !== call.created_at ? `Updated ${formatDateTime(call.updated_at)}` : ""}</div>
+                      <button class="text-button save-call-log-button" data-id="${call.source_id}">Save</button>
+                    </div>
+                  </details>`
+                : `<span class="pill">Imported</span>`
+            }
           </div>
-        `)
+        `;
+        })
         .join("")}
     </div>
   `;

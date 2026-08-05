@@ -4123,6 +4123,41 @@ button {
   gap: 10px;
 }
 
+.call-log-read-head {
+  display: grid;
+  gap: 3px;
+}
+
+.call-log-read-head strong,
+.call-log-note-text {
+  overflow-wrap: anywhere;
+}
+
+.call-log-note-text {
+  color: var(--text);
+  line-height: 1.45;
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.call-log-edit-details {
+  border-top: 1px solid var(--line);
+  padding-top: 8px;
+}
+
+.call-log-edit-details summary {
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 800;
+  list-style-position: inside;
+}
+
+.call-log-edit-details[open] {
+  display: grid;
+  gap: 10px;
+}
+
 .call-recording-line {
   display: flex;
   flex-wrap: wrap;

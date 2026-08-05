@@ -43,6 +43,7 @@ def main() -> int:
     assert "<h3>Conversation</h3>" not in app_js
     assert "Calls and internal notes for this person." not in app_js
     assert "function linkifyText" in app_js
+    assert "call-log-note-text" in app_js
     assert 'target="_blank" rel="noopener noreferrer"' in app_js
 
     timeline_probe = handler.__new__(handler)
@@ -69,9 +70,17 @@ def main() -> int:
                 "record_id": 7,
                 "summary": "Added call log",
                 "occurred_at": "2026-08-05T11:31:00+00:00",
+            },
+            {
+                "activity_type": "audit",
+                "action": "update_record",
+                "record_type": "person",
+                "record_id": 7,
+                "summary": "Updated person",
+                "occurred_at": "2026-08-05T11:32:00+00:00",
             }
         ],
-        tags=[],
+        tags=["Owner Facing Tag"],
         linked_resources=[
             {
                 "source_type": "note",
@@ -91,7 +100,8 @@ def main() -> int:
     assert call_events[0]["url"] == "https://example.com/recording"
     assert call_events[0]["url_label"] == "Open Link"
     assert not [event for event in timeline if event.get("event_type") == "link"]
-    assert not [event for event in timeline if event.get("event_type") == "audit" and event.get("title") == "Added call log"]
+    assert not [event for event in timeline if event.get("event_type") == "audit"]
+    assert not [event for event in timeline if event.get("event_type") == "tags"]
 
     env_backup = {
         key: os.environ.get(key)

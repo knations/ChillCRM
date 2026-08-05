@@ -6,7 +6,6 @@ from __future__ import annotations
 import argparse
 import base64
 import csv
-import email.utils
 import hashlib
 import hmac
 import html
@@ -57,6 +56,7 @@ try:
     from crm_app.request_io import RequestBodyTooLarge
     from crm_app import runtime_health
     from crm_app import request_io
+    from crm_app import responses
 except ImportError:  # pragma: no cover - supports direct local execution
     from auth_tokens import (  # type: ignore
         b64url_decode,
@@ -82,6 +82,7 @@ except ImportError:  # pragma: no cover - supports direct local execution
     from request_io import RequestBodyTooLarge  # type: ignore
     import runtime_health  # type: ignore
     import request_io  # type: ignore
+    import responses  # type: ignore
 
 try:
     from cryptography.exceptions import InvalidSignature
@@ -3035,36 +3036,11 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         self.send_json({"error": "Internal server error.", "code": "internal_server_error"}, 500)
 
     def should_write_response_body(self) -> bool:
-        return getattr(self, "command", "GET") != "HEAD"
+        return responses.should_write_response_body(getattr(self, "command", "GET"))
 
     def send_security_headers(self) -> None:
-        self.send_header("X-Content-Type-Options", "nosniff")
-        self.send_header("X-DNS-Prefetch-Control", "off")
-        self.send_header("X-Frame-Options", "DENY")
-        self.send_header("X-Robots-Tag", "noindex, nofollow")
-        self.send_header("X-Permitted-Cross-Domain-Policies", "none")
-        self.send_header("X-Download-Options", "noopen")
-        self.send_header("Cross-Origin-Opener-Policy", "same-origin")
-        self.send_header("Cross-Origin-Resource-Policy", "same-origin")
-        self.send_header("Origin-Agent-Cluster", "?1")
-        self.send_header("Referrer-Policy", "same-origin")
-        self.send_header(
-            "Permissions-Policy",
-            "camera=(), microphone=(), geolocation=(), payment=(), usb=(), fullscreen=(self)",
-        )
-        self.send_header(
-            "Content-Security-Policy",
-            "default-src 'self'; "
-            "img-src 'self' data: https://*.supabase.co; "
-            "object-src 'none'; "
-            "frame-src 'none'; "
-            "style-src 'self'; "
-            "script-src 'self'; "
-            "connect-src 'self'; "
-            "frame-ancestors 'none'; "
-            "base-uri 'self'; "
-            "form-action 'self'",
-        )
+        for key, value in responses.SECURITY_HEADERS.items():
+            self.send_header(key, value)
 
     def send_text(self, text: str, status: int = 200, content_type: str = "text/plain") -> None:
         encoded = text.encode("utf-8")
@@ -3081,9 +3057,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         self.send_text(text, status=status, content_type="application/xml")
 
     def response_filename(self, filename: Any, fallback: str = "download") -> str:
-        safe = Path(str(filename or "").replace("\\", "/")).name.strip()
-        safe = re.sub(r"[\r\n\"]+", "", safe).strip(" .")
-        return safe[:180] or fallback
+        return responses.response_filename(filename, fallback)
 
     def send_csv(self, filename: str, rows: list[dict[str, Any]]) -> None:
         encoded = self.csv_bytes(rows)
@@ -3099,18 +3073,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             self.wfile.write(encoded)
 
     def csv_bytes(self, rows: list[dict[str, Any]]) -> bytes:
-        output = io.StringIO()
-        fieldnames: list[str] = []
-        for row in rows:
-            for key in row.keys():
-                if key not in fieldnames:
-                    fieldnames.append(key)
-        if not fieldnames:
-            fieldnames = ["result"]
-        writer = csv.DictWriter(output, fieldnames=fieldnames)
-        writer.writeheader()
-        writer.writerows(rows)
-        return output.getvalue().encode("utf-8")
+        return responses.csv_bytes(rows)
 
     def send_vcard(self, filename: str, text: str) -> None:
         encoded = text.encode("utf-8")
@@ -3146,11 +3109,11 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         cache_control = self.file_cache_control(path)
         cacheable = cache_control != "no-store"
         payload: bytes | None = None
-        last_modified = email.utils.formatdate(stat.st_mtime, usegmt=True)
+        last_modified = responses.last_modified_http_date(stat.st_mtime)
         etag = ""
         if cacheable:
             payload = path.read_bytes()
-            etag = f'"{hashlib.sha256(payload).hexdigest()[:32]}"'
+            etag = responses.file_etag(payload)
         if cacheable and self.client_has_fresh_file(stat.st_mtime, etag):
             self.send_response(304)
             self.send_security_headers()
@@ -3175,24 +3138,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             self.wfile.write(payload)
 
     def client_has_fresh_file(self, modified_at: float, etag: str = "") -> bool:
-        headers = getattr(self, "headers", {})
-        if_none_match = str(headers.get("If-None-Match", "") if hasattr(headers, "get") else "").strip()
-        if etag and if_none_match:
-            supplied = {item.strip() for item in if_none_match.split(",")}
-            if etag in supplied or "*" in supplied:
-                return True
-        if_modified_since = str(headers.get("If-Modified-Since", "") if hasattr(headers, "get") else "").strip()
-        if not if_modified_since:
-            return False
-        try:
-            parsed = email.utils.parsedate_to_datetime(if_modified_since)
-        except (TypeError, ValueError):
-            return False
-        if parsed is None:
-            return False
-        if parsed.tzinfo is None:
-            parsed = parsed.replace(tzinfo=timezone.utc)
-        return parsed.timestamp() >= int(modified_at)
+        return responses.client_has_fresh_file(getattr(self, "headers", {}), modified_at, etag)
 
     def send_static_file(self, request_path: str) -> None:
         static_root = (APP_DIR / "static").resolve()
@@ -3204,11 +3150,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         self.send_file(target)
 
     def file_cache_control(self, path: Path) -> str:
-        parsed = urllib.parse.urlparse(getattr(self, "path", ""))
-        is_versioned_static = parsed.path.startswith("/static/") and bool(urllib.parse.parse_qs(parsed.query).get("v"))
-        if is_versioned_static and path.suffix.lower() in {".css", ".js", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".ico"}:
-            return "private, max-age=300, must-revalidate"
-        return "no-store"
+        return responses.static_file_cache_control(getattr(self, "path", ""), path)
 
     def safe_redirect_url(self, url: Any) -> str:
         candidate = str(url or "").strip()
@@ -10864,16 +10806,6 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                 "filename": "local_crm_remote_admin_rollout_board.csv",
                 "rows": self.export_remote_admin_rollout_board_rows(),
             }
-        if export_type == "remote_hosting_decision_packet":
-            return {
-                "filename": "local_crm_remote_hosting_decision_packet.csv",
-                "rows": self.export_remote_hosting_decision_packet_rows(),
-            }
-        if export_type == "remote_managed_cloud_provider_shortlist":
-            return {
-                "filename": "local_crm_remote_managed_cloud_provider_shortlist.csv",
-                "rows": self.export_remote_managed_cloud_provider_shortlist_rows(),
-            }
         if export_type == "remote_staging_pricing_preflight":
             return {
                 "filename": "local_crm_remote_staging_pricing_preflight.csv",
@@ -14783,445 +14715,6 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         ]
         for order, (key, title, exit_criteria) in enumerate(milestones, start=1):
             rows.append({"row_type": "milestone", "order": order, "key": key, "title": title, "exit_criteria": exit_criteria})
-        return rows
-
-    def export_remote_hosting_decision_packet_rows(self) -> list[dict[str, Any]]:
-        status = self.app_status()
-        counts = status.get("counts") or {}
-        project_decisions = status.get("project_decisions") or {}
-        cleanup_summary = ((status.get("cleanup") or {}).get("summary") or {})
-        archive_summary = ((status.get("imported_archive") or {}).get("association") or {}).get("summary") or {}
-        export_packages = status.get("export_packages") or {}
-        backups = status.get("backups") or {}
-        reports = status.get("reports") or []
-        reports_ready = sum(1 for report in reports if report.get("exists"))
-        reports_total = len(reports)
-        document_package = self.document_file_package_summary()
-        local_database_bytes = self.db_path.stat().st_size if self.db_path.exists() else 0
-
-        rows: list[dict[str, Any]] = [
-            {
-                "row_type": "summary",
-                "status": "hosting_decision_packet_ready",
-                "decision_needed": "hosting_posture",
-                "recommended_option": "A",
-                "recommended_path": "managed_cloud_app_managed_postgres_private_file_storage",
-                "reason": "Best balance of secure remote admin access, low maintenance, private files, backups, staging, and future app polish.",
-                "source_of_truth_until_cutover": "local_crm_sqlite",
-                "local_database_bytes": local_database_bytes,
-                "people": counts.get("people"),
-                "companies": counts.get("companies"),
-                "leads": counts.get("leads"),
-                "deals": counts.get("deals"),
-                "tasks": counts.get("tasks"),
-                "notes": counts.get("notes"),
-                "archive_items": counts.get("archive_items"),
-                "linked_resources": counts.get("linked_resources"),
-                "document_file_count": document_package.get("file_count"),
-                "document_file_bytes": document_package.get("bytes"),
-                "document_file_coverage_percent": archive_summary.get("document_file_coverage_percent"),
-                "pending_project_decisions": project_decisions.get("pending"),
-                "open_cleanup_groups": cleanup_summary.get("open_groups"),
-                "reports_ready": reports_ready,
-                "reports_total": reports_total,
-                "backups_available": backups.get("count"),
-                "export_packages_ready": export_packages.get("ready_count"),
-                "export_packages_total": export_packages.get("total_count"),
-                "report": "/reports/remote_hosting_decision_packet.md",
-                "export_url": "/api/export?type=remote_hosting_decision_packet",
-                "safety": "Read-only hosting decision packet; does not choose a provider, provision hosting, migrate data, create users, save decisions, invite admins, upload files, expose localhost, or change CRM records.",
-            }
-        ]
-
-        options = [
-            (
-                "A",
-                "managed_cloud",
-                "Managed cloud app",
-                "Recommended",
-                "Hosted web app, managed Postgres, private file storage, managed HTTPS, scheduled backups, staging environment, and individual admin logins.",
-                "You want remote admin access without becoming the server operator.",
-                "Best fit",
-                "Low",
-                "Fast",
-                "Requires provider account, budget approval, and staging setup.",
-                "Choose a provider stack, create staging, then run the hosted schema/data-load plans.",
-            ),
-            (
-                "B",
-                "self_hosted",
-                "Self-hosted server",
-                "Available",
-                "Run the web app, database, private file storage or mounted storage, HTTPS, backups, monitoring, and access control on infrastructure you control.",
-                "You want maximum infrastructure control and are willing to maintain servers.",
-                "Good but heavier",
-                "High",
-                "Slower",
-                "Requires patching, firewalling, SSL renewal, monitoring, backup operations, and incident response.",
-                "Name the server owner/operator, backup method, and monitoring plan before staging.",
-            ),
-            (
-                "C",
-                "hybrid_transition",
-                "Hybrid transition",
-                "Available",
-                "Move database/files into a remote staging posture first while keeping the app/admin rollout private until a later cutover.",
-                "You want a slower proof-of-concept before inviting admins.",
-                "Cautious but indirect",
-                "Medium",
-                "Medium",
-                "Adds an extra phase and can delay daily remote access.",
-                "Create a remote staging database/files proof, then decide whether to finish as A or B.",
-            ),
-        ]
-        for order, (choice_code, key, label, recommendation, description, best_for, remote_fit, maintenance_load, rollout_speed, tradeoff, next_step) in enumerate(options, start=1):
-            rows.append(
-                {
-                    "row_type": "hosting_option",
-                    "order": order,
-                    "choice_code": choice_code,
-                    "key": key,
-                    "label": label,
-                    "recommendation": recommendation,
-                    "description": description,
-                    "best_for": best_for,
-                    "remote_admin_fit": remote_fit,
-                    "maintenance_load": maintenance_load,
-                    "rollout_speed": rollout_speed,
-                    "tradeoff": tradeoff,
-                    "next_step_if_chosen": next_step,
-                    "save_boundary": "This packet presents choices only; the user must explicitly choose before any hosting setup begins.",
-                }
-            )
-
-        score_rows = [
-            ("secure_remote_admin_access", "Secure remote admin access", 5, 3, 4, "Managed cloud has the clearest path to login, HTTPS, roles, and provider security controls."),
-            ("low_maintenance", "Low maintenance burden", 5, 1, 3, "Self-hosting creates ongoing server operations; managed cloud reduces that workload."),
-            ("private_file_storage", "Private file storage fit", 5, 3, 4, "All options can work, but managed cloud is the simplest path to private object storage plus signed links."),
-            ("backup_restore", "Backup and restore discipline", 5, 3, 4, "Managed database backups plus manual project packages are easiest to operate consistently."),
-            ("staging_first", "Staging-first rollout", 5, 4, 5, "All options must support staging before production; hybrid over-indexes on staging but delays rollout."),
-            ("future_polish", "Future Apple-style app polish", 5, 4, 4, "A hosted app can still be redesigned later without changing the database plan."),
-            ("owner_control", "Owner control", 4, 5, 4, "Self-hosting maximizes infrastructure control but increases operational responsibility."),
-        ]
-        for order, (key, criterion, option_a_score, option_b_score, option_c_score, rationale) in enumerate(score_rows, start=1):
-            rows.append(
-                {
-                    "row_type": "decision_score",
-                    "order": order,
-                    "key": key,
-                    "criterion": criterion,
-                    "option_a_score": option_a_score,
-                    "option_b_score": option_b_score,
-                    "option_c_score": option_c_score,
-                    "rationale": rationale,
-                }
-            )
-
-        requirements = [
-            ("individual_logins", "Individual logins", "Every admin/staff user needs a unique login; no shared admin password."),
-            ("managed_database", "Hosted relational database", "Use a shared hosted database target, preferably Postgres, with staging and production separation."),
-            ("private_files", "Private file storage", "Recovered legacy documents must move from local paths to private storage keys and signed downloads."),
-            ("https", "HTTPS only", "Remote access must be HTTPS; do not expose this local server publicly."),
-            ("role_permissions", "Role permissions", "Owner/Admin/Staff/Read-only/Migration Operator actions must be allowed or denied by endpoint."),
-            ("actor_audit", "Actor-aware audit", "Remote writes must record who acted, role snapshot, old/new values, backup reference, and reason note."),
-            ("scheduled_backups", "Scheduled backups", "Hosted database backups plus manual pre-change packages must be available before admin use."),
-            ("staging_environment", "Staging environment", "Schema, data load, private files, permissions, exports, and restore must pass in staging first."),
-            ("rollback_package", "Rollback package", "Final local backup/export/document packages must be retained before production cutover."),
-        ]
-        for order, (key, requirement, proof) in enumerate(requirements, start=1):
-            rows.append({"row_type": "minimum_requirement", "order": order, "key": key, "requirement": requirement, "proof": proof})
-
-        owner_questions = [
-            ("hosting_posture", "Which posture should we choose: A managed cloud, B self-hosted, or C hybrid transition?", "A", "Unlocks remote stack selection and staging setup."),
-            ("budget", "What monthly hosting budget feels comfortable for the first year?", "Start modest and scale after staging proves the shape.", "Needed before provider selection."),
-            ("first_admin", "Who should be the first pilot admin?", "You plus one trusted admin.", "Needed before staging invite tests."),
-            ("domain", "Should the remote CRM use a custom domain or provider-generated URL at first?", "Provider-generated staging URL first; custom domain for production if desired.", "Needed before production polish."),
-            ("document_access", "Should Staff be able to download recovered documents?", "Owner/Admin only until production stabilizes.", "Needed for file permission defaults."),
-            ("export_rights", "Who can download complete CRM packages?", "Owner/Admin only.", "Needed before remote export permissions are enabled."),
-        ]
-        for order, (key, question, recommended_answer, impact) in enumerate(owner_questions, start=1):
-            rows.append(
-                {
-                    "row_type": "owner_question",
-                    "order": order,
-                    "key": key,
-                    "question": question,
-                    "recommended_answer": recommended_answer,
-                    "impact": impact,
-                }
-            )
-
-        next_steps = [
-            ("choose_posture", "Choose A/B/C hosting posture", "Owner", "Required before any hosting or staging setup."),
-            ("confirm_stack", "Name provider stack and budget", "Owner", "Required before creating staging resources."),
-            ("fresh_package", "Create fresh backup/export/document packages", "Migration Operator", "Required immediately before staging data load."),
-            ("staging_schema", "Apply hosted schema in staging", "Migration Operator", "Use hosted schema draft and SQL as the starting point."),
-            ("staging_load", "Load staging data and private files", "Migration Operator", "Use Hosted Data Load Plan and document package manifest."),
-            ("permission_tests", "Run role/permission/audit tests", "Admin", "Use permissions matrix and rollout board gates."),
-            ("pilot", "Invite one pilot admin", "Owner", "Only after staging validation passes."),
-        ]
-        for order, (key, step, owner_role, gate) in enumerate(next_steps, start=1):
-            rows.append({"row_type": "next_step", "order": order, "key": key, "step": step, "owner_role": owner_role, "gate": gate})
-        return rows
-
-    def export_remote_managed_cloud_provider_shortlist_rows(self) -> list[dict[str, Any]]:
-        status = self.app_status()
-        counts = status.get("counts") or {}
-        project_decisions = status.get("project_decisions") or {}
-        cleanup_summary = ((status.get("cleanup") or {}).get("summary") or {})
-        archive_summary = ((status.get("imported_archive") or {}).get("association") or {}).get("summary") or {}
-        export_packages = status.get("export_packages") or {}
-        backups = status.get("backups") or {}
-        reports = status.get("reports") or []
-        reports_ready = sum(1 for report in reports if report.get("exists"))
-        reports_total = len(reports)
-        document_package = self.document_file_package_summary()
-        local_database_bytes = self.db_path.stat().st_size if self.db_path.exists() else 0
-
-        rows: list[dict[str, Any]] = [
-            {
-                "row_type": "summary",
-                "status": "provider_shortlist_ready",
-                "decision_needed": "provider_stack_for_managed_cloud_path",
-                "recommended_hosting_posture": "A",
-                "recommended_hosting_path": "managed_cloud_app_managed_postgres_private_file_storage",
-                "front_runner_to_price_and_test": "digitalocean_app_platform_managed_postgres_spaces",
-                "alternate_finalist": "railway_app_postgres_private_buckets",
-                "source_reviewed_on": "2026-06-05",
-                "source_basis": "Official provider documentation only; final pricing and account constraints must be verified before purchase.",
-                "source_of_truth_until_cutover": "local_crm_sqlite",
-                "local_database_bytes": local_database_bytes,
-                "people": counts.get("people"),
-                "companies": counts.get("companies"),
-                "leads": counts.get("leads"),
-                "deals": counts.get("deals"),
-                "tasks": counts.get("tasks"),
-                "notes": counts.get("notes"),
-                "archive_items": counts.get("archive_items"),
-                "linked_resources": counts.get("linked_resources"),
-                "document_file_count": document_package.get("file_count"),
-                "document_file_bytes": document_package.get("bytes"),
-                "document_file_coverage_percent": archive_summary.get("document_file_coverage_percent"),
-                "pending_project_decisions": project_decisions.get("pending"),
-                "open_cleanup_groups": cleanup_summary.get("open_groups"),
-                "reports_ready": reports_ready,
-                "reports_total": reports_total,
-                "backups_available": backups.get("count"),
-                "export_packages_ready": export_packages.get("ready_count"),
-                "export_packages_total": export_packages.get("total_count"),
-                "report": "/reports/remote_managed_cloud_provider_shortlist.md",
-                "export_url": "/api/export?type=remote_managed_cloud_provider_shortlist",
-                "safety": "Read-only provider shortlist; does not choose a provider, provision hosting, create accounts, enter payment details, migrate data, upload files, create users, invite admins, save decisions, expose localhost, or change CRM records.",
-            }
-        ]
-
-        provider_stacks = [
-            {
-                "rank": 1,
-                "key": "digitalocean_app_platform_managed_postgres_spaces",
-                "provider_stack": "DigitalOcean App Platform + Managed PostgreSQL + Spaces",
-                "app_host": "DigitalOcean App Platform",
-                "database": "DigitalOcean Managed Databases for PostgreSQL",
-                "private_file_storage": "DigitalOcean Spaces object storage",
-                "auth_path": "App-level login/roles first; optional external OAuth later.",
-                "backup_path": "Managed database backups plus Complete CRM Package before cutover.",
-                "staging_path": "Separate staging app, staging database, and staging Space before production.",
-                "fit": "Best default stack to price and test first because app hosting, managed Postgres, and object storage live in one vendor family.",
-                "ops_load": "Low",
-                "strength": "Straightforward managed-cloud path with persistent data kept out of ephemeral app filesystem.",
-                "watch_item": "Confirm plan sizing, database backup details, private Spaces access, and App Platform runtime fit before purchase.",
-                "best_next_step": "Create a pricing worksheet and staging-only architecture diagram; do not provision until owner approval.",
-                "source_urls": "https://docs.digitalocean.com/products/app-platform/how-to/store-data/ | https://docs.digitalocean.com/products/databases/ | https://docs.digitalocean.com/products/spaces/",
-            },
-            {
-                "rank": 2,
-                "key": "railway_app_postgres_private_buckets",
-                "provider_stack": "Railway app + PostgreSQL + private Buckets",
-                "app_host": "Railway services",
-                "database": "Railway PostgreSQL template/service",
-                "private_file_storage": "Railway private S3-compatible Buckets",
-                "auth_path": "App-level login/roles first; Railway environment separation for staging.",
-                "backup_path": "Provider database backup/restore approach plus Complete CRM Package before cutover.",
-                "staging_path": "Separate Railway environment with isolated database and bucket credentials.",
-                "fit": "Strong second finalist for fast staging and simple app/database/storage wiring.",
-                "ops_load": "Low",
-                "strength": "Private S3-compatible buckets and environment-specific bucket credentials match the document-file requirement well.",
-                "watch_item": "Verify database backup depth, bucket feature limits, support posture, and production costs.",
-                "best_next_step": "Compare staging/production environment setup and restore proof against DigitalOcean.",
-                "source_urls": "https://docs.railway.com/data-storage | https://docs.railway.com/databases | https://docs.railway.com/storage-buckets",
-            },
-            {
-                "rank": 3,
-                "key": "fly_io_managed_postgres_tigris",
-                "provider_stack": "Fly.io app + Fly.io Managed Postgres + Tigris",
-                "app_host": "Fly.io Machines/apps",
-                "database": "Fly.io Managed Postgres",
-                "private_file_storage": "Tigris Global Object Storage",
-                "auth_path": "App-level login/roles; provider secrets for storage/database.",
-                "backup_path": "Managed Postgres backups plus Complete CRM Package before cutover.",
-                "staging_path": "Separate app/database/bucket with staged secrets.",
-                "fit": "Good if we want more infrastructure control and strong app/storage primitives while staying managed.",
-                "ops_load": "Medium",
-                "strength": "Managed Postgres and S3-compatible object storage are documented in the same ecosystem.",
-                "watch_item": "Slightly more operator-oriented; verify support plan, networking, and deploy workflow comfort.",
-                "best_next_step": "Keep as a technical finalist if DigitalOcean or Railway misses a requirement.",
-                "source_urls": "https://fly.io/docs/database-storage-guides/ | https://fly.io/docs/tigris/",
-            },
-            {
-                "rank": 4,
-                "key": "render_web_service_postgres_external_storage",
-                "provider_stack": "Render web service + Render Postgres + external S3-compatible storage",
-                "app_host": "Render Web Service",
-                "database": "Render Postgres",
-                "private_file_storage": "External S3-compatible bucket, such as S3/R2/Spaces, wired through app secrets.",
-                "auth_path": "App-level login/roles; Render services/private networking for app/database.",
-                "backup_path": "Render Postgres backup/restore path plus external bucket backup policy.",
-                "staging_path": "Render preview/staging service plus separate database and external bucket.",
-                "fit": "Solid app/database host if we are comfortable adding a separate file-storage provider.",
-                "ops_load": "Medium",
-                "strength": "Polished web-service deployment and managed Postgres.",
-                "watch_item": "File storage is not the same one-vendor story as the top two choices.",
-                "best_next_step": "Use as fallback if app deployment ergonomics outweigh one-vendor storage simplicity.",
-                "source_urls": "https://render.com/docs/web-services | https://render.com/docs/postgresql",
-            },
-            {
-                "rank": 5,
-                "key": "supabase_postgres_auth_storage_plus_app_host",
-                "provider_stack": "Supabase Postgres/Auth/Storage + separate app host",
-                "app_host": "Separate Python/web app host required.",
-                "database": "Supabase Postgres",
-                "private_file_storage": "Supabase Storage with RLS policies",
-                "auth_path": "Supabase Auth with JWT/RLS integration, or app-level auth using Supabase as data layer.",
-                "backup_path": "Supabase database backups on paid plans plus Complete CRM Package before cutover.",
-                "staging_path": "Separate Supabase project plus separate app staging host.",
-                "fit": "Strong data/auth/storage platform, but not the simplest complete hosted-app stack for this current local app.",
-                "ops_load": "Medium",
-                "strength": "Built-in Postgres, Auth, Storage, RLS, and file access policies.",
-                "watch_item": "Requires more application refactoring and a separate app host; avoid overcomplicating the first remote rollout.",
-                "best_next_step": "Keep as a strong data-layer alternative if auth/RLS becomes the main requirement.",
-                "source_urls": "https://supabase.com/docs/guides/database/overview | https://supabase.com/docs/guides/auth | https://supabase.com/docs/guides/storage | https://supabase.com/docs/guides/storage/security/access-control",
-            },
-            {
-                "rank": 6,
-                "key": "heroku_postgres_external_s3",
-                "provider_stack": "Heroku app + Heroku Postgres + external S3-compatible storage",
-                "app_host": "Heroku app platform",
-                "database": "Heroku Postgres",
-                "private_file_storage": "External S3-compatible storage through app configuration.",
-                "auth_path": "App-level login/roles; optional add-ons later.",
-                "backup_path": "Heroku Postgres backup/import/export tooling plus external bucket backup policy.",
-                "staging_path": "Separate Heroku app/database and separate external bucket.",
-                "fit": "Mature fallback, especially if Salesforce/Heroku familiarity matters.",
-                "ops_load": "Medium",
-                "strength": "Mature managed Postgres and app platform ecosystem.",
-                "watch_item": "Likely heavier or more expensive for a small private CRM, and file storage is external.",
-                "best_next_step": "Keep as fallback, not the first stack to test.",
-                "source_urls": "https://devcenter.heroku.com/articles/heroku-postgresql | https://devcenter.heroku.com/articles/s3-upload-python",
-            },
-        ]
-        for stack in provider_stacks:
-            rows.append({"row_type": "provider_stack", **stack})
-
-        criteria = [
-            ("app_hosting", "Can host the CRM as a private web app", "Must run the current app with HTTPS, secrets, staging, logs, and repeatable deploys.", "DigitalOcean, Railway, Fly.io, Render, and Heroku directly support app hosting; Supabase needs a separate app host."),
-            ("managed_postgres", "Managed Postgres path", "The shared CRM should use managed Postgres rather than local SQLite once multiple admins edit data.", "All shortlisted stacks can provide Postgres; backup and restore details must be verified before purchase."),
-            ("private_object_storage", "Private document storage", "Recovered legacy documents should move to private object storage with signed/proxied access.", "DigitalOcean Spaces, Railway Buckets, Fly/Tigris, and Supabase Storage are direct fits; Render/Heroku need external storage."),
-            ("staging_separation", "Separate staging and production", "The first hosted migration must happen in staging with separate database/files before admins use it.", "Do not invite admins until staging counts, files, permissions, exports, and restore checks pass."),
-            ("admin_identity", "Individual admin identity", "Remote writes must record who made the change and which role applied.", "Can be app-level auth first; Supabase Auth is a deeper data-layer option if we choose that route."),
-            ("backup_restore", "Backup and restore proof", "Provider backups are not enough; the complete local package must remain the portable rollback artifact.", "Require one successful staging restore drill before production cutover."),
-            ("cost_and_account_fit", "Budget/account fit", "The provider must match the owner's budget, account preference, support expectations, and data residency needs.", "Final pricing must be checked in the provider account before committing."),
-        ]
-        for order, (key, criterion, requirement, shortlist_reading) in enumerate(criteria, start=1):
-            rows.append(
-                {
-                    "row_type": "evaluation_criterion",
-                    "order": order,
-                    "key": key,
-                    "criterion": criterion,
-                    "requirement": requirement,
-                    "shortlist_reading": shortlist_reading,
-                }
-            )
-
-        sources = [
-            ("digitalocean_app_platform_storage", "DigitalOcean App Platform data storage", "App Platform supports managed databases and Spaces; local app filesystem is ephemeral and not fit for persistent state.", "https://docs.digitalocean.com/products/app-platform/how-to/store-data/"),
-            ("digitalocean_managed_databases", "DigitalOcean Managed Databases", "Managed databases include PostgreSQL, backups, SSL, VPC, failover, and migration support details.", "https://docs.digitalocean.com/products/databases/"),
-            ("digitalocean_spaces", "DigitalOcean Spaces", "Spaces is S3-compatible object storage for large data and file storage.", "https://docs.digitalocean.com/products/spaces/"),
-            ("railway_data_storage", "Railway Data & Storage", "Railway documents databases, persistent volumes, and S3-compatible object storage as storage options.", "https://docs.railway.com/data-storage"),
-            ("railway_databases", "Railway Databases", "Railway can deploy/manage PostgreSQL and other databases alongside applications.", "https://docs.railway.com/databases"),
-            ("railway_storage_buckets", "Railway Storage Buckets", "Railway Buckets are private, S3-compatible, and environment-isolated.", "https://docs.railway.com/storage-buckets"),
-            ("fly_database_storage", "Fly.io databases and storage", "Fly documents Managed Postgres and Tigris object storage for apps.", "https://fly.io/docs/database-storage-guides/"),
-            ("fly_tigris", "Fly.io Tigris object storage", "Tigris is S3-compatible object storage available natively for Fly.io apps.", "https://fly.io/docs/tigris/"),
-            ("render_web_services", "Render Web Services", "Render web services support deploys, HTTPS, custom domains, scaling, and private networking options.", "https://render.com/docs/web-services"),
-            ("render_postgres", "Render Postgres", "Render Postgres documents backup/recovery, read replicas, high availability, and plan details.", "https://render.com/docs/postgresql"),
-            ("supabase_database", "Supabase Database", "Every Supabase project has a full Postgres database; paid plans include daily backups/PITR.", "https://supabase.com/docs/guides/database/overview"),
-            ("supabase_auth", "Supabase Auth", "Supabase Auth provides user management, login methods, JWTs, and RLS integration.", "https://supabase.com/docs/guides/auth"),
-            ("supabase_storage", "Supabase Storage", "Supabase Storage supports file buckets, S3-compatible storage, CDN, and fine-grained access controls.", "https://supabase.com/docs/guides/storage"),
-            ("supabase_storage_access", "Supabase Storage Access Control", "Supabase Storage uses Postgres RLS policies to restrict file access.", "https://supabase.com/docs/guides/storage/security/access-control"),
-            ("heroku_postgres", "Heroku Postgres", "Heroku Postgres is a managed SQL database service with import/export, monitoring, availability, and compliance docs.", "https://devcenter.heroku.com/articles/heroku-postgresql"),
-            ("heroku_s3_uploads", "Heroku S3 uploads", "Heroku documents using S3-style external object storage for application file uploads.", "https://devcenter.heroku.com/articles/s3-upload-python"),
-        ]
-        for order, (key, source_name, supports, source_url) in enumerate(sources, start=1):
-            rows.append(
-                {
-                    "row_type": "official_source",
-                    "order": order,
-                    "key": key,
-                    "source_name": source_name,
-                    "supports": supports,
-                    "source_url": source_url,
-                }
-            )
-
-        recommendations = [
-            ("first_finalist", "Price and test DigitalOcean first", "It is the cleanest one-vendor managed-cloud candidate for app hosting, managed Postgres, and object storage.", "Do not provision until owner approves account, budget, and staging-only scope."),
-            ("second_finalist", "Compare Railway closely", "Railway's private S3-compatible Buckets and database/app primitives may make staging quick.", "Verify backup/restore, production support, and bucket feature limits before selecting."),
-            ("technical_fallback", "Keep Fly.io as technical fallback", "Fly.io plus Managed Postgres/Tigris is powerful if we want more operator control.", "Use if the top two miss a requirement or if deploy/control needs get more advanced."),
-            ("simple_app_fallback", "Keep Render as app/database fallback", "Render is polished for web services and Postgres.", "Plan an external object-storage provider if chosen."),
-            ("data_layer_alternative", "Consider Supabase only if Auth/RLS becomes central", "Supabase has a strong Postgres/Auth/Storage story.", "It likely requires more refactoring and separate app hosting for this current CRM."),
-        ]
-        for order, (key, recommendation, rationale, boundary) in enumerate(recommendations, start=1):
-            rows.append(
-                {
-                    "row_type": "shortlist_recommendation",
-                    "order": order,
-                    "key": key,
-                    "recommendation": recommendation,
-                    "rationale": rationale,
-                    "boundary": boundary,
-                }
-            )
-
-        owner_questions = [
-            ("preferred_account", "Do you already have, or prefer creating, an account with DigitalOcean, Railway, Fly.io, Render, Supabase, or Heroku?", "DigitalOcean first finalist; Railway second finalist.", "Narrows the stack before staging work."),
-            ("monthly_budget", "What monthly budget feels comfortable for the first year?", "Set a modest staging budget first, then production after validation.", "Avoids overbuilding while the CRM is still being polished."),
-            ("custom_domain", "Do you want a custom domain for production?", "Use provider staging URL first; add custom domain for production polish.", "Affects DNS/HTTPS setup."),
-            ("admin_count", "How many admins should be able to log in during the first pilot?", "You plus one trusted admin.", "Affects auth, roles, and audit testing."),
-            ("document_access", "Should recovered document files be owner/admin-only at launch?", "Yes, owner/admin-only until production stabilizes.", "Affects private storage permissions and signed-link behavior."),
-            ("data_residency", "Any data-residency, compliance, or client-confidentiality requirements that affect provider choice?", "Confirm before opening accounts or uploading staging data.", "May change the provider shortlist."),
-        ]
-        for order, (key, question, recommended_answer, impact) in enumerate(owner_questions, start=1):
-            rows.append(
-                {
-                    "row_type": "owner_question",
-                    "order": order,
-                    "key": key,
-                    "question": question,
-                    "recommended_answer": recommended_answer,
-                    "impact": impact,
-                }
-            )
-
-        next_steps = [
-            ("confirm_managed_cloud", "Confirm managed-cloud posture A remains the path.", "Owner", "Remote Hosting Decision Packet should stay aligned with this shortlist."),
-            ("select_two_finalists", "Select two provider finalists to price and test.", "Owner", "Recommended: DigitalOcean and Railway."),
-            ("build_pricing_sheet", "Create a small first-year pricing sheet with staging and production estimates.", "Migration Operator", "Use official pricing in the chosen accounts before purchase."),
-            ("staging_architecture", "Draft the staging architecture for app, database, file storage, auth, backups, and exports.", "Migration Operator", "No data uploaded until staging scope is approved."),
-            ("provision_staging", "Provision staging only after approval.", "Migration Operator", "Create staging app/database/bucket, then run schema/data-load plans."),
-            ("run_restore_drill", "Prove restore before inviting admins.", "Migration Operator", "One successful staging restore and export-package check is required."),
-        ]
-        for order, (key, step, owner_role, gate) in enumerate(next_steps, start=1):
-            rows.append({"row_type": "next_step", "order": order, "key": key, "step": step, "owner_role": owner_role, "gate": gate})
         return rows
 
     def export_remote_staging_pricing_preflight_rows(self) -> list[dict[str, Any]]:

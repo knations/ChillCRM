@@ -16,6 +16,7 @@ import crm_app.exporting as exporting
 import crm_app.file_assets as file_assets
 import crm_app.request_io as request_io
 import crm_app.runtime_health as runtime_health
+import crm_app.responses as responses
 import crm_app.server as server
 
 
@@ -27,6 +28,7 @@ def main() -> int:
     file_assets_py = (PROJECT_ROOT / "crm_app" / "file_assets.py").read_text(encoding="utf-8")
     request_io_py = (PROJECT_ROOT / "crm_app" / "request_io.py").read_text(encoding="utf-8")
     runtime_health_py = (PROJECT_ROOT / "crm_app" / "runtime_health.py").read_text(encoding="utf-8")
+    responses_py = (PROJECT_ROOT / "crm_app" / "responses.py").read_text(encoding="utf-8")
     app_js = (PROJECT_ROOT / "crm_app" / "static" / "app.js").read_text(encoding="utf-8")
     index_html = (PROJECT_ROOT / "crm_app" / "static" / "index.html").read_text(encoding="utf-8")
 
@@ -36,6 +38,7 @@ def main() -> int:
     assert "from crm_app import file_assets" in server_py
     assert "from crm_app import runtime_health" in server_py
     assert "from crm_app import request_io" in server_py
+    assert "from crm_app import responses" in server_py
     assert "class PostgresCompatConnection" not in server_py
     assert "def translate_sqlite_sql_for_postgres" not in server_py
     assert "def get_json_route_handlers" in server_py
@@ -44,9 +47,11 @@ def main() -> int:
     assert "def password_hash" in auth_tokens_py
     assert "def signed_session_token" in auth_tokens_py
     assert "def read_webhook_body" in request_io_py
+    assert "SECURITY_HEADERS" in responses_py
+    assert "def csv_bytes" in responses_py
     assert "def export_package_status" in exporting_py
     assert "def decode_profile_image_upload" in file_assets_py
-    assert "payment=(), usb=(), fullscreen=(self)" in server_py
+    assert "payment=(), usb=(), fullscreen=(self)" in responses_py
     assert "class PostgresCompatConnection" in database_py
     assert "def translate_sqlite_sql_for_postgres" in database_py
     assert "def runtime_context" in runtime_health_py
@@ -75,6 +80,17 @@ def main() -> int:
         headers={"Content-Length": "32", "Content-Type": "application/x-www-form-urlencoded"},
         max_body_bytes=100,
     )["email"] == "test@example.com"
+    assert responses.should_write_response_body("GET")
+    assert not responses.should_write_response_body("HEAD")
+    assert responses.response_filename("../bad:name?.csv", "fallback.csv") == "bad:name?.csv"
+    assert responses.response_filename("bad\r\nname.csv", "fallback.csv") == "badname.csv"
+    assert b"name,email" in responses.csv_bytes([{"name": "Probe", "email": "probe@example.com"}])
+    assert responses.static_file_cache_control("/static/app.js?v=1", PROJECT_ROOT / "crm_app/static/app.js") == "private, max-age=300, must-revalidate"
+    assert responses.static_file_cache_control("/static/app.js", PROJECT_ROOT / "crm_app/static/app.js") == "no-store"
+    etag = responses.file_etag(b"payload")
+    assert responses.client_has_fresh_file({"If-None-Match": etag}, 1, etag)
+    assert "Content-Security-Policy" in responses.SECURITY_HEADERS
+    assert "'unsafe-inline'" not in responses.SECURITY_HEADERS["Content-Security-Policy"]
     assert file_assets.profile_image_magic_matches("image/png", b"\x89PNG\r\n\x1a\nsample")
     assert file_assets.safe_original_filename("../Bad:name?.pdf") == "Bad_name_.pdf"
     assert file_assets.record_file_storage_key("person", 7, "abcdef1234567890abcdef123456", "Call Notes", "text/plain").endswith("Call Notes.txt")

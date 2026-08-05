@@ -33,6 +33,8 @@ The live health endpoint at `https://chillcrm.app/api/health` is green after the
 - File serving now avoids loading uncached file payloads for `HEAD` responses, preserving headers while reducing unnecessary runtime work for static/private file probes.
 - Signed-file redirects now allow app-relative paths and configured Supabase storage hosts only, rejecting arbitrary external HTTPS destinations and credential-bearing URLs.
 - Signed-file redirects now explicitly declare zero-length response bodies while keeping redirects cache-locked.
+- Response formatting, security headers, CSV serialization, safe download filenames, static cache rules, and file freshness checks now live in `crm_app/responses.py` with backend boundary verifier coverage.
+- Retired remote-hosting and managed-provider decision exports were removed from the active app server so current exports stay focused on operational CRM use.
 
 ## Verification Run
 

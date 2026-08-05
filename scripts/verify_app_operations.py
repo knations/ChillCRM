@@ -377,6 +377,9 @@ def main() -> int:
     assert '"X-Frame-Options", "DENY"' in server_py
     assert '"X-Content-Type-Options", "nosniff"' in server_py
     assert '"X-Robots-Tag", "noindex, nofollow"' in server_py
+    assert '"X-Permitted-Cross-Domain-Policies", "none"' in server_py
+    assert '"Cross-Origin-Opener-Policy", "same-origin"' in server_py
+    assert '"Cross-Origin-Resource-Policy", "same-origin"' in server_py
     assert "def send_static_file" in server_py
     assert 'request_path.removeprefix("/static/")' in server_py
     assert "static_root not in target.parents" in server_py

@@ -71,6 +71,7 @@ def dry_run_checks() -> list[dict[str, Any]]:
         "AND date(updated_at) <= date('now', '+7 days') ORDER BY title COLLATE NOCASE LIMIT ?"
     )
     translated = server.translate_sqlite_sql_for_postgres(sample_sql)
+    json_match_sql = server.translate_sqlite_sql_for_postgres("SELECT id FROM notes WHERE source_json LIKE ?")
     params = server.postgres_parameters_for_sql("SELECT * FROM people WHERE name LIKE :like OR email LIKE :like", {"like": "%a%"})
     row = server.PostgresCompatRow(["id", "name"], (1, "Dry Run"))
     return [
@@ -79,6 +80,7 @@ def dry_run_checks() -> list[dict[str, Any]]:
             "status": "passed",
             "has_positional_params": "%s" in translated,
             "has_jsonb_translation": "::jsonb ->>" in translated,
+            "casts_source_json_text_match": "CAST(source_json AS TEXT) ILIKE" in json_match_sql,
             "has_date_translation": "CURRENT_DATE" in translated,
             "removed_sqlite_collation": "COLLATE NOCASE" not in translated,
         },

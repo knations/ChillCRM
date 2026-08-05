@@ -909,6 +909,12 @@ def translate_sqlite_sql_for_postgres(sql: str) -> str:
     translated, _ = translate_sqlite_parameters(sql)
     translated = re.sub(r"\s+COLLATE\s+NOCASE\b", "", translated, flags=re.IGNORECASE)
     translated = re.sub(r"\bLIKE\b", "ILIKE", translated, flags=re.IGNORECASE)
+    translated = re.sub(
+        r"(?<!CAST\()(?P<field>\b(?:[A-Za-z_][A-Za-z0-9_]*\.)?source_json)\s+(?P<operator>NOT\s+ILIKE|ILIKE)\b",
+        lambda match: f"CAST({match.group('field')} AS TEXT) {match.group('operator')}",
+        translated,
+        flags=re.IGNORECASE,
+    )
     translated = re.sub(r"\bifnull\s*\(", "coalesce(", translated, flags=re.IGNORECASE)
     translated = translated.replace("round(sum(d.value), 2)", "round((sum(d.value))::numeric, 2)")
     translated = translated.replace("printf('%.0f', d.value)", "to_char(d.value, 'FM999999999999990')")

@@ -14,7 +14,7 @@ The live health endpoint at `https://chillcrm.app/api/health` is green after the
 - Local CRM data, backups, exports, reports, profile images, record files, `.env` files, `.vercel`, and Python cache files are ignored by Git and excluded from Vercel deploys.
 - Production serves HTML with `Cache-Control: no-store` so app shell updates are immediate.
 - Versioned static CSS/JS paths use short-lived private caching with ETags.
-- Security headers are present on live responses: CSP, frame blocking, noindex, nosniff, referrer policy, permissions policy, and HSTS via Vercel.
+- Security headers are present on live responses: CSP without inline script/style allowances, frame blocking, noindex, nosniff, referrer policy, permissions policy, and HSTS via Vercel.
 - The frontend uses `escapeHtml` and `safeHref` for rendered CRM values and links.
 - Stored login email is device-local only and does not store passwords or tokens.
 
@@ -25,6 +25,7 @@ The live health endpoint at `https://chillcrm.app/api/health` is green after the
 - Auth parsing and passkey signature fallback error handling were narrowed.
 - Postgres SQL translation now casts `source_json` before `ILIKE` matching to avoid `jsonb ~~*` runtime errors.
 - Upload base64 decode handling now catches only decode/type errors and has negative verifier coverage.
+- Dashboard progress displays now use native `<progress>` elements, allowing CSP to remove `'unsafe-inline'` from `style-src`.
 
 ## Verification Run
 

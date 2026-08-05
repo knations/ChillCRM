@@ -410,8 +410,11 @@ def main() -> int:
     assert 'event.key !== "Enter"' in app_js
     assert "function safeHref(value)" in app_js
     assert "function percentWidth(value, minimum = 0)" in app_js
-    assert 'style="width:${width}">' in app_js
+    assert "function percentValue(value, minimum = 0)" in app_js
+    assert 'style="' not in app_js
     assert 'style="width:${width}%"' not in app_js
+    assert "bar-progress" in app_js
+    assert "profile-segment-progress" in app_js
     assert r"[\u0000-\u001F\u007F]" in app_js
     assert '["http:", "https:", "tel:", "googlegmail:"]' in app_js
     assert 'href="${escapeHtml' not in app_js
@@ -438,10 +441,13 @@ def main() -> int:
     assert '"Origin-Agent-Cluster", "?1"' in server_py
     assert "object-src 'none'; " in server_py
     assert "frame-src 'none'; " in server_py
+    assert "style-src 'self'; " in server_py
+    assert "'unsafe-inline'" not in server_py
     assert "def send_static_file" in server_py
     assert 'request_path.removeprefix("/static/")' in server_py
     assert "static_root not in target.parents" in server_py
-    assert 'app.js?v=20260805-security-hardening-2' in index_html
+    assert 'styles.css?v=20260805-csp-inline-style-removal-1' in index_html
+    assert 'app.js?v=20260805-csp-inline-style-removal-1' in index_html
     assert '"private, max-age=300, must-revalidate"' in server_py
     assert '"public, max-age=31536000, immutable"' not in server_py
     assert "def should_write_response_body" in server_py

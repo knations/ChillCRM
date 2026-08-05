@@ -511,17 +511,52 @@ button {
   font-weight: 700;
 }
 
-.bar-track {
-  height: 14px;
+.bar-progress {
+  appearance: none;
+  -webkit-appearance: none;
   background: #ede9df;
+  border: 0;
   border-radius: 8px;
+  height: 14px;
   overflow: hidden;
+  width: 100%;
 }
 
-.bar-fill {
-  height: 100%;
-  min-width: 2px;
+.bar-progress::-webkit-progress-bar {
+  background: #ede9df;
+  border-radius: 8px;
+}
+
+.bar-progress::-webkit-progress-value {
   background: var(--accent);
+  border-radius: 8px;
+}
+
+.bar-progress::-moz-progress-bar {
+  background: var(--accent);
+  border-radius: 8px;
+}
+
+.bar-progress[value="0"]::-webkit-progress-value {
+  min-width: 2px;
+}
+
+.bar-progress[value="0"]::-moz-progress-bar {
+  min-width: 2px;
+}
+
+.profile-segment-progress {
+  appearance: none;
+  -webkit-appearance: none;
+  background: transparent;
+  border: 0;
+  bottom: 0;
+  display: block;
+  height: 3px;
+  left: 0;
+  pointer-events: none;
+  position: absolute;
+  width: 100%;
 }
 
 .stage-count,
@@ -577,13 +612,16 @@ button {
   white-space: nowrap;
 }
 
-.profile-segment-button i {
+.profile-segment-progress::-webkit-progress-bar {
+  background: transparent;
+}
+
+.profile-segment-progress::-webkit-progress-value {
   background: var(--accent-soft);
-  bottom: 0;
-  display: block;
-  height: 3px;
-  left: 0;
-  position: absolute;
+}
+
+.profile-segment-progress::-moz-progress-bar {
+  background: var(--accent-soft);
 }
 
 .saved-view-grid {

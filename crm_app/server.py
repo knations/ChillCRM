@@ -3365,7 +3365,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             "img-src 'self' data: https://*.supabase.co; "
             "object-src 'none'; "
             "frame-src 'none'; "
-            "style-src 'self' 'unsafe-inline'; "
+            "style-src 'self'; "
             "script-src 'self'; "
             "connect-src 'self'; "
             "frame-ancestors 'none'; "

@@ -408,10 +408,14 @@ function formatNumber(value) {
 }
 
 function percentWidth(value, minimum = 0) {
+  return `${percentValue(value, minimum)}%`;
+}
+
+function percentValue(value, minimum = 0) {
   const numeric = Number(value);
-  if (!Number.isFinite(numeric)) return `${Math.max(0, Math.min(100, minimum))}%`;
+  if (!Number.isFinite(numeric)) return Math.max(0, Math.min(100, minimum));
   const bounded = Math.max(minimum, Math.min(100, numeric));
-  return `${Math.round(bounded)}%`;
+  return Math.round(bounded);
 }
 
 function formatBytes(value) {
@@ -1609,11 +1613,11 @@ async function renderDashboard() {
       <div class="pipeline">
         ${data.pipeline
           .map((stage) => {
-            const width = percentWidth((Number(stage.deal_count || 0) / maxDeals) * 100, 3);
+            const width = percentValue((Number(stage.deal_count || 0) / maxDeals) * 100, 3);
             return `
               <div class="stage">
                 <div class="stage-name">${escapeHtml(stage.name)}</div>
-                <div class="bar-track"><div class="bar-fill" style="width:${width}"></div></div>
+                <progress class="bar-progress" value="${width}" max="100" aria-label="${escapeHtml(stage.name || "Stage")} pipeline share"></progress>
                 <div class="stage-count">${formatNumber(stage.deal_count)} deals</div>
                 <div class="stage-value">${formatMoney(stage.total_value)}</div>
               </div>
@@ -4058,12 +4062,12 @@ function applicationSegmentSection(segments) {
                 <h4>${escapeHtml(segment.field_name)}</h4>
                 ${segment.values
                   .map((item) => {
-                    const width = percentWidth((Number(item.count || 0) / maxCount) * 100, 4);
+                    const width = percentValue((Number(item.count || 0) / maxCount) * 100, 4);
                     return `
                       <button class="profile-segment-button" data-field="${escapeHtml(segment.field_name)}" data-value="${escapeHtml(item.value)}">
                         <span>${escapeHtml(item.value)}</span>
                         <strong>${formatNumber(item.count)}</strong>
-                        <i style="width:${width}"></i>
+                        <progress class="profile-segment-progress" value="${width}" max="100" aria-hidden="true"></progress>
                       </button>
                     `;
                   })

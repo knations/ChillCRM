@@ -4053,11 +4053,16 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             length = int(self.headers.get("Content-Length", "0"))
         except ValueError as exc:
             raise ValueError("Invalid request body length.") from exc
-        if length <= 0:
+        if length < 0:
+            raise ValueError("Invalid request body length.")
+        if length == 0:
             return ""
         if length > MAX_JSON_BODY_BYTES:
             raise RequestBodyTooLarge("Request body is too large.")
-        return self.rfile.read(length).decode("utf-8")
+        try:
+            return self.rfile.read(length).decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise ValueError("Request body must be valid UTF-8.") from exc
 
     def read_json_body(self) -> dict[str, Any]:
         raw = self.read_body_text()

@@ -2055,12 +2055,25 @@ def main() -> int:
                 raise AssertionError("Oversized body should be rejected.")
             except server.RequestBodyTooLarge as exc:
                 assert "too large" in str(exc)
+            body_handler.headers = {"Content-Length": "-1"}
+            try:
+                body_handler.read_body_text()
+                raise AssertionError("Negative Content-Length should be rejected.")
+            except ValueError as exc:
+                assert "Invalid request body length" in str(exc)
             body_handler.headers = {"Content-Length": "not-a-number"}
             try:
                 body_handler.read_body_text()
                 raise AssertionError("Invalid Content-Length should be rejected.")
             except ValueError as exc:
                 assert "Invalid request body length" in str(exc)
+            body_handler.headers = {"Content-Length": "1"}
+            body_handler.rfile = io.BytesIO(b"\xff")
+            try:
+                body_handler.read_body_text()
+                raise AssertionError("Invalid UTF-8 request body should be rejected.")
+            except ValueError as exc:
+                assert "valid UTF-8" in str(exc)
             captured_errors = []
             body_handler.path = "/api/summary?secret=should-not-log"
             body_handler.command = "GET"

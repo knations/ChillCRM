@@ -3336,6 +3336,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
 
     def send_security_headers(self) -> None:
         self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("X-DNS-Prefetch-Control", "off")
         self.send_header("X-Frame-Options", "DENY")
         self.send_header("X-Robots-Tag", "noindex, nofollow")
         self.send_header("X-Permitted-Cross-Domain-Policies", "none")
@@ -3349,6 +3350,8 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             "Content-Security-Policy",
             "default-src 'self'; "
             "img-src 'self' data: https://*.supabase.co; "
+            "object-src 'none'; "
+            "frame-src 'none'; "
             "style-src 'self' 'unsafe-inline'; "
             "script-src 'self'; "
             "connect-src 'self'; "

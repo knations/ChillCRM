@@ -403,6 +403,26 @@ function safeHref(value) {
   return "#";
 }
 
+function linkifyText(value) {
+  const text = String(value ?? "");
+  const urlPattern = /https?:\/\/[^\s<>"']+/gi;
+  let html = "";
+  let lastIndex = 0;
+  for (const match of text.matchAll(urlPattern)) {
+    const fullMatch = match[0];
+    let url = fullMatch;
+    let suffix = "";
+    while (/[),.;:!?]$/.test(url)) {
+      suffix = url.slice(-1) + suffix;
+      url = url.slice(0, -1);
+    }
+    html += escapeHtml(text.slice(lastIndex, match.index));
+    html += `<a href="${safeHref(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(url)}</a>${escapeHtml(suffix)}`;
+    lastIndex = match.index + fullMatch.length;
+  }
+  return html + escapeHtml(text.slice(lastIndex));
+}
+
 function formatNumber(value) {
   return new Intl.NumberFormat().format(value ?? 0);
 }
@@ -6505,7 +6525,7 @@ function personTimelineSection(events) {
   return `
     <div class="detail-section person-timeline-section">
       <div class="inline-header">
-        <h3>Timeline</h3>
+        <h3>History</h3>
         <span class="muted">${formatNumber(events.length)} events</span>
       </div>
       <div class="person-timeline">
@@ -6533,7 +6553,7 @@ function personTimelineEvent(event) {
           <span class="muted">${escapeHtml(formatDateTime(event.occurred_at || ""))}</span>
         </div>
         <strong>${escapeHtml(title)}</strong>
-        ${body ? `<p>${escapeHtml(body)}</p>` : ""}
+        ${body ? `<p>${linkifyText(body)}</p>` : ""}
         ${
           meta.length || event.url || action
             ? `<div class="person-timeline-foot">
@@ -7407,17 +7427,13 @@ function addNoteForm(detail) {
 
 function addCallLogForm(detail) {
   if (detail.type !== "person") return "";
-  const hasSavedCalls = Boolean((detail.call_logs || []).length);
-  const buttonLabel = hasSavedCalls ? "Add Call" : "Save Call";
-  const summaryPlaceholder = hasSavedCalls ? "New call summary" : "Call summary";
-  const notesPlaceholder = hasSavedCalls ? "New conversation notes" : "Conversation notes";
   return `
     <div class="detail-section">
       <div class="inline-header call-log-actions">
-        <button class="text-button" id="addCallLogButton">${buttonLabel}</button>
+        <button class="text-button" id="showCallLogFormButton" type="button">Add Call</button>
       </div>
-      <form id="callLogForm" class="call-log-form">
-        <input name="summary" class="call-log-summary-input" type="text" placeholder="${summaryPlaceholder}">
+      <form id="callLogForm" class="call-log-form" hidden>
+        <input name="summary" class="call-log-summary-input" type="text" placeholder="Call summary">
         <div class="call-log-meta-row">
           <select name="direction" class="call-log-direction-select">
             <option value="">General</option>
@@ -7428,21 +7444,13 @@ function addCallLogForm(detail) {
           </select>
           <input name="call_at" class="call-log-time-input" type="datetime-local" value="${escapeHtml(nowDateTimeInputValue())}">
         </div>
-        <textarea name="notes" class="note-input" rows="5" placeholder="${notesPlaceholder}"></textarea>
+        <textarea name="notes" class="note-input" rows="5" placeholder="Conversation notes"></textarea>
+        <div class="call-log-save-row">
+          <button class="text-button" id="addCallLogButton" type="button">Save Call</button>
+        </div>
       </form>
     </div>
   `;
-}
-
-function focusNextCallLogEntry() {
-  requestAnimationFrame(() => {
-    const form = document.querySelector("#callLogForm");
-    if (!form) return;
-    const timeInput = form.querySelector("[name='call_at']");
-    if (timeInput) timeInput.value = nowDateTimeInputValue();
-    form.scrollIntoView({ block: "start", behavior: "smooth" });
-    form.querySelector("[name='summary']")?.focus({ preventScroll: true });
-  });
 }
 
 function addTaskForm(detail) {
@@ -7968,6 +7976,18 @@ function wireDetailForms(detail) {
     });
   });
 
+  const showCallLogFormButton = document.querySelector("#showCallLogFormButton");
+  if (showCallLogFormButton) {
+    showCallLogFormButton.addEventListener("click", () => {
+      const form = document.querySelector("#callLogForm");
+      if (!form) return;
+      form.hidden = false;
+      showCallLogFormButton.hidden = true;
+      form.scrollIntoView({ block: "start", behavior: "smooth" });
+      form.querySelector("[name='summary']")?.focus({ preventScroll: true });
+    });
+  }
+
   const callLogButton = document.querySelector("#addCallLogButton");
   if (callLogButton) {
     callLogButton.addEventListener("click", async () => {
@@ -7988,7 +8008,6 @@ function wireDetailForms(detail) {
           notes,
         });
         renderDetail(updated.detail);
-        focusNextCallLogEntry();
       });
     });
   }
@@ -10333,7 +10352,7 @@ function notesSection(notes) {
             ${
               note.editable
                 ? `<textarea class="note-edit-input note-input compact-input" rows="4">${escapeHtml(note.content || "")}</textarea>`
-                : `<p>${escapeHtml(note.content || "")}</p>`
+                : `<p>${linkifyText(note.content || "")}</p>`
             }
             <div class="task-line">
               <div class="muted">${formatDate(note.created_at)}${note.updated_at && note.updated_at !== note.created_at ? ` · Updated ${formatDate(note.updated_at)}` : ""}</div>

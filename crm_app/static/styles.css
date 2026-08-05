@@ -4082,6 +4082,15 @@ button {
   gap: 10px;
 }
 
+.call-log-form[hidden] {
+  display: none;
+}
+
+.call-log-save-row {
+  display: flex;
+  justify-content: flex-end;
+}
+
 .call-log-meta-row {
   display: grid;
   gap: 10px;

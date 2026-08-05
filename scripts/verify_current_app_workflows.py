@@ -37,6 +37,11 @@ def main() -> int:
     app_js = (PROJECT_ROOT / "crm_app" / "static" / "app.js").read_text(encoding="utf-8")
     assert "portal-readiness-pill" not in app_js
     assert "Needed ·" not in app_js
+    assert "<h3>History</h3>" in app_js
+    assert "showCallLogFormButton" in app_js
+    assert 'id="callLogForm" class="call-log-form" hidden' in app_js
+    assert "function linkifyText" in app_js
+    assert 'target="_blank" rel="noopener noreferrer"' in app_js
 
     timeline_probe = handler.__new__(handler)
     timeline = timeline_probe.person_timeline(

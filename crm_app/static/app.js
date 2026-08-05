@@ -406,6 +406,13 @@ function formatNumber(value) {
   return new Intl.NumberFormat().format(value ?? 0);
 }
 
+function percentWidth(value, minimum = 0) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return `${Math.max(0, Math.min(100, minimum))}%`;
+  const bounded = Math.max(minimum, Math.min(100, numeric));
+  return `${Math.round(bounded)}%`;
+}
+
 function formatBytes(value) {
   const bytes = Number(value || 0);
   if (!bytes) return "0 bytes";
@@ -1601,11 +1608,11 @@ async function renderDashboard() {
       <div class="pipeline">
         ${data.pipeline
           .map((stage) => {
-            const width = Math.max(3, Math.round((stage.deal_count / maxDeals) * 100));
+            const width = percentWidth((Number(stage.deal_count || 0) / maxDeals) * 100, 3);
             return `
               <div class="stage">
                 <div class="stage-name">${escapeHtml(stage.name)}</div>
-                <div class="bar-track"><div class="bar-fill" style="width:${width}%"></div></div>
+                <div class="bar-track"><div class="bar-fill" style="width:${width}"></div></div>
                 <div class="stage-count">${formatNumber(stage.deal_count)} deals</div>
                 <div class="stage-value">${formatMoney(stage.total_value)}</div>
               </div>
@@ -4050,12 +4057,12 @@ function applicationSegmentSection(segments) {
                 <h4>${escapeHtml(segment.field_name)}</h4>
                 ${segment.values
                   .map((item) => {
-                    const width = Math.max(4, Math.round((item.count / maxCount) * 100));
+                    const width = percentWidth((Number(item.count || 0) / maxCount) * 100, 4);
                     return `
                       <button class="profile-segment-button" data-field="${escapeHtml(segment.field_name)}" data-value="${escapeHtml(item.value)}">
                         <span>${escapeHtml(item.value)}</span>
                         <strong>${formatNumber(item.count)}</strong>
-                        <i style="width:${width}%"></i>
+                        <i style="width:${width}"></i>
                       </button>
                     `;
                   })

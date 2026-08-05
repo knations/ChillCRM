@@ -368,6 +368,9 @@ def main() -> int:
     assert "Search did not complete" in app_js
     assert 'event.key !== "Enter"' in app_js
     assert "function safeHref(value)" in app_js
+    assert "function percentWidth(value, minimum = 0)" in app_js
+    assert 'style="width:${width}">' in app_js
+    assert 'style="width:${width}%"' not in app_js
     assert '["http:", "https:", "tel:", "googlegmail:"]' in app_js
     assert 'href="${escapeHtml' not in app_js
     assert 'data-gmail-href="${escapeHtml' not in app_js

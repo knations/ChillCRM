@@ -123,7 +123,7 @@ def main() -> int:
         excluded_dirs = [".venv/", "raw_api_exports/", "backups/", "crm_database/", "reports/", "scripts/", "*.command"]
         exclude_ok = all(item in vercelignore for item in excluded_dirs)
         row(rows, "vercel_excludes_local_data", "pass" if exclude_ok else "fail", "local-only paths ignored" if exclude_ok else "missing local-only ignore")
-    except Exception as exc:
+    except (json.JSONDecodeError, OSError, TypeError, AttributeError) as exc:
         row(rows, "vercel_config_parse", "fail", str(exc))
 
     requirements = (PROJECT_ROOT / "requirements.txt").read_text(encoding="utf-8") if (PROJECT_ROOT / "requirements.txt").exists() else ""
@@ -135,7 +135,7 @@ def main() -> int:
         handler = getattr(module, "handler", None)
         handler_ok = isinstance(handler, type) and issubclass(handler, server.CRMRequestHandler)
         row(rows, "serverless_handler_import", "pass" if handler_ok else "fail", "api.index.handler subclasses CRMRequestHandler" if handler_ok else "handler import failed")
-    except Exception as exc:
+    except (ImportError, AttributeError, TypeError) as exc:
         row(rows, "serverless_handler_import", "fail", str(exc))
         handler = None
 
@@ -158,7 +158,7 @@ def main() -> int:
             static_status, static_body = read_url(f"{base_url}/static/app.js")
             row(rows, "handler_static_route", "pass" if static_status == 200 and "renderDashboard" in static_body else "fail", f"status={static_status}")
             row(rows, "handler_users_static_ui", "pass" if static_status == 200 and "renderUsers" in static_body and "/api/app_users/save" in static_body else "fail", "owner Users UI code is present in static bundle")
-        except Exception as exc:
+        except (OSError, TimeoutError, urllib.error.URLError, RuntimeError) as exc:
             row(rows, "handler_local_smoke", "fail", str(exc))
         finally:
             if httpd:
@@ -174,6 +174,7 @@ def main() -> int:
 
     md_path = REPORTS_DIR / "hosted_app_deployment_package_verification.md"
     csv_path = REPORTS_DIR / "hosted_app_deployment_package_verification.csv"
+    REPORTS_DIR.mkdir(parents=True, exist_ok=True)
     write_report(md_path, rows)
     write_csv(csv_path, rows)
     failed = [item for item in rows if item["status"] != "pass"]

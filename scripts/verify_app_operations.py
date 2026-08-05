@@ -88,6 +88,7 @@ def main() -> int:
     vercel_twilio_script = (PROJECT_ROOT / "scripts" / "set_vercel_twilio_config.py").read_text(encoding="utf-8")
     hosted_write_enablement_script = (PROJECT_ROOT / "scripts" / "enable_hosted_writes_production.py").read_text(encoding="utf-8")
     vercel_alias_promotion_script = (PROJECT_ROOT / "scripts" / "promote_vercel_deployment_alias.py").read_text(encoding="utf-8")
+    hosted_package_script = (PROJECT_ROOT / "scripts" / "verify_hosted_app_deployment_package.py").read_text(encoding="utf-8")
     deploy_script = (PROJECT_ROOT / "scripts" / "deploy_chillcrm_to_vercel.py").read_text(encoding="utf-8")
     remaining_gates_packet_script = (PROJECT_ROOT / "scripts" / "prepare_remaining_production_gate_packet.py").read_text(encoding="utf-8")
     owner_gate_reply_validation_script = (PROJECT_ROOT / "scripts" / "validate_owner_gate_reply.py").read_text(encoding="utf-8")
@@ -1270,6 +1271,8 @@ def main() -> int:
     assert "import urllib.error" in vercel_diagnostics_script
     assert "except (json.JSONDecodeError, TimeoutError, urllib.error.HTTPError, urllib.error.URLError)" in vercel_diagnostics_script
     assert "except Exception:" not in vercel_diagnostics_script
+    assert "REPORTS_DIR.mkdir(parents=True, exist_ok=True)" in hosted_package_script
+    assert "except Exception:" not in hosted_package_script
     assert "Hosted Redeploy Preflight" in hosted_redeploy_preflight_script
     assert "hosted_redeploy_preflight_ready" in hosted_redeploy_preflight_script
     assert "verify_hosted_app_deployment_package.py" in hosted_redeploy_preflight_script

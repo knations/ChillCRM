@@ -29,6 +29,7 @@ The live health endpoint at `https://chillcrm.app/api/health` is green after the
 - Remaining-gate execution coverage now maps current Vercel diagnostics/environment blockers to the redeploy/status-refresh input, and verifier assertions recognize explicit blocked Supabase parity evidence without marking it green.
 - Vercel deployment diagnostics now narrow optional event/file fetch failures to expected Vercel API, network timeout, and JSON decode errors instead of silently swallowing every exception.
 - Permission-denial audit failures now leave a server-side warning instead of disappearing silently, while the browser still receives the same non-sensitive permission-denied response.
+- Hosted deployment package verification now uses explicit expected parse/import/local-smoke exception classes and creates its ignored report directory on fresh clones before writing evidence.
 
 ## Verification Run
 

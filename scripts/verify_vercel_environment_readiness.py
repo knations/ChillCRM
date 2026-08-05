@@ -67,11 +67,17 @@ def now_utc() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
-def prompt_secret(label: str, env_name: str) -> str:
+def prompt_secret(label: str, env_name: str, *, prompt: bool = False) -> tuple[str, str]:
     value = os.environ.get(env_name, "").strip()
     if value:
-        return value
-    return getpass.getpass(f"{label}: ").strip()
+        return value, "env"
+    if not prompt:
+        return "", "missing"
+    try:
+        value = getpass.getpass(f"{label}: ").strip()
+    except (EOFError, OSError):
+        return "", "missing"
+    return value, "prompt" if value else "missing"
 
 
 def read_project_link() -> dict[str, str]:
@@ -242,6 +248,34 @@ def build_rows(project_id: str, team_slug: str, env_items: list[dict[str, Any]])
     return [summary, *rows]
 
 
+def input_required_rows(project_id: str, team_slug: str, key: str, evidence: str) -> list[dict[str, Any]]:
+    summary = {
+        "row_type": "summary",
+        "generated_at": now_utc(),
+        "status": "input_required_vercel_environment",
+        "project_id": project_id,
+        "team_slug": team_slug,
+        "required_passed": 0,
+        "required_input_required": 1,
+        "warnings": 0,
+        "values_stored": "no",
+        "secrets_read_or_stored": "no",
+        "production_gate": "blocked_until_vercel_environment_ready",
+    }
+    check = {
+        "row_type": "check",
+        "key": key,
+        "category": "provider_metadata_access",
+        "status": "input_required",
+        "blocks_remote_shakedown": "yes",
+        "expected_secret": "yes" if key == "VERCEL_TOKEN" else "no",
+        "expected_value_checked": "no",
+        "targets_seen": "",
+        "evidence": evidence,
+    }
+    return [summary, check]
+
+
 def write_csv(path: Path, rows: list[dict[str, Any]]) -> None:
     fieldnames: list[str] = []
     for row in rows:
@@ -311,19 +345,28 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Verify non-secret Vercel environment variable readiness.")
     parser.add_argument("--project-id", default=os.environ.get("VERCEL_PROJECT_ID", ""))
     parser.add_argument("--team-slug", default=os.environ.get("VERCEL_TEAM_SLUG", DEFAULT_TEAM_SLUG))
+    parser.add_argument("--prompt-token", action="store_true", help="Prompt privately for Vercel token if VERCEL_TOKEN is not set.")
     args = parser.parse_args()
 
     link = read_project_link()
     project_id = args.project_id.strip() or link.get("projectId", "")
     team_slug = args.team_slug.strip() or link.get("teamSlug", DEFAULT_TEAM_SLUG)
-    token = prompt_secret("Vercel token", "VERCEL_TOKEN")
+    token, _token_source = prompt_secret("Vercel token", "VERCEL_TOKEN", prompt=args.prompt_token)
+    REPORTS_DIR.mkdir(exist_ok=True)
     if not token:
-        raise RuntimeError("Vercel token is required.")
+        rows = input_required_rows(project_id, team_slug, "VERCEL_TOKEN", "Missing Vercel API token. Set VERCEL_TOKEN or rerun with --prompt-token.")
+        write_csv(REPORTS_DIR / "vercel_environment_readiness.csv", rows)
+        write_report(REPORTS_DIR / "vercel_environment_readiness.md", rows)
+        print(json.dumps(next(row for row in rows if row["row_type"] == "summary"), indent=2))
+        return 1
     if not project_id:
-        raise RuntimeError("Vercel project id is required. Link the project or pass --project-id.")
+        rows = input_required_rows(project_id, team_slug, "VERCEL_PROJECT_ID", "Vercel project id is required. Link the project or pass --project-id.")
+        write_csv(REPORTS_DIR / "vercel_environment_readiness.csv", rows)
+        write_report(REPORTS_DIR / "vercel_environment_readiness.md", rows)
+        print(json.dumps(next(row for row in rows if row["row_type"] == "summary"), indent=2))
+        return 1
     payload = request_json(f"/v10/projects/{project_id}/env", token, {"slug": team_slug})
     rows = build_rows(project_id, team_slug, env_payload_items(payload))
-    REPORTS_DIR.mkdir(exist_ok=True)
     write_csv(REPORTS_DIR / "vercel_environment_readiness.csv", rows)
     write_report(REPORTS_DIR / "vercel_environment_readiness.md", rows)
     summary = next(row for row in rows if row["row_type"] == "summary")

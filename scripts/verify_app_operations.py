@@ -1668,6 +1668,10 @@ def main() -> int:
     assert '"CRM_ENV": "production"' in vercel_environment_script
     assert "values_stored" in vercel_environment_script
     assert "secrets_read_or_stored" in vercel_environment_script
+    assert "--prompt-token" in vercel_environment_script
+    assert "input_required_rows" in vercel_environment_script
+    assert "Missing Vercel API token" in vercel_environment_script
+    assert "except (EOFError, OSError)" in vercel_environment_script
     assert (PROJECT_ROOT / "reports" / "vercel_environment_readiness.md").exists()
     vercel_environment_report = (PROJECT_ROOT / "reports" / "vercel_environment_readiness.md").read_text(encoding="utf-8")
     assert "Vercel Environment Readiness" in vercel_environment_report

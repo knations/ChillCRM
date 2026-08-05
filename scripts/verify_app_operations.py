@@ -366,6 +366,8 @@ def main() -> int:
     assert "Search took too long" in app_js
     assert "Search did not complete" in app_js
     assert 'event.key !== "Enter"' in app_js
+    assert 'href="${link}"' not in app_js
+    assert 'data.report_links.map((link) => `<a href="${escapeHtml(link)}"' in app_js
     assert "globalSearchForm" in index_html
     assert "globalSearchClear" in index_html
     assert ".search-form" in styles_css

@@ -11430,7 +11430,7 @@ async function renderCleanup() {
       </div>
       <div class="detail-content report-links">
         ${(data.report_links || []).length
-          ? data.report_links.map((link) => `<a href="${link}" target="_blank" rel="noreferrer">${escapeHtml(link.split("/").pop())}</a>`).join("")
+          ? data.report_links.map((link) => `<a href="${escapeHtml(link)}" target="_blank" rel="noreferrer">${escapeHtml(link.split("/").pop())}</a>`).join("")
           : `<span class="muted">Reports are unavailable while the cleanup summary is paused.</span>`}
       </div>
     </div>

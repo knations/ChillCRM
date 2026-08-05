@@ -6866,7 +6866,7 @@ function contactActions(detail, options = {}) {
   };
   sources.forEach((source) => {
     addRow(source, "phone", "Phone", source.record.phone, contactPhoneHref(source.record.phone), "Call");
-    addRow(source, "email", "Email", source.record.email, contactEmailHref(source.record.email), "Mail");
+    addRow(source, "email", "Email", source.record.email, contactEmailHref(source.record.email), "Email");
     addRow(source, "mobile", "Mobile", source.record.mobile, contactPhoneHref(source.record.mobile), "Call");
     addRow(source, "website", "Website", source.record.website, contactWebsiteHref(source.record.website), "Open");
   });
@@ -6883,7 +6883,7 @@ function contactActions(detail, options = {}) {
             <span>${escapeHtml(row.displayValue || row.value)}</span>
           </div>
           <div class="contact-action-buttons">
-            ${row.href ? `<a class="text-button action-link" href="${escapeHtml(row.href)}">${escapeHtml(row.actionLabel)}</a>` : ""}
+            ${row.href ? `<a class="text-button action-link ${row.key === "email" ? "gmail-compose-link" : ""}" href="${escapeHtml(row.href)}" ${row.key === "email" ? `data-mailto-href="${escapeHtml(contactMailtoHref(row.value))}"` : ""}>${escapeHtml(row.actionLabel)}</a>` : ""}
             <button class="text-button contact-copy-button" type="button" data-copy-label="${escapeHtml(row.label)}" data-copy-value="${escapeHtml(row.displayValue || row.value)}">Copy</button>
           </div>
         </div>
@@ -6951,6 +6951,11 @@ function contactCardHref(source) {
 }
 
 function contactEmailHref(value) {
+  const text = String(value || "").trim();
+  return text ? `googlegmail://co?to=${encodeURIComponent(text)}` : "";
+}
+
+function contactMailtoHref(value) {
   const text = String(value || "").trim();
   return text ? `mailto:${encodeURIComponent(text)}` : "";
 }
@@ -7613,6 +7618,7 @@ function wireDetailForms(detail) {
   wireRecordFileControls(detail);
   wirePersonTagPicker(detail);
   wireArchiveButtons(els.detail);
+  wireGmailComposeFallbacks();
 
   document.querySelectorAll(".contact-copy-button").forEach((button) => {
     button.addEventListener("click", async () => {
@@ -8140,6 +8146,20 @@ function wireProfileImageControls(detail) {
       });
     });
   }
+}
+
+function wireGmailComposeFallbacks() {
+  document.querySelectorAll(".gmail-compose-link").forEach((link) => {
+    link.addEventListener("click", () => {
+      const fallbackHref = link.dataset.mailtoHref || "";
+      if (!fallbackHref) return;
+      window.setTimeout(() => {
+        if (document.visibilityState === "visible" && document.hasFocus()) {
+          window.location.href = fallbackHref;
+        }
+      }, 900);
+    });
+  });
 }
 
 function wireRecordFileControls(detail) {

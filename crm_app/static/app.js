@@ -1661,7 +1661,7 @@ async function renderOwnerBrief() {
         <strong>${escapeHtml(data.source?.label || "CRM action layer")}</strong>
         <span>${escapeHtml(data.source?.drive_feed === "pending_connection" ? "Google Drive transcript feed pending connection" : "Drive feed connected")}</span>
       </div>
-      ${data.source?.drive_folder_url ? `<a class="text-button" href="${safeHref(data.source.drive_folder_url)}" target="_blank" rel="noreferrer">Open Drive</a>` : ""}
+      ${data.source?.drive_folder_url ? `<a class="text-button" href="${safeHref(data.source.drive_folder_url)}" target="_blank" rel="noopener noreferrer">Open Drive</a>` : ""}
     </div>
     <div class="owner-brief-metrics">
       ${(data.metrics || []).map((item) => metric(item.label, item.value)).join("")}
@@ -2025,7 +2025,7 @@ function startTodayPanel(start) {
         <div class="start-today-actions">
           <span class="pill ${tone}">${escapeHtml(labelize(start.status || "waiting"))}</span>
           <button type="button" class="text-button nav-jump" data-view="${escapeHtml(start.view || "migrationStatus")}">${escapeHtml(start.action || "Open Status")}</button>
-          ${start.report ? `<a class="text-button action-link" href="${safeHref(start.report)}" target="_blank" rel="noreferrer">Open Guide</a>` : ""}
+          ${start.report ? `<a class="text-button action-link" href="${safeHref(start.report)}" target="_blank" rel="noopener noreferrer">Open Guide</a>` : ""}
           ${start.export_url ? `<a class="text-button action-link" href="${safeHref(start.export_url)}">Export Guide</a>` : ""}
         </div>
       </div>
@@ -2041,7 +2041,7 @@ function startTodayPanel(start) {
                 ? `<button type="button" class="text-button next-action-decision" data-key="${escapeHtml(next.decision_key)}">${escapeHtml(next.primary_action || "Open Decision")}</button>`
                 : `<button type="button" class="text-button nav-jump" data-view="${escapeHtml(next.view || "migrationStatus")}">${escapeHtml(next.primary_action || "Open")}</button>`
             }
-            ${next.report ? `<a class="text-button action-link" href="${safeHref(next.report)}" target="_blank" rel="noreferrer">Evidence</a>` : ""}
+            ${next.report ? `<a class="text-button action-link" href="${safeHref(next.report)}" target="_blank" rel="noopener noreferrer">Evidence</a>` : ""}
             ${worksheetActionLinks(next)}
           </div>
         </div>
@@ -2072,7 +2072,7 @@ function productionStatusPanel(status) {
         <div class="start-today-actions">
           <span class="pill ${tone}">${escapeHtml(labelize(status.status || "waiting"))}</span>
           <button type="button" class="text-button nav-jump" data-view="${escapeHtml(status.view || "migrationStatus")}">${escapeHtml(status.action || "Open Status")}</button>
-          ${status.report ? `<a class="text-button action-link" href="${safeHref(status.report)}" target="_blank" rel="noreferrer">Evidence</a>` : ""}
+          ${status.report ? `<a class="text-button action-link" href="${safeHref(status.report)}" target="_blank" rel="noopener noreferrer">Evidence</a>` : ""}
         </div>
       </div>
       ${
@@ -2230,7 +2230,7 @@ async function renderMigrationStatus() {
           <h3>Imported Archive</h3>
           <div class="inline-actions">
             <button class="text-button nav-jump" data-view="archive">Open Archive</button>
-            <a class="text-button action-link" href="${safeHref(archiveAssociation.report || "/reports/archive_association_audit.md")}" target="_blank" rel="noreferrer">Audit</a>
+            <a class="text-button action-link" href="${safeHref(archiveAssociation.report || "/reports/archive_association_audit.md")}" target="_blank" rel="noopener noreferrer">Audit</a>
           </div>
         </div>
         <div class="cleanup-detail-signals">
@@ -2246,7 +2246,7 @@ async function renderMigrationStatus() {
           <h3>Backups</h3>
           <div class="inline-actions">
             <button class="text-button nav-jump" data-view="cleanup">Manage</button>
-            <a class="text-button action-link" href="/reports/backup_safety_ledger.md" target="_blank" rel="noreferrer">Report</a>
+            <a class="text-button action-link" href="/reports/backup_safety_ledger.md" target="_blank" rel="noopener noreferrer">Report</a>
             <a class="text-button action-link" href="/api/export?type=backup_safety_ledger">CSV</a>
           </div>
         </div>
@@ -2262,7 +2262,7 @@ async function renderMigrationStatus() {
           ${(data.reports || [])
             .map((report) =>
               report.exists
-                ? `<a href="${safeHref(report.url)}" target="_blank" rel="noreferrer">${escapeHtml(report.name)}</a>`
+                ? `<a href="${safeHref(report.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(report.name)}</a>`
                 : `<span class="muted">${escapeHtml(report.name)} missing</span>`
             )
             .join("")}
@@ -2326,7 +2326,7 @@ function nextActionPanel(action) {
               : ""
           }
           ${action.related_view && action.related_view !== action.view ? `<button type="button" class="text-button nav-jump" data-view="${escapeHtml(action.related_view)}">Open ${escapeHtml(labelize(action.related_view))}</button>` : ""}
-          ${action.report ? `<a class="text-button action-link" href="${safeHref(action.report)}" target="_blank" rel="noreferrer">Evidence</a>` : ""}
+          ${action.report ? `<a class="text-button action-link" href="${safeHref(action.report)}" target="_blank" rel="noopener noreferrer">Evidence</a>` : ""}
           ${worksheetActionLinks(action)}
         </div>
       </div>
@@ -2337,7 +2337,7 @@ function nextActionPanel(action) {
 function worksheetActionLinks(item, label = "Worksheet") {
   if (!item?.worksheet_report && !item?.worksheet_export_url) return "";
   return `
-    ${item.worksheet_report ? `<a class="text-button action-link" href="${safeHref(item.worksheet_report)}" target="_blank" rel="noreferrer">${escapeHtml(label)}</a>` : ""}
+    ${item.worksheet_report ? `<a class="text-button action-link" href="${safeHref(item.worksheet_report)}" target="_blank" rel="noopener noreferrer">${escapeHtml(label)}</a>` : ""}
     ${item.worksheet_export_url ? `<a class="text-button action-link" href="${safeHref(item.worksheet_export_url)}">${escapeHtml(label)} CSV</a>` : ""}
   `;
 }
@@ -2399,8 +2399,8 @@ function decisionPrepPacketPanel(packet) {
             : ""
         }
         ${packet.export_url ? `<a class="text-button action-link" href="${safeHref(packet.export_url)}">Export Packet</a>` : ""}
-        ${packet.report ? `<a class="text-button action-link" href="${safeHref(packet.report)}" target="_blank" rel="noreferrer">Open Sequence</a>` : ""}
-        ${packet.brief_report ? `<a class="text-button action-link" href="${safeHref(packet.brief_report)}" target="_blank" rel="noreferrer">Open Brief</a>` : ""}
+        ${packet.report ? `<a class="text-button action-link" href="${safeHref(packet.report)}" target="_blank" rel="noopener noreferrer">Open Sequence</a>` : ""}
+        ${packet.brief_report ? `<a class="text-button action-link" href="${safeHref(packet.brief_report)}" target="_blank" rel="noopener noreferrer">Open Brief</a>` : ""}
       </div>
     </div>
   `;
@@ -2422,7 +2422,7 @@ function decisionPrepRow(decision) {
       </div>
       <div class="decision-prep-row-actions">
         ${decision.key ? `<button type="button" class="text-button decision-prep-focus" data-key="${escapeHtml(decision.key)}">Open</button>` : ""}
-        ${decision.report ? `<a class="text-button action-link" href="${safeHref(decision.report)}" target="_blank" rel="noreferrer">Evidence</a>` : ""}
+        ${decision.report ? `<a class="text-button action-link" href="${safeHref(decision.report)}" target="_blank" rel="noopener noreferrer">Evidence</a>` : ""}
         ${worksheetActionLinks(decision)}
       </div>
     </div>
@@ -2447,7 +2447,7 @@ function dailyOperatingGuidePanel(guide) {
         </div>
         <div class="daily-guide-header-actions">
           <span class="pill ${tone}">${escapeHtml(labelize(guide.status || "waiting"))}</span>
-          ${guide.report ? `<a class="text-button action-link" href="${safeHref(guide.report)}" target="_blank" rel="noreferrer">Open Guide</a>` : ""}
+          ${guide.report ? `<a class="text-button action-link" href="${safeHref(guide.report)}" target="_blank" rel="noopener noreferrer">Open Guide</a>` : ""}
           ${guide.export_url ? `<a class="text-button action-link" href="${safeHref(guide.export_url)}">Export Guide</a>` : ""}
         </div>
       </div>
@@ -2482,7 +2482,7 @@ function dailyGuideStep(step) {
       <div class="daily-guide-actions">
         ${dailyGuideActionButton(step.action || "Open", step.view, step.preset)}
         ${dailyGuideActionButton(step.secondary_action, step.secondary_view, step.secondary_preset)}
-        ${step.report ? `<a class="text-button action-link" href="${safeHref(step.report)}" target="_blank" rel="noreferrer">Report</a>` : ""}
+        ${step.report ? `<a class="text-button action-link" href="${safeHref(step.report)}" target="_blank" rel="noopener noreferrer">Report</a>` : ""}
         ${step.export_url ? `<a class="text-button action-link" href="${safeHref(step.export_url)}">CSV</a>` : ""}
       </div>
     </div>
@@ -2553,7 +2553,7 @@ function operationalWorkQueuePanel(queue) {
               <button class="text-button work-queue-preset" data-preset="quality_companies_missing_contact">Companies</button>
               <button class="text-button work-queue-preset" data-preset="quality_leads_missing_email">Leads</button>
               <button class="text-button work-queue-preset" data-preset="quality_deals_missing_value">Deals</button>
-              <a class="text-button action-link" href="${safeHref(queue.data_quality?.report || "/reports/local_crm_data_quality.md")}" target="_blank" rel="noreferrer">Report</a>
+              <a class="text-button action-link" href="${safeHref(queue.data_quality?.report || "/reports/local_crm_data_quality.md")}" target="_blank" rel="noopener noreferrer">Report</a>
             </div>
           </div>
           ${recordTable(dataQualityItems, "data_quality")}
@@ -2698,7 +2698,7 @@ function workQueueCard(card) {
             ? `<button type="button" class="text-button ${card.secondary_preset ? "work-queue-preset" : "nav-jump"}" ${card.secondary_preset ? `data-preset="${escapeHtml(card.secondary_preset)}"` : `data-view="${escapeHtml(card.secondary_view)}"`}>${escapeHtml(card.secondary_action || "Open")}</button>`
             : ""
         }
-        ${card.report ? `<a class="text-button action-link" href="${safeHref(card.report)}" target="_blank" rel="noreferrer">Report</a>` : ""}
+        ${card.report ? `<a class="text-button action-link" href="${safeHref(card.report)}" target="_blank" rel="noopener noreferrer">Report</a>` : ""}
         ${card.secondary_report ? `<a class="text-button action-link" href="${safeHref(card.secondary_report)}">CSV</a>` : ""}
       </div>
     </div>
@@ -2853,9 +2853,9 @@ function projectDecisionCenter(projectDecisions) {
         </div>
         <div class="project-decision-header-actions">
           <span class="muted">${formatNumber(counts.pending || 0)} pending · ${formatNumber(counts.decided || 0)} decided · ${formatNumber(counts.deferred || 0)} deferred</span>
-          <a class="text-button action-link" href="/reports/project_decision_sequence.md" target="_blank" rel="noreferrer">Open Sequence</a>
-          <a class="text-button action-link" href="/reports/project_decision_ballot.md" target="_blank" rel="noreferrer">Open Ballot</a>
-          <a class="text-button action-link" href="/reports/project_decision_option_matrix.md" target="_blank" rel="noreferrer">Option Matrix</a>
+          <a class="text-button action-link" href="/reports/project_decision_sequence.md" target="_blank" rel="noopener noreferrer">Open Sequence</a>
+          <a class="text-button action-link" href="/reports/project_decision_ballot.md" target="_blank" rel="noopener noreferrer">Open Ballot</a>
+          <a class="text-button action-link" href="/reports/project_decision_option_matrix.md" target="_blank" rel="noopener noreferrer">Option Matrix</a>
           <a class="text-button action-link" href="/api/export?type=project_decision_ballot">Ballot CSV</a>
           <a class="text-button action-link" href="/api/export?type=project_decision_option_matrix">Matrix CSV</a>
           <button class="text-button" type="button" id="fillAllRecommendedDecisions">Fill Recommended</button>
@@ -2902,7 +2902,7 @@ function projectDecisionSequencePanel(projectDecisions) {
         </div>
         <div class="sequence-next-actions">
           ${nextDecision.view ? `<button type="button" class="text-button nav-jump" data-view="${escapeHtml(nextDecision.view)}">Open ${escapeHtml(labelize(nextDecision.view))}</button>` : ""}
-          ${nextDecision.report ? `<a class="text-button action-link" href="${safeHref(nextDecision.report)}" target="_blank" rel="noreferrer">Evidence</a>` : ""}
+          ${nextDecision.report ? `<a class="text-button action-link" href="${safeHref(nextDecision.report)}" target="_blank" rel="noopener noreferrer">Evidence</a>` : ""}
           ${worksheetActionLinks(nextDecision)}
         </div>
       </div>
@@ -2964,7 +2964,7 @@ function projectDecisionItem(decision, statuses) {
         ${projectDecisionImpact(impact)}
         <div class="project-decision-links">
           ${decision.view ? `<button type="button" class="text-button nav-jump" data-view="${escapeHtml(decision.view)}">Open ${escapeHtml(labelize(decision.view))}</button>` : ""}
-          ${decision.report ? `<a class="text-button action-link" href="${safeHref(decision.report)}" target="_blank" rel="noreferrer">Open Report</a>` : ""}
+          ${decision.report ? `<a class="text-button action-link" href="${safeHref(decision.report)}" target="_blank" rel="noopener noreferrer">Open Report</a>` : ""}
           ${worksheetActionLinks(decision)}
         </div>
       </div>
@@ -3407,10 +3407,10 @@ function productionGatePanel(gates) {
     const safeLinks = Array.isArray(links) ? links : [];
     if (safeLinks.length) {
       return safeLinks
-        .map((link) => `<a class="text-button action-link" href="${safeHref(link.url || "")}" target="_blank" rel="noreferrer">${escapeHtml(link.label || fallbackLabel)}</a>`)
+        .map((link) => `<a class="text-button action-link" href="${safeHref(link.url || "")}" target="_blank" rel="noopener noreferrer">${escapeHtml(link.label || fallbackLabel)}</a>`)
         .join("");
     }
-    return fallbackUrl ? `<a class="text-button action-link" href="${safeHref(fallbackUrl)}" target="_blank" rel="noreferrer">${escapeHtml(fallbackLabel)}</a>` : "";
+    return fallbackUrl ? `<a class="text-button action-link" href="${safeHref(fallbackUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(fallbackLabel)}</a>` : "";
   };
   const actionPanel = (action, label, className) => {
     if (!action?.title) return "";
@@ -3436,9 +3436,9 @@ function productionGatePanel(gates) {
         </div>
         <div class="daily-guide-header-actions">
           <span class="pill ${tone}">${escapeHtml(labelize(gates.production_gate || gates.status))}</span>
-          ${gates.reports?.readiness ? `<a class="text-button action-link" href="${safeHref(gates.reports.readiness)}" target="_blank" rel="noreferrer">Readiness</a>` : ""}
-          ${gates.reports?.remaining_packet ? `<a class="text-button action-link" href="${safeHref(gates.reports.remaining_packet)}" target="_blank" rel="noreferrer">Inputs</a>` : ""}
-          ${gates.reports?.owner_intake ? `<a class="text-button action-link" href="${safeHref(gates.reports.owner_intake)}" target="_blank" rel="noreferrer">Owner Intake</a>` : ""}
+          ${gates.reports?.readiness ? `<a class="text-button action-link" href="${safeHref(gates.reports.readiness)}" target="_blank" rel="noopener noreferrer">Readiness</a>` : ""}
+          ${gates.reports?.remaining_packet ? `<a class="text-button action-link" href="${safeHref(gates.reports.remaining_packet)}" target="_blank" rel="noopener noreferrer">Inputs</a>` : ""}
+          ${gates.reports?.owner_intake ? `<a class="text-button action-link" href="${safeHref(gates.reports.owner_intake)}" target="_blank" rel="noopener noreferrer">Owner Intake</a>` : ""}
         </div>
       </div>
       <div class="cleanup-detail-signals">
@@ -5775,9 +5775,9 @@ function nextArchiveItemAfterReview(items, currentId) {
 
 function archiveItemFacts(item) {
   const externalLink = item.file_url
-    ? `<a href="${safeHref(item.file_url)}" target="_blank" rel="noreferrer">${escapeHtml(item.title || item.label)}</a>`
+    ? `<a href="${safeHref(item.file_url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(item.title || item.label)}</a>`
     : item.url
-      ? `<a href="${safeHref(item.url)}" target="_blank" rel="noreferrer">${escapeHtml(item.title || item.label)}</a>`
+      ? `<a href="${safeHref(item.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(item.title || item.label)}</a>`
       : "";
   const fields = [
     ["Archive ID", item.id],
@@ -6448,7 +6448,7 @@ function personPortalSection(portal, personId) {
           </select>
         </label>
         <button id="savePortalProfileButton" class="text-button" type="button">Save Portal</button>
-        <a class="text-button portal-preview-button" href="${safeHref(previewUrl)}" target="_blank" rel="noreferrer">Preview Portal</a>
+        <a class="text-button portal-preview-button" href="${safeHref(previewUrl)}" target="_blank" rel="noopener noreferrer">Preview Portal</a>
       </div>
       <div class="portal-entry-panel portal-shared-documents-panel">
         <h4>Shared Documents</h4>
@@ -6564,7 +6564,7 @@ function personTimelineEvent(event) {
           meta.length || event.url || action
             ? `<div class="person-timeline-foot">
                 ${meta.map((item) => `<span>${escapeHtml(item)}</span>`).join("")}
-                ${event.url ? `<a href="${safeHref(event.url)}" target="_blank" rel="noreferrer">${type === "call" ? "Recording" : "Open"}</a>` : ""}
+                ${event.url ? `<a href="${safeHref(event.url)}" target="_blank" rel="noopener noreferrer">${type === "call" ? "Recording" : "Open"}</a>` : ""}
                 ${action}
               </div>`
             : ""
@@ -6945,7 +6945,7 @@ function contactCardStrip(sources) {
         ${sources
           .map(
             (source) => `
-              <a class="text-button action-link contact-card-button" href="${safeHref(contactCardHref(source))}" target="_blank" rel="noreferrer">
+              <a class="text-button action-link contact-card-button" href="${safeHref(contactCardHref(source))}" target="_blank" rel="noopener noreferrer">
                 ${escapeHtml(contactCardButtonLabel(source))}
               </a>
             `
@@ -7512,7 +7512,7 @@ function callLogsSection(callLogs) {
             <textarea class="call-log-edit-notes note-input compact-input" rows="5" placeholder="Conversation notes">${escapeHtml(call.notes || "")}</textarea>
             ${call.recording_url ? `
               <div class="call-recording-line">
-                <a href="${safeHref(call.recording_url)}" target="_blank" rel="noreferrer">Call Recording</a>
+                <a href="${safeHref(call.recording_url)}" target="_blank" rel="noopener noreferrer">Call Recording</a>
                 <span class="muted">${escapeHtml([call.provider, call.duration_seconds ? `${call.duration_seconds}s` : ""].filter(Boolean).join(" · "))}</span>
               </div>
             ` : ""}
@@ -8391,7 +8391,7 @@ function followupTransitionPanel(plan) {
         </div>
         <div class="followup-transition-actions">
           <span class="pill ${tone}">${escapeHtml(labelize(plan.status || "waiting"))}</span>
-          ${plan.report ? `<a class="text-button action-link" href="${safeHref(plan.report)}" target="_blank" rel="noreferrer">Open Plan</a>` : ""}
+          ${plan.report ? `<a class="text-button action-link" href="${safeHref(plan.report)}" target="_blank" rel="noopener noreferrer">Open Plan</a>` : ""}
           ${plan.export_url ? `<a class="text-button action-link" href="${safeHref(plan.export_url)}">Export Plan</a>` : ""}
         </div>
       </div>
@@ -9120,7 +9120,7 @@ function linkedResourceRow(resource) {
         <div class="muted">${escapeHtml(labelize(resource.source_type || "source"))}</div>
       </td>
       <td>
-        <a href="${safeHref(resource.url)}" target="_blank" rel="noreferrer">${escapeHtml(resource.url)}</a>
+        <a href="${safeHref(resource.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(resource.url)}</a>
         ${resource.context ? `<div class="muted linked-resource-context">${escapeHtml(resource.context)}</div>` : ""}
       </td>
     </tr>
@@ -9433,7 +9433,7 @@ function archiveDecisionEvidencePanel(summary, activePreset) {
           </button>
           <button class="text-button next-action-decision" type="button" data-key="unlinked_archive_matching">Open Decision</button>
           <button class="text-button next-action-fill" type="button" data-key="unlinked_archive_matching">Fill Recommended</button>
-          <a class="text-button action-link" href="${safeHref(summary.report || "/reports/unlinked_archive_matching_candidates.md")}" target="_blank" rel="noreferrer">Open Report</a>
+          <a class="text-button action-link" href="${safeHref(summary.report || "/reports/unlinked_archive_matching_candidates.md")}" target="_blank" rel="noopener noreferrer">Open Report</a>
         </div>
       </div>
       ${
@@ -9516,7 +9516,7 @@ function archiveReviewTriagePanel(triage, activeTriageLane = "") {
           <span><strong>${formatNumber(statusCount("ready_to_link"))}</strong>Ready candidates</span>
         </div>
         <div class="archive-decision-actions">
-          ${triage.report ? `<a class="text-button action-link" href="${safeHref(triage.report)}" target="_blank" rel="noreferrer">Open Triage</a>` : ""}
+          ${triage.report ? `<a class="text-button action-link" href="${safeHref(triage.report)}" target="_blank" rel="noopener noreferrer">Open Triage</a>` : ""}
           ${triage.export_url ? `<a class="text-button action-link" href="${safeHref(triage.export_url)}">Triage CSV</a>` : ""}
           <button class="text-button archive-review-filter-button" type="button" data-review-status="unreviewed">Open Unreviewed</button>
         </div>
@@ -9587,7 +9587,7 @@ function archiveAssociationCoveragePanel(association) {
         </div>
         <div class="archive-decision-actions">
           <button class="text-button archive-review-filter-button" type="button" data-review-status="unreviewed">Open Unreviewed</button>
-          <a class="text-button action-link" href="${safeHref(association.report || "/reports/archive_association_audit.md")}" target="_blank" rel="noreferrer">Audit</a>
+          <a class="text-button action-link" href="${safeHref(association.report || "/reports/archive_association_audit.md")}" target="_blank" rel="noopener noreferrer">Audit</a>
           <a class="text-button action-link" href="${safeHref(association.export_url || "/api/export?type=archive_association_audit")}">CSV</a>
         </div>
       </div>
@@ -9603,9 +9603,9 @@ function archiveRow(item) {
       ? `<button class="record-button" data-type="${escapeHtml(item.record_type)}" data-id="${item.record_id}">${escapeHtml(item.record_name || recordLabel)}</button>`
       : `<span class="muted">Unlinked</span>`;
   const itemLink = item.file_url
-    ? `<a href="${safeHref(item.file_url)}" target="_blank" rel="noreferrer">${escapeHtml(item.title || item.label)}</a>`
+    ? `<a href="${safeHref(item.file_url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(item.title || item.label)}</a>`
     : item.url
-      ? `<a href="${safeHref(item.url)}" target="_blank" rel="noreferrer">${escapeHtml(item.title || item.label)}</a>`
+      ? `<a href="${safeHref(item.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(item.title || item.label)}</a>`
       : `<strong>${escapeHtml(item.title || item.label)}</strong>`;
   return `
     <tr>
@@ -9676,8 +9676,8 @@ async function renderCustomFields() {
         <p>${formatNumber(data.total)} field groups</p>
       </div>
       <div class="header-actions">
-        <a class="text-button action-link" href="/reports/application_profile_editability_review.md" target="_blank" rel="noreferrer">Application Profile Report</a>
-        <a class="text-button action-link" href="/reports/custom_field_promotion_recommendations.md" target="_blank" rel="noreferrer">Promotion Report</a>
+        <a class="text-button action-link" href="/reports/application_profile_editability_review.md" target="_blank" rel="noopener noreferrer">Application Profile Report</a>
+        <a class="text-button action-link" href="/reports/custom_field_promotion_recommendations.md" target="_blank" rel="noopener noreferrer">Promotion Report</a>
         <a class="text-button action-link" href="/api/export?type=application_profiles">Export Profiles</a>
         <a class="text-button action-link" href="/api/export?${escapeHtml(exportSummaryParams.toString())}">Export Summary</a>
         <a class="text-button action-link" href="/api/export?type=custom_field_values">Export Values</a>
@@ -9833,7 +9833,7 @@ function applicationProfileDecisionPanel(summary) {
         <div class="archive-decision-actions">
           <button class="text-button next-action-decision" type="button" data-key="application_profile_editability">Open Decision</button>
           <button class="text-button next-action-fill" type="button" data-key="application_profile_editability">Fill Recommended</button>
-          <a class="text-button action-link" href="${safeHref(summary.report || "/reports/application_profile_editability_review.md")}" target="_blank" rel="noreferrer">Open Report</a>
+          <a class="text-button action-link" href="${safeHref(summary.report || "/reports/application_profile_editability_review.md")}" target="_blank" rel="noopener noreferrer">Open Report</a>
         </div>
       </div>
       <div class="archive-top-numbers">
@@ -10212,7 +10212,7 @@ function linkedResources(resources) {
       <div class="linked-resource-list">
         ${resources
           .map((resource) => `
-            <a class="linked-resource" href="${safeHref(resource.url)}" target="_blank" rel="noreferrer">
+            <a class="linked-resource" href="${safeHref(resource.url)}" target="_blank" rel="noopener noreferrer">
               <strong>${escapeHtml(resource.kind || "Web Link")}</strong>
               <span>${escapeHtml(resource.source_label || labelize(resource.source_type || "source"))}</span>
               ${resource.context ? `<small>${escapeHtml(resource.context)}</small>` : ""}
@@ -10255,9 +10255,9 @@ function archiveItems(items, options = {}) {
               ${orderedItems
                 .map((item) => {
                   const title = item.file_url
-                    ? `<a href="${safeHref(item.file_url)}" target="_blank" rel="noreferrer">${escapeHtml(item.title || item.label)}</a>`
+                    ? `<a href="${safeHref(item.file_url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(item.title || item.label)}</a>`
                     : item.url
-                      ? `<a href="${safeHref(item.url)}" target="_blank" rel="noreferrer">${escapeHtml(item.title || item.label)}</a>`
+                      ? `<a href="${safeHref(item.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(item.title || item.label)}</a>`
                       : `<strong>${escapeHtml(item.title || item.label)}</strong>`;
                   const meta = [formatDate(item.occurred_at), item.size_label].filter(Boolean).join(" · ");
                   const itemId = item.source_id || item.id || "";
@@ -10726,7 +10726,7 @@ function duplicateTagDecisionPanel(summary) {
           <button class="text-button duplicate-tag-evidence-button" type="button">${active ? "Refresh Evidence Set" : "Show Tag Batch Candidates"}</button>
           <button class="text-button next-action-decision" type="button" data-key="duplicate_tag_policy">Open Decision</button>
           <button class="text-button next-action-fill" type="button" data-key="duplicate_tag_policy">Fill Recommended</button>
-          <a class="text-button action-link" href="${safeHref(summary.report || "/reports/duplicate_tag_spot_check.md")}" target="_blank" rel="noreferrer">Open Report</a>
+          <a class="text-button action-link" href="${safeHref(summary.report || "/reports/duplicate_tag_spot_check.md")}" target="_blank" rel="noopener noreferrer">Open Report</a>
           <a class="text-button action-link" href="${safeHref(summary.export_url || "/api/export_cleanup_groups?type=duplicate_tags")}">Export Evidence</a>
         </div>
       </div>
@@ -10769,7 +10769,7 @@ function leadPersonOverlapDecisionPanel(summary) {
           <button class="text-button overlap-evidence-button" type="button">${active ? "Refresh Overlap Review" : "Show Overlap Review"}</button>
           <button class="text-button next-action-decision" type="button" data-key="lead_person_overlap_policy">Open Decision</button>
           <button class="text-button next-action-fill" type="button" data-key="lead_person_overlap_policy">Fill Recommended</button>
-          <a class="text-button action-link" href="${safeHref(summary.report || "/reports/cleanup_merge_review_pack.md")}" target="_blank" rel="noreferrer">Open Report</a>
+          <a class="text-button action-link" href="${safeHref(summary.report || "/reports/cleanup_merge_review_pack.md")}" target="_blank" rel="noopener noreferrer">Open Report</a>
           <a class="text-button action-link" href="${safeHref(summary.export_url || "/api/export_cleanup_groups?type=lead_person_overlap")}">Export Evidence</a>
         </div>
       </div>
@@ -10814,9 +10814,9 @@ function mergeCleanupDecisionPanel(summary, options) {
           <button class="text-button merge-evidence-button" type="button" data-type="${escapeHtml(options.groupType)}">${active ? escapeHtml(options.refreshLabel) : escapeHtml(options.showLabel)}</button>
           <button class="text-button next-action-decision" type="button" data-key="${escapeHtml(options.decisionKey)}">Open Decision</button>
           <button class="text-button next-action-fill" type="button" data-key="${escapeHtml(options.decisionKey)}">Fill Recommended</button>
-          ${summary.worksheet_report ? `<a class="text-button action-link" href="${safeHref(summary.worksheet_report)}" target="_blank" rel="noreferrer">Open Worksheet</a>` : ""}
+          ${summary.worksheet_report ? `<a class="text-button action-link" href="${safeHref(summary.worksheet_report)}" target="_blank" rel="noopener noreferrer">Open Worksheet</a>` : ""}
           ${summary.worksheet_export_url ? `<a class="text-button action-link" href="${safeHref(summary.worksheet_export_url)}">Worksheet CSV</a>` : ""}
-          <a class="text-button action-link" href="${safeHref(summary.report || "/reports/cleanup_merge_review_pack.md")}" target="_blank" rel="noreferrer">Open Report</a>
+          <a class="text-button action-link" href="${safeHref(summary.report || "/reports/cleanup_merge_review_pack.md")}" target="_blank" rel="noopener noreferrer">Open Report</a>
           <a class="text-button action-link" href="${safeHref(summary.export_url || "/api/export_cleanup_groups")}">Export Evidence</a>
         </div>
       </div>
@@ -10842,7 +10842,7 @@ function guidedReviewQueuePanel(summary) {
           <p>${escapeHtml(summary.message || "")}</p>
         </div>
         <div class="archive-decision-actions">
-          <a class="text-button action-link" href="${safeHref(summary.report || "/reports/cleanup_merge_review_pack.md")}" target="_blank" rel="noreferrer">Open Report</a>
+          <a class="text-button action-link" href="${safeHref(summary.report || "/reports/cleanup_merge_review_pack.md")}" target="_blank" rel="noopener noreferrer">Open Report</a>
           <a class="text-button action-link" href="${safeHref(summary.export_url || "/api/export?type=cleanup_merge_drafts&status=open")}">Export Drafts</a>
         </div>
       </div>
@@ -10876,7 +10876,7 @@ function cleanupStarterPacketPanel(packet) {
         </div>
         <div class="archive-decision-actions">
           <button type="button" class="text-button nav-jump" data-view="cleanup">Open Cleanup</button>
-          ${packet.report ? `<a class="text-button action-link" href="${safeHref(packet.report)}" target="_blank" rel="noreferrer">Open Report</a>` : ""}
+          ${packet.report ? `<a class="text-button action-link" href="${safeHref(packet.report)}" target="_blank" rel="noopener noreferrer">Open Report</a>` : ""}
           ${packet.export_url ? `<a class="text-button action-link" href="${safeHref(packet.export_url)}">Export Packet</a>` : ""}
         </div>
       </div>
@@ -10957,7 +10957,7 @@ function guidedReviewQueueCard(queue) {
       <div class="archive-decision-actions guided-review-actions">
         <button class="text-button queue-review-button" type="button" data-type="${escapeHtml(queue.group_type || "")}" data-lane="${escapeHtml(lane)}">${active ? "Refresh Queue" : `Open ${escapeHtml(queue.short_label || "Queue")}`}</button>
         <button class="text-button next-action-decision" type="button" data-key="${escapeHtml(queue.decision_key || "")}">Open Policy</button>
-        ${queue.worksheet_report ? `<a class="text-button action-link" href="${safeHref(queue.worksheet_report)}" target="_blank" rel="noreferrer">Worksheet</a>` : ""}
+        ${queue.worksheet_report ? `<a class="text-button action-link" href="${safeHref(queue.worksheet_report)}" target="_blank" rel="noopener noreferrer">Worksheet</a>` : ""}
         ${queue.worksheet_export_url ? `<a class="text-button action-link" href="${safeHref(queue.worksheet_export_url)}">Worksheet CSV</a>` : ""}
         <a class="text-button action-link" href="${safeHref(queue.export_url || "/api/export_cleanup_groups")}">Export Queue</a>
       </div>
@@ -10977,7 +10977,7 @@ function cleanupPolicyPanel(policy) {
           <h3>Guided Cleanup Policy</h3>
           <p>${escapeHtml(policy.message || "")}</p>
         </div>
-        <a class="text-button action-link" href="/reports/merge_policy_options.md" target="_blank" rel="noreferrer">Open Report</a>
+        <a class="text-button action-link" href="/reports/merge_policy_options.md" target="_blank" rel="noopener noreferrer">Open Report</a>
       </div>
       <div class="cleanup-policy-totals">
         <div class="signal"><strong>${formatNumber(totals.open_groups || 0)}</strong><span>Open groups</span></div>
@@ -11446,7 +11446,7 @@ async function renderCleanup() {
       </div>
       <div class="detail-content report-links">
         ${(data.report_links || []).length
-          ? data.report_links.map((link) => `<a href="${safeHref(link)}" target="_blank" rel="noreferrer">${escapeHtml(link.split("/").pop())}</a>`).join("")
+          ? data.report_links.map((link) => `<a href="${safeHref(link)}" target="_blank" rel="noopener noreferrer">${escapeHtml(link.split("/").pop())}</a>`).join("")
           : `<span class="muted">Reports are unavailable while the cleanup summary is paused.</span>`}
       </div>
     </div>

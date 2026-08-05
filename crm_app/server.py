@@ -23429,7 +23429,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             f"""
             <article class="portal-card">
               <span class="eyebrow">Document</span>
-              <a href="/api/archive_file?id={self.html_escape(doc.get('archive_item_id'))}" target="_blank" rel="noreferrer">{self.html_escape(doc.get('title') or 'Shared document')}</a>
+              <a href="/api/archive_file?id={self.html_escape(doc.get('archive_item_id'))}" target="_blank" rel="noopener noreferrer">{self.html_escape(doc.get('title') or 'Shared document')}</a>
               <p>Shared {self.html_escape(self.portal_preview_date(doc.get('shared_at') or doc.get('updated_at')) or 'recently')}</p>
             </article>
             """

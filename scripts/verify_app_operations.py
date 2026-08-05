@@ -373,6 +373,8 @@ def main() -> int:
     assert 'href="${safeHref' in app_js
     assert 'href="${link}"' not in app_js
     assert 'data.report_links.map((link) => `<a href="${safeHref(link)}"' in app_js
+    assert 'target="_blank" rel="noopener noreferrer"' in app_js
+    assert 'target="_blank" rel="noreferrer"' not in app_js
     assert "globalSearchForm" in index_html
     assert "globalSearchClear" in index_html
     assert ".search-form" in styles_css

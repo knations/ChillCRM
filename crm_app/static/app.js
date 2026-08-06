@@ -129,7 +129,6 @@ const els = {
   ownerBrief: document.querySelector("#ownerBriefView"),
   operationsStatus: document.querySelector("#operationsStatusView"),
   pipeline: document.querySelector("#pipelineView"),
-  calendar: document.querySelector("#calendarView"),
   list: document.querySelector("#listView"),
   tags: document.querySelector("#tagsView"),
   customFields: document.querySelector("#customFieldsView"),
@@ -1106,6 +1105,9 @@ function setView(view) {
   if (view === "users" && !currentUserCanManageUsers()) {
     view = "dashboard";
   }
+  if (view === "calendar") {
+    view = "dashboard";
+  }
   state.view = view;
   state.page = 1;
   state.mobileDetailReturnLabel = viewDisplayLabel(view);
@@ -1120,7 +1122,6 @@ function setView(view) {
         ownerBrief: els.ownerBrief,
         operationsStatus: els.operationsStatus,
         pipeline: els.pipeline,
-        calendar: els.calendar,
         tags: els.tags,
         customFields: els.customFields,
         linkedResources: els.linkedResources,
@@ -1139,8 +1140,6 @@ function setView(view) {
     renderOwnerBrief();
   } else if (view === "pipeline") {
     renderPipelineBoard();
-  } else if (view === "calendar") {
-    renderCalendar();
   } else if (["people", "companies", "leads", "deals"].includes(view)) {
     state.listType = view;
     if (!profileFilterSupported(view)) {
@@ -1879,25 +1878,6 @@ function pipelineMetric(label, value) {
   `;
 }
 
-async function renderCalendar() {
-  setStatus("Loading calendar");
-  const data = await fetchCalendarEventsForSelectedDate();
-  els.calendar.innerHTML = `
-    <div class="section-header calendar-header">
-      <div>
-        <h2>Calendar</h2>
-        <p>Scheduled calls and open tasks only.</p>
-      </div>
-    </div>
-    ${actionCalendarPanel(data, { title: "Action Calendar" })}
-  `;
-  wireActionCalendarControls(els.calendar, renderCalendar);
-  wireRecordButtons(els.calendar);
-  wireTaskButtons(els.calendar);
-  wireCalendarButtons(els.calendar);
-  setStatus("Ready");
-}
-
 function actionCalendarPanel(data, options = {}) {
   const localToday = data.today || localISODate();
   const selectedTitle = calendarDateTitle(state.calendarDate, localToday);
@@ -2004,7 +1984,6 @@ function wireCalendarButtons(root) {
       });
       if (updated.detail && detailMatchesCurrent(updated.detail)) renderDetail(updated.detail);
       if (state.view === "dashboard") await renderDashboard();
-      if (state.view === "calendar") await renderCalendar();
       setStatus("Call logged");
     });
   });
@@ -5621,7 +5600,6 @@ function wireTaskButtons(root) {
       if (state.view === "followup") renderFollowup();
       if (state.view === "dashboard") renderDashboard();
       if (state.view === "operationsStatus") renderOperationsStatus();
-      if (state.view === "calendar") renderCalendar();
       setStatus("Task saved");
     });
   });
@@ -5635,7 +5613,6 @@ function wireTaskButtons(root) {
       if (state.view === "followup") renderFollowup();
       if (state.view === "dashboard") renderDashboard();
       if (state.view === "operationsStatus") renderOperationsStatus();
-      if (state.view === "calendar") renderCalendar();
       setStatus(completed ? "Task completed" : "Task reopened");
     });
   });
@@ -5653,7 +5630,6 @@ function wireTaskButtons(root) {
       if (state.view === "followup") renderFollowup();
       if (state.view === "dashboard") renderDashboard();
       if (state.view === "operationsStatus") renderOperationsStatus();
-      if (state.view === "calendar") renderCalendar();
       setStatus("Local follow-up created");
     });
   });
@@ -8092,7 +8068,6 @@ function wireDetailForms(detail) {
           content,
         });
         renderDetail(updated.detail);
-        if (state.view === "calendar") renderCalendar();
       });
     });
   }
@@ -8265,7 +8240,6 @@ function wireDetailForms(detail) {
         renderDetail(updated.detail);
         if (state.view === "dashboard") renderDashboard();
         if (state.view === "activity") renderActivity();
-        if (state.view === "calendar") renderCalendar();
       });
     });
   });
@@ -8289,7 +8263,6 @@ function wireDetailForms(detail) {
         renderDetail(updated.detail);
         if (state.view === "dashboard") renderDashboard();
         if (state.view === "activity") renderActivity();
-        if (state.view === "calendar") renderCalendar();
       });
     });
   });
@@ -8318,7 +8291,6 @@ function wireDetailForms(detail) {
           due_date: dueDate || null,
         });
         renderDetail(updated.detail);
-        if (state.view === "calendar") renderCalendar();
       });
     });
   }
@@ -8338,7 +8310,6 @@ function wireDetailForms(detail) {
         if (updated.detail) renderDetail(updated.detail);
         if (state.view === "followup") renderFollowup();
         if (state.view === "dashboard") renderDashboard();
-        if (state.view === "calendar") renderCalendar();
       });
     });
   });
@@ -8356,7 +8327,7 @@ function wireDetailForms(detail) {
         async () => {
           const updated = await postJson("/api/complete_task", { id: Number(button.dataset.id), completed });
           if (updated.detail) renderDetail(updated.detail);
-          if (state.view === "calendar") renderCalendar();
+          if (state.view === "dashboard") renderDashboard();
         }
       );
     });

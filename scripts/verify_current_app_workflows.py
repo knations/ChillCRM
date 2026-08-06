@@ -46,10 +46,12 @@ def main() -> int:
     assert "call-log-note-text" in app_js
     assert 'target="_blank" rel="noopener noreferrer"' in app_js
     index_html = (PROJECT_ROOT / "crm_app" / "static" / "index.html").read_text(encoding="utf-8")
-    assert 'data-view="calendar"' in index_html
+    assert 'data-view="calendar"' not in index_html
+    assert 'id="calendarView"' not in index_html
     assert 'id="environmentBadge" class="environment-badge" hidden' in index_html
     assert 'id="statusText" class="status-text" hidden' in index_html
-    assert "renderCalendar" in app_js
+    assert "actionCalendarPanel" in app_js
+    assert "wireActionCalendarControls(els.dashboard, renderDashboard)" in app_js
     assert "/api/calendar_events" in app_js
     assert "local_today" in app_js
     assert "/api/complete_scheduled_call" in app_js

@@ -773,6 +773,14 @@ function setAuthState(auth = {}) {
   setRuntimeContext(state.auth.runtime);
 }
 
+function currentUserFirstName() {
+  const user = state.auth?.user || {};
+  const displayName = String(user.display_name || "").trim();
+  const emailName = String(user.email || "").split("@")[0].trim();
+  const name = displayName || emailName || "there";
+  return name.split(/\s+/)[0] || "there";
+}
+
 function renderAuthControl() {
   if (!els.authControl) return;
   const auth = state.auth || {};
@@ -1638,8 +1646,8 @@ async function renderDashboard() {
   els.dashboard.innerHTML = `
     <div class="section-header dashboard-today-header">
       <div>
-        <h2>Today</h2>
-        <p>Scheduled calls, open tasks, and deal follow-up focus.</p>
+        <h2>Welcome, ${escapeHtml(currentUserFirstName())}</h2>
+        <p>Here are your calls, tasks and follow-ups.</p>
       </div>
     </div>
     ${actionCalendarPanel(calendarData, { title: "Due Today" })}

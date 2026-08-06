@@ -10009,13 +10009,19 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         offset = (page - 1) * page_size
         q = (params.get("q", [""])[0] or "").strip()
         record_type = (params.get("record_type", [""])[0] or "").strip().lower()
+        sort_by = (params.get("sort_by", ["records"])[0] or "records").strip().lower()
+        sort_direction = (params.get("sort_direction", ["desc"])[0] or "desc").strip().lower()
         if record_type not in {"", "person", "company", "lead", "deal"}:
             record_type = ""
+        if sort_by not in {"tag", "records"}:
+            sort_by = "records"
+        if sort_direction not in {"asc", "desc"}:
+            sort_direction = "desc"
         with self.db() as conn:
             if tag_id:
                 return self.tag_detail(conn, tag_id, page, page_size, offset, record_type)
 
-            filtered = self.filtered_tag_rows(conn, q, record_type)
+            filtered = self.filtered_tag_rows(conn, q, record_type, sort_by, sort_direction)
             rows = filtered["rows"][offset : offset + page_size]
             total_assignments = filtered["total_assignments"]
             record_type_counts = self.tag_record_type_counts(conn, q)
@@ -10024,6 +10030,8 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         return {
             "q": q,
             "record_type": record_type,
+            "sort_by": sort_by,
+            "sort_direction": sort_direction,
             "page": page,
             "page_size": page_size,
             "total": len(filtered["rows"]),
@@ -10032,7 +10040,14 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             "tags": rows,
         }
 
-    def filtered_tag_rows(self, conn: sqlite3.Connection, q: str, record_type: str) -> dict[str, Any]:
+    def filtered_tag_rows(
+        self,
+        conn: sqlite3.Connection,
+        q: str,
+        record_type: str,
+        sort_by: str = "records",
+        sort_direction: str = "desc",
+    ) -> dict[str, Any]:
         where_clauses: list[str] = []
         where_values: list[Any] = []
         if q:
@@ -10054,6 +10069,14 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         where = f"WHERE {' AND '.join(where_clauses)}" if where_clauses else ""
         join_filter = "AND ta.record_type = ?" if record_type else ""
         join_values = [record_type] if record_type else []
+        if sort_by not in {"tag", "records"}:
+            sort_by = "records"
+        direction_sql = "ASC" if sort_direction == "asc" else "DESC"
+        order_sql = (
+            f"t.display_name COLLATE NOCASE {direction_sql}, assignment_count DESC"
+            if sort_by == "tag"
+            else f"assignment_count {direction_sql}, t.display_name COLLATE NOCASE ASC"
+        )
         rows = rows_to_dicts(
             conn.execute(
                 f"""
@@ -10064,7 +10087,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                 LEFT JOIN tag_assignments ta ON ta.tag_id = t.id {join_filter}
                 {where}
                 GROUP BY t.id
-                ORDER BY assignment_count DESC, t.display_name COLLATE NOCASE
+                ORDER BY {order_sql}
                 """,
                 (*join_values, *where_values),
             ).fetchall()
@@ -10816,10 +10839,16 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         params = params or {}
         q = (params.get("q", [""])[0] or "").strip()
         record_type = (params.get("record_type", [""])[0] or "").strip().lower()
+        sort_by = (params.get("sort_by", ["records"])[0] or "records").strip().lower()
+        sort_direction = (params.get("sort_direction", ["desc"])[0] or "desc").strip().lower()
         if record_type not in {"", "person", "company", "lead", "deal"}:
             record_type = ""
+        if sort_by not in {"tag", "records"}:
+            sort_by = "records"
+        if sort_direction not in {"asc", "desc"}:
+            sort_direction = "desc"
         with self.db() as conn:
-            rows = self.filtered_tag_rows(conn, q, record_type)["rows"]
+            rows = self.filtered_tag_rows(conn, q, record_type, sort_by, sort_direction)["rows"]
         for row in rows:
             row["record_types"] = ", ".join(sorted(filter(None, str(row["record_types"]).split(","))))
         return rows

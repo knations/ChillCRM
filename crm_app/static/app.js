@@ -63,6 +63,8 @@ const state = {
   tagPage: 1,
   tagQ: "",
   tagRecordType: "",
+  tagSortBy: "records",
+  tagSortDirection: "desc",
   tagSavedViewId: "",
   tagManageNotice: null,
   customFieldPage: 1,
@@ -4071,6 +4073,8 @@ function currentTagSettings() {
   return {
     q: state.tagQ,
     record_type: state.tagRecordType,
+    sort_by: state.tagSortBy,
+    sort_direction: state.tagSortDirection,
   };
 }
 
@@ -4078,6 +4082,8 @@ function applyTagSettings(settings) {
   state.tagQ = settings.q || "";
   const recordType = settings.record_type || "";
   state.tagRecordType = tagRecordTypeOptions().some(([value]) => value === recordType) ? recordType : "";
+  state.tagSortBy = ["tag", "records"].includes(settings.sort_by) ? settings.sort_by : "records";
+  state.tagSortDirection = ["asc", "desc"].includes(settings.sort_direction) ? settings.sort_direction : "desc";
   state.tagPage = 1;
 }
 
@@ -4088,6 +4094,8 @@ function clearSelectedTagSavedView() {
 function resetTagView() {
   state.tagQ = "";
   state.tagRecordType = "";
+  state.tagSortBy = "records";
+  state.tagSortDirection = "desc";
   state.tagSavedViewId = "";
   state.tagPage = 1;
 }
@@ -4118,6 +4126,20 @@ function tagRecordTypeOptions() {
     ["lead", "Leads"],
     ["deal", "Deals"],
   ];
+}
+
+function tagSortHeader(field, label) {
+  const isActive = state.tagSortBy === field;
+  const ariaSort = isActive ? (state.tagSortDirection === "asc" ? "ascending" : "descending") : "none";
+  const indicator = isActive ? `<span class="sort-indicator">${state.tagSortDirection === "asc" ? "Asc" : "Desc"}</span>` : "";
+  return `
+    <th aria-sort="${ariaSort}">
+      <button class="sort-header-button ${isActive ? "active" : ""}" data-tag-sort="${escapeHtml(field)}" type="button">
+        <span>${escapeHtml(label)}</span>
+        ${indicator}
+      </button>
+    </th>
+  `;
 }
 
 function setTagManageNotice(message, tone = "info") {
@@ -9138,6 +9160,8 @@ async function renderTags() {
     page_size: "50",
     q: state.tagQ,
     record_type: state.tagRecordType,
+    sort_by: state.tagSortBy,
+    sort_direction: state.tagSortDirection,
   });
   const [data, savedViewData] = await Promise.all([
     fetchJson(`/api/tags?${params.toString()}`),
@@ -9152,6 +9176,8 @@ async function renderTags() {
     type: "tags",
     q: state.tagQ,
     record_type: state.tagRecordType,
+    sort_by: state.tagSortBy,
+    sort_direction: state.tagSortDirection,
   });
   const tagRecordTypeCounts = Object.fromEntries((data.record_type_counts || []).map((item) => [item.value, item.count]));
   els.tags.innerHTML = `
@@ -9188,8 +9214,8 @@ async function renderTags() {
         ? `<table class="data-table tag-list-table">
             <thead>
               <tr>
-                <th>Tag</th>
-                <th>Assignments</th>
+                ${tagSortHeader("tag", "Tag")}
+                ${tagSortHeader("records", "Records")}
                 <th>Definitions</th>
                 <th>Used On</th>
                 <th>Actions</th>
@@ -9287,6 +9313,21 @@ async function renderTags() {
     state.tagRecordType = event.target.value;
     state.tagPage = 1;
     renderTags();
+  });
+  document.querySelectorAll("[data-tag-sort]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const field = button.dataset.tagSort;
+      if (!["tag", "records"].includes(field)) return;
+      clearSelectedTagSavedView();
+      if (state.tagSortBy === field) {
+        state.tagSortDirection = state.tagSortDirection === "asc" ? "desc" : "asc";
+      } else {
+        state.tagSortBy = field;
+        state.tagSortDirection = field === "tag" ? "asc" : "desc";
+      }
+      state.tagPage = 1;
+      renderTags();
+    });
   });
   document.querySelector("#prevTagPage").addEventListener("click", () => {
     state.tagPage = Math.max(1, state.tagPage - 1);

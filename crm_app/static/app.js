@@ -10011,6 +10011,13 @@ function taskTable(tasks, compact) {
   if (!tasks.length) {
     return `<div class="empty-state"><h3>No tasks</h3><p>No follow-ups in this view.</p></div>`;
   }
+  if (!compact) {
+    return `
+      <div class="followup-task-list">
+        ${tasks.map(followupTaskCard).join("")}
+      </div>
+    `;
+  }
   return `
     <table class="data-table task-table">
       <thead>
@@ -10056,6 +10063,40 @@ function taskTable(tasks, compact) {
           .join("")}
       </tbody>
     </table>
+  `;
+}
+
+function followupTaskCard(task) {
+  const canOpen = task.record_id && detailTypeSupported(task.record_type);
+  return `
+    <article class="followup-task-card task-edit-card">
+      <div class="followup-task-main">
+        <textarea class="task-edit-content task-table-textarea" rows="3">${escapeHtml(task.content || "")}</textarea>
+        <div class="followup-task-meta">
+          <span class="pill ${task.task_source === "local" ? "green" : ""}">${escapeHtml(task.task_source_label || "Imported")}</span>
+          <span class="pill ${task.completed ? "" : "gold"}">${task.completed ? "Completed" : "Open"}</span>
+          ${task.due_date ? `<span class="muted">Due ${escapeHtml(formatDate(task.due_date))}</span>` : `<span class="muted">No due date</span>`}
+        </div>
+      </div>
+      <div class="followup-task-side">
+        <label>
+          <span>Due</span>
+          <input class="task-edit-due task-table-due" type="date" value="${escapeHtml(taskDateInputValue(task.due_date))}">
+        </label>
+        <div class="followup-task-record">
+          ${
+            canOpen
+              ? `<button class="record-button" type="button" data-type="${escapeHtml(task.record_type)}" data-id="${escapeHtml(task.record_id)}">${escapeHtml(task.record_name || `${task.record_type} #${task.record_id}`)}</button>`
+              : `<span class="muted">${escapeHtml(task.record_name || task.record_type || "No linked record")}</span>`
+          }
+        </div>
+        <div class="task-table-actions">
+          <button class="text-button save-task-button" type="button" data-id="${task.source_id}">Save</button>
+          ${taskLocalCopyButton(task)}
+          ${taskActionButton(task)}
+        </div>
+      </div>
+    </article>
   `;
 }
 

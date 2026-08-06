@@ -2974,6 +2974,58 @@ button {
   max-width: 360px;
 }
 
+.followup-task-list {
+  display: grid;
+  gap: 10px;
+}
+
+.followup-task-card {
+  align-items: start;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(0, 1fr) minmax(240px, 320px);
+  padding: 12px;
+}
+
+.followup-task-main,
+.followup-task-side {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.followup-task-meta,
+.followup-task-record,
+.followup-task-side label {
+  min-width: 0;
+}
+
+.followup-task-meta {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.followup-task-side label {
+  display: grid;
+  gap: 5px;
+}
+
+.followup-task-side label span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.followup-task-record .record-button {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  text-align: left;
+}
+
 .task-table-edit-row {
   height: auto;
 }
@@ -2990,7 +3042,7 @@ button {
 
 .task-table-textarea {
   min-height: 58px;
-  min-width: 260px;
+  min-width: 0;
   padding: 8px 10px;
   resize: vertical;
 }
@@ -3011,7 +3063,7 @@ button {
   flex-wrap: wrap;
   gap: 8px;
   justify-content: flex-end;
-  min-width: 150px;
+  min-width: 0;
 }
 
 .followup-transition-panel {
@@ -6344,6 +6396,14 @@ button {
 
   .calendar-action-card {
     grid-template-columns: 1fr;
+  }
+
+  .followup-task-card {
+    grid-template-columns: 1fr;
+  }
+
+  .followup-task-card .task-table-actions {
+    justify-content: flex-start;
   }
 
   .calendar-action-buttons {

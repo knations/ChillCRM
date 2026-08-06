@@ -54,6 +54,8 @@ def main() -> int:
     assert "local_today" in app_js
     assert "/api/complete_scheduled_call" in app_js
     assert "auth-change-password" not in app_js
+    assert "function followupTaskCard" in app_js
+    assert "followup-task-list" in app_js
 
     timeline_probe = handler.__new__(handler)
     timeline = timeline_probe.person_timeline(

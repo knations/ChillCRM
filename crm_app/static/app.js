@@ -5215,8 +5215,6 @@ function listTable(records) {
             ${sortHeader("stage", "Stage")}
             ${sortHeader("value", "Value")}
             ${sortHeader("contact", "Contact")}
-            <th>Source</th>
-            <th>Quality</th>
             ${sortHeader("estimated_close_date", "Close Date")}
             ${sortHeader("updated_at", "Updated")}
           </tr>
@@ -5229,8 +5227,6 @@ function listTable(records) {
                 <td><span class="pill gold">${escapeHtml(record.stage_name || "")}</span></td>
                 <td>${formatMoney(record.value, record.currency || "USD")}</td>
                 <td class="muted">${escapeHtml(record.contact_name || record.organization_name || "")}</td>
-                <td>${provenanceChips(record)}</td>
-                <td>${qualityIssueChips(record.quality_issues || [])}</td>
                 <td class="muted">${formatDate(record.estimated_close_date)}</td>
                 <td class="muted">${formatDate(record.updated_at)}</td>
               </tr>
@@ -5241,8 +5237,6 @@ function listTable(records) {
     `;
   }
   const type = state.listType === "leads" ? "lead" : state.listType === "companies" ? "company" : "person";
-  const showProfile = profileFilterSupported(state.listType);
-  const showOwner = ownerFilterSupported(state.listType);
   return `
     <table class="data-table record-list-table ${escapeHtml(state.listType)}-list-table">
       <thead>
@@ -5251,10 +5245,6 @@ function listTable(records) {
           ${sortHeader("email", "Email")}
           ${sortHeader("phone", "Phone")}
           ${sortHeader(state.listType === "leads" ? "status" : "status", "Status")}
-          ${showOwner ? sortHeader("owner", "Owner") : ""}
-          <th>Source</th>
-          <th>Quality</th>
-          ${showProfile ? "<th>Profile</th>" : ""}
           ${sortHeader("updated_at", "Updated")}
         </tr>
       </thead>
@@ -5266,10 +5256,6 @@ function listTable(records) {
               <td class="muted">${escapeHtml(record.email || "")}</td>
               <td class="muted">${escapeHtml(formatPhoneDisplay(record.phone || record.mobile || ""))}</td>
               <td>${record.status ? `<span class="pill">${escapeHtml(record.status)}</span>` : ""}</td>
-              ${showOwner ? `<td class="muted">${escapeHtml(record.owner_name || "")}</td>` : ""}
-              <td>${provenanceChips(record)}</td>
-              <td>${qualityIssueChips(record.quality_issues || [])}</td>
-              ${showProfile ? `<td>${profileSummary(record.profile_summary || [])}</td>` : ""}
               <td class="muted">${formatDate(record.updated_at)}</td>
             </tr>
           `)

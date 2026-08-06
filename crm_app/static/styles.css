@@ -6007,6 +6007,52 @@ button {
   opacity: 0.45;
 }
 
+.duplicate-merge-preview {
+  border: 1px solid #c8ddcf;
+  border-radius: 8px;
+  background: #f8fcf9;
+  margin: 12px 0;
+  padding: 12px;
+}
+
+.duplicate-merge-preview h4 {
+  color: var(--muted);
+  font-size: 14px;
+  margin: 0;
+  text-transform: uppercase;
+}
+
+.duplicate-merge-preview-grid {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-top: 10px;
+}
+
+.duplicate-merge-preview-item {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  padding: 9px;
+}
+
+.duplicate-merge-preview-item span,
+.duplicate-merge-preview-item small {
+  color: var(--muted);
+  display: block;
+  font-size: 12px;
+}
+
+.duplicate-merge-preview-item strong {
+  display: block;
+  font-size: 24px;
+  margin: 3px 0;
+}
+
+.merge-preview-note {
+  margin: 10px 0 0;
+}
+
 .duplicate-finder-tools {
   margin-bottom: 12px;
 }
@@ -7380,6 +7426,10 @@ button {
 
   .duplicate-merge-card {
     grid-template-columns: 1fr;
+  }
+
+  .duplicate-merge-preview-grid {
+    grid-template-columns: 1fr 1fr;
   }
 
   .admin-form-grid,

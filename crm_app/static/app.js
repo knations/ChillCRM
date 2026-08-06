@@ -11339,7 +11339,6 @@ function duplicatePeopleMergePanel(detail) {
   const keeper = detail.merge_draft.keeper;
   const keeperId = Number(keeper.record_id || 0);
   const records = detail.records || [];
-  const mergeableCount = Math.max(0, records.length - 1);
   return `
     <div class="detail-section merge-apply-panel">
       <div class="inline-header">
@@ -11352,10 +11351,8 @@ function duplicatePeopleMergePanel(detail) {
           .map((record) => duplicatePeopleMergeCard(record, keeperId))
           .join("")}
       </div>
-      <div class="cleanup-record-stats">
-        <span>${formatNumber(mergeableCount)} duplicate records</span>
-        <span>Tags, notes, tasks, deals, files</span>
-        <span>Audit logged</span>
+      <div id="duplicatePeopleMergePreview" class="duplicate-merge-preview">
+        ${duplicatePeopleMergePreview(detail, keeperId, records.filter((record) => Number(record.source_id || 0) !== keeperId).map((record) => Number(record.source_id || 0)))}
       </div>
       <textarea id="duplicatePeopleMergeNote" class="note-input" rows="3" placeholder="Optional merge note"></textarea>
       <div class="review-actions">
@@ -11363,6 +11360,81 @@ function duplicatePeopleMergePanel(detail) {
       </div>
     </div>
   `;
+}
+
+function duplicatePeopleMergePreview(detail, keeperId, mergeIds) {
+  const records = detail.records || [];
+  const selected = records.filter((record) => mergeIds.includes(Number(record.source_id || 0)));
+  const selectedIds = new Set(selected.map((record) => Number(record.source_id || 0)));
+  const totals = selected.reduce(
+    (acc, record) => {
+      const stats = record.stats || {};
+      acc.people += 1;
+      acc.notes += Number(stats.note_count || 0);
+      acc.tasks += Number(stats.task_count || 0);
+      acc.openTasks += Number(stats.open_task_count || 0);
+      acc.deals += Number(stats.deal_count || 0);
+      acc.tags += Number(stats.tag_count || 0);
+      acc.addresses += Number(stats.address_count || 0);
+      acc.customFields += Number(stats.custom_field_count || 0);
+      return acc;
+    },
+    { people: 0, notes: 0, tasks: 0, openTasks: 0, deals: 0, tags: 0, addresses: 0, customFields: 0 }
+  );
+  const conflicts = duplicatePeopleMergeConflictCounts(detail, keeperId, selectedIds);
+  const items = [
+    ["People to make inactive", totals.people, "Selected duplicates remain preserved, but inactive."],
+    ["Notes to move", totals.notes, "Moved onto the keeper Person."],
+    ["Tasks to move", totals.tasks, totals.openTasks ? `${formatNumber(totals.openTasks)} open` : "Moved onto the keeper Person."],
+    ["Deals to move", totals.deals, "Moved onto the keeper Person."],
+    ["Tags found", totals.tags, "Appended when not already on keeper."],
+    ["Addresses to review", totals.addresses, "Blank keeper slots fill; conflicts go into note."],
+    ["Custom fields to move", totals.customFields, "Includes Email 2 when present."],
+    ["Conflicts for note", conflicts.total, conflicts.total ? "Values preserved instead of overwriting." : "No obvious field conflicts in selected records."],
+  ];
+  return `
+    <div class="inline-header">
+      <h4>Merge Preview</h4>
+      <span class="muted">Updates as you choose records</span>
+    </div>
+    <div class="duplicate-merge-preview-grid">
+      ${items
+        .map(([label, value, detailText]) => `
+          <div class="duplicate-merge-preview-item">
+            <span>${escapeHtml(label)}</span>
+            <strong>${formatNumber(value || 0)}</strong>
+            <small>${escapeHtml(detailText || "")}</small>
+          </div>
+        `)
+        .join("")}
+    </div>
+    ${
+      conflicts.total
+        ? `<p class="muted merge-preview-note">Conflict note will include ${formatNumber(conflicts.fields)} core field, ${formatNumber(conflicts.profile)} profile/custom, and ${formatNumber(conflicts.addresses)} address conflict groups when present.</p>`
+        : `<p class="muted merge-preview-note">A merge note will still record what moved and which duplicate records were made inactive.</p>`
+    }
+  `;
+}
+
+function duplicatePeopleMergeConflictCounts(detail, keeperId, selectedIds) {
+  let fields = 0;
+  let profile = 0;
+  (detail.field_comparison || []).forEach((comparison) => {
+    const keeperValue = (comparison.values || []).find((item) => item.record_key === `person:${keeperId}`);
+    if (!keeperValue || keeperValue.is_blank) return;
+    const hasSelectedAlternative = (comparison.values || []).some((item) => {
+      const recordId = Number(String(item.record_key || "").split(":")[1] || 0);
+      return selectedIds.has(recordId) && !item.is_blank && String(item.value || "") !== String(keeperValue.value || "");
+    });
+    if (!hasSelectedAlternative) return;
+    if (String(comparison.field_key || "").startsWith("profile:")) profile += 1;
+    else fields += 1;
+  });
+  const selected = (detail.records || []).filter((record) => selectedIds.has(Number(record.source_id || 0)));
+  const keeper = (detail.records || []).find((record) => Number(record.source_id || 0) === keeperId) || {};
+  const keeperAddressCount = Number((keeper.stats || {}).address_count || 0);
+  const addresses = keeperAddressCount ? selected.reduce((sum, record) => sum + Number((record.stats || {}).address_count || 0), 0) : 0;
+  return { fields, profile, addresses, total: fields + profile + addresses };
 }
 
 function duplicatePeopleMergeCard(record, keeperId) {
@@ -11395,6 +11467,14 @@ function duplicatePeopleMergeCard(record, keeperId) {
 function wireDuplicatePeopleMerge(detail) {
   const button = document.querySelector("#applyDuplicatePeopleMergeButton");
   if (!button) return;
+  const selectedMergeIds = () => Array.from(document.querySelectorAll(".duplicatePeopleMergeCheckbox:checked"))
+    .map((input) => Number(input.value || 0))
+    .filter(Boolean);
+  const updateMergePreview = () => {
+    const preview = document.querySelector("#duplicatePeopleMergePreview");
+    const keeperId = Number(document.querySelector("input[name='duplicatePeopleKeeper']:checked")?.value || 0);
+    if (preview) preview.innerHTML = duplicatePeopleMergePreview(detail, keeperId, selectedMergeIds());
+  };
   const syncMergeChoices = () => {
     const keeperId = Number(document.querySelector("input[name='duplicatePeopleKeeper']:checked")?.value || 0);
     document.querySelectorAll(".duplicate-merge-card").forEach((card) => {
@@ -11405,17 +11485,19 @@ function wireDuplicatePeopleMerge(detail) {
       checkbox.disabled = cardId === keeperId;
       if (cardId === keeperId) checkbox.checked = false;
     });
+    updateMergePreview();
   };
   document.querySelectorAll("input[name='duplicatePeopleKeeper']").forEach((input) => {
     input.addEventListener("change", syncMergeChoices);
+  });
+  document.querySelectorAll(".duplicatePeopleMergeCheckbox").forEach((input) => {
+    input.addEventListener("change", updateMergePreview);
   });
   syncMergeChoices();
   button.addEventListener("click", async () => {
     const keeperInput = document.querySelector("input[name='duplicatePeopleKeeper']:checked");
     const keeperId = Number(keeperInput?.value || 0);
-    const mergeIds = Array.from(document.querySelectorAll(".duplicatePeopleMergeCheckbox:checked"))
-      .map((input) => Number(input.value || 0))
-      .filter(Boolean);
+    const mergeIds = selectedMergeIds();
     const keeperRecord = (detail.records || []).find((record) => Number(record.source_id || 0) === keeperId);
     const keeperName = keeperRecord?.name || `Person #${keeperId}`;
     if (!keeperId || !mergeIds.length) {

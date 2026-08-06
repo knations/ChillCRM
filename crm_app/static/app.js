@@ -126,7 +126,6 @@ const REMEMBERED_LOGIN_EMAIL_KEY = "chillcrm.rememberedLoginEmail";
 
 const els = {
   status: document.querySelector("#statusText"),
-  environmentBadge: document.querySelector("#environmentBadge"),
   shell: document.querySelector(".app-shell"),
   dashboard: document.querySelector("#dashboardView"),
   dashboardFocus: document.querySelector("#dashboardFocusView"),
@@ -760,19 +759,8 @@ function setStatus(text) {
   if (els.status) els.status.textContent = text;
 }
 
-function setRuntimeContext(runtime = {}) {
-  if (!els.environmentBadge) return;
-  const environment = runtime.environment || "local";
-  const label = runtime.environment_label || labelize(environment);
-  els.environmentBadge.textContent = label;
-  els.environmentBadge.dataset.environment = environment;
-  const lockMode = runtime.remote_write_lock?.mode;
-  els.environmentBadge.title = lockMode ? `${label} · Write lock ${lockMode}` : label;
-}
-
 function setAuthState(auth = {}) {
   state.auth = auth;
-  setRuntimeContext(state.auth.runtime);
 }
 
 function currentUserFirstName() {
@@ -1643,7 +1631,6 @@ async function renderDashboard() {
     fetchJson("/api/summary"),
     fetchCalendarEventsForSelectedDate(),
   ]);
-  setRuntimeContext(data.runtime);
   const maxDeals = Math.max(...(data.pipeline || []).map((stage) => stage.deal_count), 1);
   els.dashboard.innerHTML = `
     <div class="section-header dashboard-today-header">
@@ -2446,7 +2433,6 @@ function cleanupPrioritySummary(counts) {
 async function renderOperationsStatus() {
   setStatus("Loading operations");
   const data = await fetchJson("/api/operations_status");
-  setRuntimeContext(data.runtime);
   const cleanup = data.cleanup || {};
   const statusCounts = cleanup.status_counts || {};
   const decisionCounts = cleanup.decision_counts || {};

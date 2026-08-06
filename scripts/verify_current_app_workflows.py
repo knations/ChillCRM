@@ -49,7 +49,7 @@ def main() -> int:
     assert 'data-view="calendar"' not in index_html
     assert 'id="calendarView"' not in index_html
     assert 'id="dashboardFocusView"' in index_html
-    assert 'id="environmentBadge" class="environment-badge" hidden' in index_html
+    assert 'id="environmentBadge"' not in index_html
     assert 'id="statusText" class="status-text" hidden' in index_html
     assert "actionCalendarPanel" in app_js
     assert "wireActionCalendarControls(els.dashboard, renderDashboard)" in app_js

@@ -1845,9 +1845,9 @@ def main() -> int:
     assert "Cutover Rollback Package Readiness" in cutover_rollback_report
     assert "Production gate: pass" in cutover_rollback_report
     assert "Failed: 0" in cutover_rollback_report
-    assert "environmentBadge" in app_js
-    assert "setRuntimeContext" in app_js
-    assert ".environment-badge" in styles_css
+    assert "environmentBadge" not in app_js
+    assert "setRuntimeContext" not in app_js
+    assert ".environment-badge" not in styles_css
     assert ".inline-actions" in styles_css
     assert "Daily Operating Guide" in app_js
     assert "dailyOperatingGuidePanel" in app_js

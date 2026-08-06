@@ -188,38 +188,6 @@ button {
   white-space: nowrap;
 }
 
-.environment-badge {
-  min-height: 32px;
-  display: inline-grid;
-  place-items: center;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  padding: 0 12px;
-  color: var(--ink);
-  background: var(--surface-soft);
-  font-size: 12px;
-  font-weight: 700;
-  white-space: nowrap;
-}
-
-.environment-badge[data-environment="staging"] {
-  border-color: #c7b47b;
-  background: #fff8de;
-  color: #705012;
-}
-
-.environment-badge[data-environment="production"] {
-  border-color: #b7d7c5;
-  background: #edf8f1;
-  color: #276749;
-}
-
-.environment-badge[data-environment="local"] {
-  border-color: #c6d5db;
-  background: #eef7fa;
-  color: #2c6072;
-}
-
 .auth-control {
   display: inline-flex;
   align-items: center;
@@ -6787,7 +6755,6 @@ button {
     min-width: 38px;
   }
 
-  .environment-badge,
   .auth-control,
   .status-text {
     align-self: flex-start;

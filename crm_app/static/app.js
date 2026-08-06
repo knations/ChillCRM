@@ -6512,6 +6512,12 @@ function personOperatorAvatar(detail) {
   ).trim();
 }
 
+function personEmail2(detail) {
+  return (
+    (detail.custom_fields || []).find((field) => String(field.field_name || "").trim().toLowerCase() === "email 2")?.field_value || ""
+  ).trim();
+}
+
 function personOperatorAvatarSection(detail) {
   if (detail?.type !== "person") return "";
   const avatarName = personOperatorAvatar(detail);
@@ -6534,6 +6540,23 @@ function personOperatorAvatarSection(detail) {
   `;
 }
 
+function personEmail2Section(detail) {
+  if (detail?.type !== "person") return "";
+  const email2 = personEmail2(detail);
+  return `
+    <div class="detail-section person-email2-section">
+      <div class="inline-header">
+        <h3>Email 2</h3>
+        <button class="text-button" id="savePersonEmail2Button" type="button">Save</button>
+      </div>
+      <label class="operator-avatar-field">
+        <span>EMAIL 2</span>
+        <input id="personEmail2Input" type="email" value="${escapeHtml(email2)}" placeholder="Alternate email" autocomplete="email">
+      </label>
+    </div>
+  `;
+}
+
 function personVaultSection(detail) {
   const record = detail.record || {};
   const rawRecord = { ...record };
@@ -6543,7 +6566,8 @@ function personVaultSection(detail) {
   const raw = keyValues(rawRecord);
   const quality = detailQualityPanel(detail);
   const operatorAvatar = personOperatorAvatarSection(detail);
-  const body = [operatorAvatar, profile, custom, quality, raw].filter(Boolean).join("");
+  const email2 = personEmail2Section(detail);
+  const body = [email2, operatorAvatar, profile, custom, quality, raw].filter(Boolean).join("");
   if (!body) return "";
   return `
     <details class="detail-section person-vault-section">
@@ -7992,6 +8016,26 @@ function wireDetailForms(detail) {
           const updated = await postJson("/api/update_person_operator_avatar", {
             id: detail.record.source_id,
             operator_avatar: input?.value.trim() || "",
+          });
+          renderDetail(updated.detail);
+          await refreshCurrentListForDetail(updated.detail);
+          if (state.view === "activity") await renderActivity();
+        }
+      );
+    });
+  }
+
+  const personEmail2Button = document.querySelector("#savePersonEmail2Button");
+  if (personEmail2Button && detail.type === "person") {
+    personEmail2Button.addEventListener("click", async () => {
+      const input = document.querySelector("#personEmail2Input");
+      await runDetailAction(
+        personEmail2Button,
+        { progress: "Saving email", success: "Email 2 saved", failure: "Email 2 save failed" },
+        async () => {
+          const updated = await postJson("/api/update_person_email2", {
+            id: detail.record.source_id,
+            email2: input?.value.trim() || "",
           });
           renderDetail(updated.detail);
           await refreshCurrentListForDetail(updated.detail);
@@ -10399,7 +10443,8 @@ function formatProfileValue(field) {
 
 function customFields(fields, applicationFields = []) {
   const promoted = new Set(applicationFields.map((field) => field.field_name));
-  const remaining = fields.filter((field) => !promoted.has(field.field_name) && String(field.field_name || "").trim().toLowerCase() !== "operator avatar");
+  const hiddenPersonFields = new Set(["operator avatar", "email 2"]);
+  const remaining = fields.filter((field) => !promoted.has(field.field_name) && !hiddenPersonFields.has(String(field.field_name || "").trim().toLowerCase()));
   if (!remaining.length) return "";
   return `
     <div class="detail-section">

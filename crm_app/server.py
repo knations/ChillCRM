@@ -3411,6 +3411,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             "/api/delete_tag": lambda: self.delete_tag(payload, auth_user, action_key),
             "/api/update_tags": lambda: self.update_tags(payload, auth_user, action_key),
             "/api/update_person_operator_avatar": lambda: self.update_person_operator_avatar(payload, auth_user, action_key),
+            "/api/update_person_email2": lambda: self.update_person_email2(payload, auth_user, action_key),
             "/api/update_deal_sales_profile": lambda: self.update_deal_sales_profile(payload, auth_user, action_key),
             "/api/update_addresses": lambda: self.update_addresses(payload, auth_user, action_key),
             "/api/upload_profile_image": lambda: self.upload_profile_image(payload, auth_user, action_key),
@@ -23381,6 +23382,96 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         if isinstance(value, bool):
             return 1 if value else 0
         return 1 if str(value or "").strip().lower() in {"1", "true", "yes", "on"} else 0
+
+    def save_single_custom_field(
+        self,
+        conn: Any,
+        *,
+        record_type: str,
+        record_id: int,
+        field_name: str,
+        field_value: str | None,
+    ) -> tuple[Any, bool]:
+        existing_rows = rows_to_dicts(
+            conn.execute(
+                """
+                SELECT id, field_value
+                FROM custom_field_values
+                WHERE record_type = ?
+                  AND record_id = ?
+                  AND lower(field_name) = lower(?)
+                ORDER BY id
+                """,
+                (record_type, record_id, field_name),
+            ).fetchall()
+        )
+        old_value = existing_rows[0].get("field_value") if existing_rows else None
+        if self.clean_optional(old_value) == field_value and len(existing_rows) <= 1:
+            return old_value, False
+        if field_value is None:
+            conn.execute(
+                """
+                DELETE FROM custom_field_values
+                WHERE record_type = ?
+                  AND record_id = ?
+                  AND lower(field_name) = lower(?)
+                """,
+                (record_type, record_id, field_name),
+            )
+        elif existing_rows:
+            conn.execute(
+                "UPDATE custom_field_values SET field_name = ?, field_value = ? WHERE id = ?",
+                (field_name, field_value, existing_rows[0]["id"]),
+            )
+            for duplicate in existing_rows[1:]:
+                conn.execute("DELETE FROM custom_field_values WHERE id = ?", (duplicate["id"],))
+        else:
+            hosted_id = self.next_hosted_primary_key(conn, "custom_field_values")
+            id_column = "id, " if hosted_id is not None else ""
+            id_placeholder = "?, " if hosted_id is not None else ""
+            conn.execute(
+                f"""
+                INSERT INTO custom_field_values ({id_column}record_type, record_id, field_name, field_value)
+                VALUES ({id_placeholder}?, ?, ?, ?)
+                """,
+                (*((hosted_id,) if hosted_id is not None else ()), record_type, record_id, field_name, field_value),
+            )
+        return old_value, True
+
+    def update_person_email2(self, payload: dict[str, Any], actor_user: dict[str, Any] | None = None, permission_action: str | None = "create_edit_records") -> dict[str, Any]:
+        record_id = int(payload.get("id", 0))
+        email2 = self.clean_optional(payload.get("email2"))
+        field_name = "Email 2"
+        if not record_id:
+            raise ValueError("Person id is required.")
+        backup_path = self.create_backup(f"before_email2_person_{record_id}")
+        timestamp = now_iso()
+        with self.db() as conn:
+            if not conn.execute("SELECT 1 FROM people WHERE id = ?", (record_id,)).fetchone():
+                raise ValueError(f"Person {record_id} not found.")
+            old_value, changed = self.save_single_custom_field(
+                conn,
+                record_type="person",
+                record_id=record_id,
+                field_name=field_name,
+                field_value=email2,
+            )
+            if changed:
+                conn.execute("UPDATE people SET updated_at = ? WHERE id = ?", (timestamp, record_id))
+                self.insert_audit_log(
+                    conn,
+                    action="update_person_email2",
+                    record_type="person",
+                    record_id=record_id,
+                    field_name=field_name,
+                    old_value=old_value,
+                    new_value=email2,
+                    note=f"Backup: {backup_path.name}; saved_at={timestamp}",
+                    actor_user=actor_user,
+                    permission_action=permission_action,
+                )
+            conn.commit()
+        return {"ok": True, "backup": str(backup_path), "detail": self.record_detail({"type": ["person"], "id": [str(record_id)]})}
 
     def update_person_operator_avatar(self, payload: dict[str, Any], actor_user: dict[str, Any] | None = None, permission_action: str | None = "create_edit_records") -> dict[str, Any]:
         record_id = int(payload.get("id", 0))

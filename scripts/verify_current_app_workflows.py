@@ -48,6 +48,7 @@ def main() -> int:
     assert 'data-view="calendar"' in (PROJECT_ROOT / "crm_app" / "static" / "index.html").read_text(encoding="utf-8")
     assert "renderCalendar" in app_js
     assert "/api/calendar_events" in app_js
+    assert "local_today" in app_js
     assert "/api/complete_scheduled_call" in app_js
 
     timeline_probe = handler.__new__(handler)
@@ -149,11 +150,13 @@ def main() -> int:
         assert people_status == 200
         assert people["type"] == "people"
 
-        calendar_status, calendar = read_json(f"{base_url}/api/calendar_events")
+        calendar_status, calendar = read_json(f"{base_url}/api/calendar_events?local_today=2026-08-05")
         assert calendar_status == 200
         assert "overdue" in calendar
         assert "day" in calendar
         assert "selected_date" in calendar
+        assert calendar["today"] == "2026-08-05"
+        assert calendar["today_source"] == "browser_local_date"
         assert int(people["total"]) > 0
         assert len(people["records"]) <= 10
         first_person = people["records"][0]

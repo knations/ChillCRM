@@ -1876,9 +1876,14 @@ async function renderCalendar() {
   const today = localISODate();
   if (!state.calendarDate) state.calendarDate = today;
   setStatus("Loading calendar");
-  const data = await fetchJson(`/api/calendar_events?date=${encodeURIComponent(state.calendarDate)}`);
+  const params = new URLSearchParams({
+    date: state.calendarDate,
+    local_today: today,
+  });
+  const data = await fetchJson(`/api/calendar_events?${params.toString()}`);
   state.calendarDate = data.selected_date || state.calendarDate || today;
-  const selectedTitle = calendarDateTitle(state.calendarDate, data.today || today);
+  const localToday = data.today || today;
+  const selectedTitle = calendarDateTitle(state.calendarDate, localToday);
   els.calendar.innerHTML = `
     <div class="section-header calendar-header">
       <div>
@@ -1892,7 +1897,7 @@ async function renderCalendar() {
           <span>${escapeHtml(formatDate(state.calendarDate))}</span>
         </div>
         <button class="icon-button" id="nextCalendarDay" type="button" title="Next day">›</button>
-        <button class="text-button" id="todayCalendarDay" type="button" ${state.calendarDate === (data.today || today) ? "disabled" : ""}>Today</button>
+        <button class="text-button" id="todayCalendarDay" type="button" ${state.calendarDate === localToday ? "disabled" : ""}>Today</button>
       </div>
     </div>
     ${calendarSection("Overdue", data.overdue || [], { empty: "Nothing overdue." })}
@@ -1907,7 +1912,7 @@ async function renderCalendar() {
     renderCalendar();
   });
   document.querySelector("#todayCalendarDay")?.addEventListener("click", () => {
-    state.calendarDate = data.today || localISODate();
+    state.calendarDate = localISODate();
     renderCalendar();
   });
   wireRecordButtons(els.calendar);

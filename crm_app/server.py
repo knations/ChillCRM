@@ -18109,11 +18109,17 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             return timestamp
         return timestamp.astimezone().replace(tzinfo=None)
 
-    def calendar_date_text(self, value: Any) -> str:
+    def calendar_date_text(self, value: Any, fallback: Any = None) -> str:
         text = self.clean_optional(value)
         if text:
             try:
                 return date.fromisoformat(text[:10]).isoformat()
+            except ValueError:
+                pass
+        fallback_text = self.clean_optional(fallback)
+        if fallback_text:
+            try:
+                return date.fromisoformat(fallback_text[:10]).isoformat()
             except ValueError:
                 pass
         return date.today().isoformat()
@@ -18327,13 +18333,15 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         }
 
     def calendar_events(self, params: dict[str, list[str]]) -> dict[str, Any]:
-        selected_date = self.calendar_date_text(params.get("date", [""])[0])
+        local_today = self.calendar_date_text(params.get("local_today", [""])[0])
+        selected_date = self.calendar_date_text(params.get("date", [""])[0], local_today)
         with self.db() as conn:
             overdue_rows = self.calendar_task_rows(conn, selected_date, "overdue") + self.calendar_scheduled_call_rows(conn, selected_date, "overdue")
             day_rows = self.calendar_task_rows(conn, selected_date, "day") + self.calendar_scheduled_call_rows(conn, selected_date, "day")
         return {
             "selected_date": selected_date,
-            "today": date.today().isoformat(),
+            "today": local_today,
+            "today_source": "browser_local_date",
             "overdue": sorted([self.calendar_event_from_row(row, "overdue") for row in overdue_rows], key=lambda item: self.activity_sort_key(item.get("due_at"))),
             "day": sorted([self.calendar_event_from_row(row, "day") for row in day_rows], key=lambda item: self.activity_sort_key(item.get("due_at"))),
         }

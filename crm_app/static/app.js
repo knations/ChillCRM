@@ -98,6 +98,8 @@ const state = {
   cleanupPolicyLane: "",
   cleanupDecision: "",
   cleanupSort: "priority",
+  duplicatePeopleQ: "",
+  duplicatePeopleMatchType: "all",
   currentCleanupGroup: null,
   q: "",
   debounce: null,
@@ -6088,6 +6090,23 @@ async function showCleanupGroup(type, key) {
   setStatus("Ready");
 }
 
+async function showDuplicatePeopleCandidate(key) {
+  setStatus("Loading duplicate candidate");
+  const params = new URLSearchParams({ key });
+  const detail = await fetchJson(`/api/duplicate_people_candidates?${params.toString()}`);
+  if (detail.error) {
+    openMobileDetailView("Cleanup");
+    els.detail.innerHTML = `
+      <div class="detail-content">
+        ${detailHeader("Could not open duplicate candidate", detail.error, null, { mobileBackLabel: mobileDetailBackLabel() })}
+      </div>
+    `;
+    return;
+  }
+  renderCleanupGroupDetail(detail);
+  setStatus("Ready");
+}
+
 async function nextCleanupReviewGroup(detail) {
   const params = new URLSearchParams({
     type: detail.type,
@@ -7218,10 +7237,13 @@ function renderCleanupGroupDetail(detail) {
   state.currentDetail = null;
   state.currentCleanupGroup = { type: detail.type, key: detail.group_key };
   const isTagGroup = detail.type === "duplicate_tags";
-  const detailTitle = isTagGroup ? detail.counts?.display_name || detail.group_key : detail.group_key;
+  const isDuplicateCandidate = Boolean(detail.candidate_key);
+  const detailTitle = isTagGroup ? detail.counts?.display_name || detail.group_key : detail.display_name || detail.match_value || detail.group_key;
   const detailSubtitle = isTagGroup
     ? `${detail.label} · ${formatNumber(detail.counts?.definition_count || 0)} definitions · ${formatNumber(detail.flags.length)} ${cleanupStatusLabel(detail.status).toLowerCase()} flags`
-    : `${detail.label} · ${formatNumber(detail.flags.length)} ${cleanupStatusLabel(detail.status).toLowerCase()} flags`;
+    : isDuplicateCandidate
+      ? `${detail.label} · ${detail.match_label || "Candidate"} · manual review`
+      : `${detail.label} · ${formatNumber(detail.flags.length)} ${cleanupStatusLabel(detail.status).toLowerCase()} flags`;
   els.detail.innerHTML = `
     <div class="detail-content">
       ${detailHeader(detailTitle || "(blank group)", detailSubtitle, null, { mobileBackLabel: mobileDetailBackLabel() })}
@@ -7251,7 +7273,7 @@ function renderCleanupGroupDetail(detail) {
           ${(detail.guidance?.reasons || []).map((reason) => `<span>${escapeHtml(reason)}</span>`).join("")}
         </div>
       </div>
-      ${cleanupDecisionSection(detail)}
+      ${isDuplicateCandidate ? "" : cleanupDecisionSection(detail)}
       ${cleanupMergeDraft(detail.merge_draft)}
       ${duplicatePeopleMergePanel(detail)}
       ${
@@ -7299,28 +7321,30 @@ function renderCleanupGroupDetail(detail) {
         ${detail.counts.record_count > detail.records.length ? `<p class="muted">Showing first ${formatNumber(detail.records.length)} records.</p>` : ""}
       </div>
       ${cleanupFieldComparison(detail.field_comparison || [])}
-      <div class="detail-section">
-        <div class="inline-header">
-          <h3>${cleanupStatusLabel(detail.status)} Flags</h3>
-          ${detail.flags.length ? cleanupGroupActions(detail.status) : ""}
-        </div>
-        ${
-          detail.flags.length
-            ? detail.flags
-                .map((flag) => `
-                  <div class="review-flag">
-                    <div>
-                      <strong>${escapeHtml(labelize(flag.flag_type))}</strong>
-                      <p>${escapeHtml(flag.description)}</p>
-                      ${cleanupResolutionNote(flag)}
+      ${isDuplicateCandidate ? "" : `
+        <div class="detail-section">
+          <div class="inline-header">
+            <h3>${cleanupStatusLabel(detail.status)} Flags</h3>
+            ${detail.flags.length ? cleanupGroupActions(detail.status) : ""}
+          </div>
+          ${
+            detail.flags.length
+              ? detail.flags
+                  .map((flag) => `
+                    <div class="review-flag">
+                      <div>
+                        <strong>${escapeHtml(labelize(flag.flag_type))}</strong>
+                        <p>${escapeHtml(flag.description)}</p>
+                        ${cleanupResolutionNote(flag)}
+                      </div>
+                      ${cleanupFlagActions(flag)}
                     </div>
-                    ${cleanupFlagActions(flag)}
-                  </div>
-                `)
-                .join("")
-            : `<div class="muted">No ${cleanupStatusLabel(detail.status).toLowerCase()} flags for this group.</div>`
-        }
-      </div>
+                  `)
+                  .join("")
+              : `<div class="muted">No ${cleanupStatusLabel(detail.status).toLowerCase()} flags for this group.</div>`
+          }
+        </div>
+      `}
     </div>
   `;
   resetDetailScroll();
@@ -11362,6 +11386,8 @@ function wireDuplicatePeopleMerge(detail) {
       async () => {
         const merged = await postJson("/api/merge_duplicate_people", {
           key: detail.group_key,
+          candidate_key: detail.candidate_key || "",
+          candidate_ids: detail.candidate_ids || [],
           status: detail.status,
           keeper_id: keeperId,
           merge_ids: mergeIds,
@@ -11511,9 +11537,59 @@ function cleanupRecordStats(record) {
   `;
 }
 
+function duplicatePeopleFinderPanel(data) {
+  const candidates = data.candidates || [];
+  return `
+    <div class="band duplicate-finder-panel">
+      <div class="band-header">
+        <h3>Find Duplicates</h3>
+        <span class="muted">${formatNumber(data.total || 0)} candidate groups</span>
+      </div>
+      <div class="table-tools duplicate-finder-tools">
+        <input id="duplicatePeopleSearch" type="search" value="${escapeHtml(state.duplicatePeopleQ)}" placeholder="Search names, emails, or phones">
+        <select id="duplicatePeopleMatchType" aria-label="Duplicate match type">
+          ${[
+            ["all", "Name, Email, or Phone"],
+            ["email", "Same Email"],
+            ["phone", "Same Phone"],
+            ["name", "Same Name"],
+          ]
+            .map(([value, label]) => `<option value="${value}" ${state.duplicatePeopleMatchType === value ? "selected" : ""}>${escapeHtml(label)}</option>`)
+            .join("")}
+        </select>
+      </div>
+      ${
+        data.error
+          ? `<div class="empty-state compact"><h3>Duplicate finder paused</h3><p>${escapeHtml(data.error)}</p></div>`
+          : candidates.length
+            ? `<table class="data-table duplicate-finder-table">
+                <thead><tr><th>Match</th><th>Records</th><th>People</th><th>Updated</th><th></th></tr></thead>
+                <tbody>
+                  ${candidates
+                    .map((candidate) => `
+                      <tr>
+                        <td>
+                          <span class="pill ${candidate.match_type === "email" ? "green" : candidate.match_type === "phone" ? "gold" : ""}">${escapeHtml(candidate.match_label)}</span>
+                          <div><strong>${escapeHtml(candidate.display_name || candidate.match_value || "")}</strong></div>
+                        </td>
+                        <td>${formatNumber(candidate.record_count || 0)}</td>
+                        <td class="muted">${escapeHtml(candidate.sample_names || "")}</td>
+                        <td class="muted">${formatDate(candidate.latest_updated_at)}</td>
+                        <td><button class="text-button duplicate-candidate-button" data-key="${escapeHtml(candidate.candidate_key)}">Review</button></td>
+                      </tr>
+                    `)
+                    .join("")}
+                </tbody>
+              </table>`
+            : `<div class="empty-state compact"><h3>No duplicate candidates</h3><p>Try another search or match type.</p></div>`
+      }
+    </div>
+  `;
+}
+
 async function renderCleanup() {
   setStatus("Loading cleanup");
-  const focusState = captureInputFocus("cleanupGroupSearch");
+  const focusState = captureInputFocus("cleanupGroupSearch") || captureInputFocus("duplicatePeopleSearch");
   const groupParams = new URLSearchParams({
     type: state.cleanupGroupType,
     status: state.cleanupStatus,
@@ -11525,11 +11601,16 @@ async function renderCleanup() {
     decision: state.cleanupDecision,
     sort: state.cleanupSort,
   });
-  const [cleanupResult, reviewResult, backupResult, groupResult] = await Promise.allSettled([
+  const duplicateParams = new URLSearchParams({
+    q: state.duplicatePeopleQ,
+    match_type: state.duplicatePeopleMatchType,
+  });
+  const [cleanupResult, reviewResult, backupResult, groupResult, duplicateResult] = await Promise.allSettled([
     fetchJson("/api/cleanup", { timeoutMs: 10000 }),
     fetchJson(`/api/review_flags?status=${encodeURIComponent(state.cleanupStatus)}&page_size=50`, { timeoutMs: 10000 }),
     fetchJson("/api/backups", { timeoutMs: 10000 }),
     fetchJson(`/api/cleanup_groups?${groupParams.toString()}`, { timeoutMs: 12000 }),
+    fetchJson(`/api/duplicate_people_candidates?${duplicateParams.toString()}`, { timeoutMs: 12000 }),
   ]);
   const groupData =
     groupResult.status === "fulfilled"
@@ -11547,6 +11628,10 @@ async function renderCleanup() {
     cleanupResult.status === "fulfilled"
       ? cleanupResult.value
       : fallbackCleanupData(groupData, reviewData);
+  const duplicateData =
+    duplicateResult.status === "fulfilled"
+      ? duplicateResult.value
+      : { total: 0, candidates: [], error: duplicateResult.reason?.message || "Duplicate finder did not load." };
   const cleanupLoadError = cleanupResult.status === "rejected" ? cleanupResult.reason : null;
   const latestBackup = (backupData.backups || [])[0];
   const totalGroupPages = Math.max(1, Math.ceil(groupData.total / groupData.page_size));
@@ -11579,6 +11664,7 @@ async function renderCleanup() {
       <div class="signal"><strong>${formatNumber(data.totals?.relationship_issues || 0)}</strong><span>Relationship issues</span></div>
     </div>
     ${cleanupInsightPanels(data, cleanupLoadError)}
+    ${duplicatePeopleFinderPanel(duplicateData)}
     <div class="band">
       <div class="band-header">
         <h3>Grouped Review</h3>
@@ -11728,6 +11814,21 @@ async function renderCleanup() {
   wireNavJumps(els.cleanup);
   wireCleanupGroupButtons(els.cleanup);
   wireCleanupFlagButtons(els.cleanup);
+  document.querySelectorAll(".duplicate-candidate-button").forEach((button) => {
+    button.addEventListener("click", () => showDuplicatePeopleCandidate(button.dataset.key));
+  });
+  const duplicatePeopleSearch = document.querySelector("#duplicatePeopleSearch");
+  if (duplicatePeopleSearch) {
+    duplicatePeopleSearch.addEventListener("input", () => {
+      state.duplicatePeopleQ = duplicatePeopleSearch.value.trim();
+      window.clearTimeout(state.debounce);
+      state.debounce = window.setTimeout(() => renderCleanup(), 220);
+    });
+  }
+  document.querySelector("#duplicatePeopleMatchType")?.addEventListener("change", (event) => {
+    state.duplicatePeopleMatchType = event.target.value;
+    renderCleanup();
+  });
   document.querySelector("#retryCleanupSummaryButton")?.addEventListener("click", () => renderCleanup());
   document.querySelector("#retryCleanupGroupsButton")?.addEventListener("click", () => renderCleanup());
   document.querySelector("#resetCleanupFiltersButton")?.addEventListener("click", () => {

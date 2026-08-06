@@ -6007,6 +6007,14 @@ button {
   opacity: 0.45;
 }
 
+.duplicate-finder-tools {
+  margin-bottom: 12px;
+}
+
+.duplicate-finder-table td:first-child {
+  min-width: 180px;
+}
+
 .cleanup-recovery-card {
   border-color: #d8c99b;
   background: #fffaf0;

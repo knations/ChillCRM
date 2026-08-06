@@ -3387,6 +3387,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             "/api/search": lambda: self.search(params),
             "/api/cleanup": self.cleanup,
             "/api/cleanup_execution_preview": self.cleanup_execution_preview,
+            "/api/duplicate_people_candidates": lambda: self.duplicate_people_candidates(params),
             "/api/cleanup_groups": lambda: self.cleanup_groups(params),
             "/api/review_flags": lambda: self.review_flags(params),
             "/api/backups": self.backups,
@@ -20210,6 +20211,148 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             ).fetchone()[0]
         return conn.execute("SELECT count(*) FROM review_flags WHERE flag_type = ?", (flag_type,)).fetchone()[0]
 
+    def duplicate_people_candidates(self, params: dict[str, list[str]]) -> dict[str, Any]:
+        q = (params.get("q", [""])[0] or "").strip()
+        match_type = (params.get("match_type", ["all"])[0] or "all").strip().lower()
+        candidate_key = (params.get("key", [""])[0] or "").strip()
+        if match_type not in {"all", "email", "phone", "name"}:
+            match_type = "all"
+        with self.db() as conn:
+            candidates = self.build_duplicate_people_candidates(conn, q=q, match_type=match_type)
+            if candidate_key:
+                candidate = next((item for item in candidates if item["candidate_key"] == candidate_key), None)
+                if not candidate:
+                    raise ValueError("Duplicate candidate group not found.")
+                return self.duplicate_people_candidate_detail(conn, candidate)
+        return {
+            "q": q,
+            "match_type": match_type,
+            "total": len(candidates),
+            "candidates": candidates[:50],
+        }
+
+    def build_duplicate_people_candidates(self, conn: sqlite3.Connection, *, q: str = "", match_type: str = "all") -> list[dict[str, Any]]:
+        active_clause = self.active_person_condition(conn, "p")
+        rows = rows_to_dicts(
+            conn.execute(
+                f"""
+                SELECT p.id AS source_id, p.name, p.email, p.phone, p.mobile, p.title AS detail,
+                       p.normalized_email, p.normalized_name, p.updated_at
+                FROM people p
+                WHERE {active_clause}
+                ORDER BY p.updated_at DESC, p.id
+                """
+            ).fetchall()
+        )
+        groups: dict[tuple[str, str], list[dict[str, Any]]] = {}
+        for row in rows:
+            email = normalize_text(row.get("normalized_email") or row.get("email"))
+            name = normalize_text(row.get("normalized_name") or row.get("name"))
+            phone = self.normalized_phone_match_value(row.get("phone") or row.get("mobile"))
+            if email:
+                groups.setdefault(("email", email), []).append(row)
+            if phone:
+                groups.setdefault(("phone", phone), []).append(row)
+            if name and len(name) >= 3:
+                groups.setdefault(("name", name), []).append(row)
+
+        query = q.casefold()
+        candidates: list[dict[str, Any]] = []
+        for (candidate_type, value), records in groups.items():
+            if match_type != "all" and candidate_type != match_type:
+                continue
+            if len(records) < 2:
+                continue
+            sample_names = ", ".join((record.get("name") or f"Person #{record['source_id']}") for record in records[:4])
+            label = self.duplicate_people_candidate_label(candidate_type, value, records)
+            haystack = " ".join(
+                [
+                    candidate_type,
+                    value,
+                    label,
+                    sample_names,
+                    *[str(record.get("email") or "") for record in records],
+                    *[str(record.get("phone") or record.get("mobile") or "") for record in records],
+                ]
+            ).casefold()
+            if query and query not in haystack:
+                continue
+            candidates.append(
+                {
+                    "candidate_key": f"{candidate_type}:{value}",
+                    "match_type": candidate_type,
+                    "match_label": {"email": "Same Email", "phone": "Same Phone", "name": "Same Name"}[candidate_type],
+                    "match_value": value,
+                    "display_name": label,
+                    "record_count": len(records),
+                    "sample_names": sample_names,
+                    "latest_updated_at": max(str(record.get("updated_at") or "") for record in records),
+                    "person_ids": [int(record["source_id"]) for record in records],
+                }
+            )
+        priority = {"email": 0, "phone": 1, "name": 2}
+        candidates.sort(key=lambda item: (priority.get(item["match_type"], 9), -int(item["record_count"]), str(item["display_name"]).casefold()))
+        return candidates
+
+    def duplicate_people_candidate_label(self, candidate_type: str, value: str, records: list[dict[str, Any]]) -> str:
+        if candidate_type == "email":
+            return next((str(record.get("email") or "").strip() for record in records if record.get("email")), value)
+        if candidate_type == "phone":
+            return next((str(record.get("phone") or record.get("mobile") or "").strip() for record in records if record.get("phone") or record.get("mobile")), value)
+        return next((str(record.get("name") or "").strip() for record in records if record.get("name")), value)
+
+    def normalized_phone_match_value(self, value: Any) -> str:
+        digits = "".join(ch for ch in str(value or "") if ch.isdigit())
+        if len(digits) == 11 and digits.startswith("1"):
+            digits = digits[1:]
+        return digits if len(digits) >= 7 else ""
+
+    def duplicate_people_candidate_detail(self, conn: sqlite3.Connection, candidate: dict[str, Any]) -> dict[str, Any]:
+        person_ids = [int(item) for item in candidate.get("person_ids") or []]
+        if len(person_ids) < 2:
+            raise ValueError("At least two people are required for a duplicate candidate.")
+        placeholders = ",".join("?" for _ in person_ids)
+        records = rows_to_dicts(
+            conn.execute(
+                f"""
+                SELECT 'person' AS record_type, id AS source_id, name, email,
+                       phone, mobile, title AS detail, updated_at
+                FROM people
+                WHERE id IN ({placeholders})
+                ORDER BY updated_at DESC, id
+                """,
+                person_ids,
+            ).fetchall()
+        )
+        for record in records:
+            record["role"] = "Candidate"
+        self.attach_profile_summaries(conn, "person", records)
+        self.enrich_cleanup_records(conn, records)
+        field_comparison = self.cleanup_field_comparison(conn, records)
+        counts = {"record_count": len(records), "people_count": len(records), "lead_count": 0}
+        guidance = self.cleanup_review_guidance("duplicate_people", records, [], field_comparison, counts)
+        merge_draft = self.cleanup_merge_draft("duplicate_people", records, field_comparison)
+        return {
+            "type": "duplicate_people",
+            "label": "Duplicate People",
+            "status": "open",
+            "group_key": candidate["candidate_key"],
+            "candidate_key": candidate["candidate_key"],
+            "candidate_ids": person_ids,
+            "match_type": candidate["match_type"],
+            "match_label": candidate["match_label"],
+            "match_value": candidate["match_value"],
+            "display_name": candidate["display_name"],
+            "counts": counts,
+            "aliases": [],
+            "records": records,
+            "field_comparison": field_comparison,
+            "guidance": guidance,
+            "merge_draft": merge_draft,
+            "decision": None,
+            "flags": [],
+        }
+
     def cleanup_groups(self, params: dict[str, list[str]]) -> dict[str, Any]:
         group_type = (params.get("type", ["duplicate_people"])[0] or "duplicate_people").lower()
         status = (params.get("status", ["open"])[0] or "open").lower()
@@ -21310,45 +21453,67 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         actor_user: dict[str, Any] | None = None,
         permission_action: str | None = "merge_duplicate_people",
     ) -> dict[str, Any]:
-        group_key = normalize_text(payload.get("key") or payload.get("group_key") or payload.get("email"))
+        group_key = self.clean_optional(payload.get("candidate_key")) or normalize_text(payload.get("key") or payload.get("group_key") or payload.get("email"))
         keeper_id = self.optional_int(payload.get("keeper_id"))
         raw_merge_ids = payload.get("merge_ids")
         merge_ids = self.optional_int_list(raw_merge_ids)
+        candidate_ids = self.optional_int_list(payload.get("candidate_ids"))
         status = str(payload.get("status") or "open").strip().lower()
         user_note = self.clean_optional(payload.get("note")) or ""
         if not group_key:
             raise ValueError("Duplicate people group key is required.")
         if status not in {"open", "ignored", "resolved"}:
             status = "open"
+        cleanup_group_key = group_key.removeprefix("email:") if str(group_key).startswith("email:") else group_key
 
         backup_path = self.create_backup(f"before_merge_people_{group_key[:20] or 'group'}")
         timestamp = now_iso()
         with self.db() as conn:
-            if not self.cleanup_group_exists(conn, "duplicate_people", group_key):
+            cleanup_group_exists = self.cleanup_group_exists(conn, "duplicate_people", cleanup_group_key)
+            if not cleanup_group_exists and not candidate_ids:
                 raise ValueError("Duplicate people group not found.")
-            people = rows_to_dicts(
-                conn.execute(
-                    """
-                    SELECT *
-                    FROM people
-                    WHERE normalized_email = ?
-                    ORDER BY updated_at DESC, id
-                    """,
-                    (group_key,),
-                ).fetchall()
-            )
+            if cleanup_group_exists:
+                people = rows_to_dicts(
+                    conn.execute(
+                        """
+                        SELECT *
+                        FROM people
+                        WHERE normalized_email = ?
+                        ORDER BY updated_at DESC, id
+                        """,
+                        (cleanup_group_key,),
+                    ).fetchall()
+                )
+            else:
+                selected_candidate_ids = sorted(set(candidate_ids))
+                if len(selected_candidate_ids) < 2:
+                    raise ValueError("At least two candidate people are required.")
+                placeholders = ",".join("?" for _ in selected_candidate_ids)
+                people = rows_to_dicts(
+                    conn.execute(
+                        f"""
+                        SELECT *
+                        FROM people
+                        WHERE id IN ({placeholders})
+                        ORDER BY updated_at DESC, id
+                        """,
+                        selected_candidate_ids,
+                    ).fetchall()
+                )
             if len(people) < 2:
                 raise ValueError("At least two people are required to merge a duplicate group.")
+            people_ids = [int(row["id"]) for row in people]
+            placeholders = ",".join("?" for _ in people_ids)
             records = rows_to_dicts(
                 conn.execute(
-                    """
+                    f"""
                     SELECT 'person' AS record_type, id AS source_id, name, email,
                            phone, mobile, title AS detail, updated_at
                     FROM people
-                    WHERE normalized_email = ?
+                    WHERE id IN ({placeholders})
                     ORDER BY updated_at DESC, id
                     """,
-                    (group_key,),
+                    people_ids,
                 ).fetchall()
             )
             self.enrich_cleanup_records(conn, records)
@@ -21408,16 +21573,17 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             flag_note = f"Merged duplicate people into person #{keeper_id}. Backup: {backup_path.name}"
             if user_note:
                 flag_note = f"{flag_note}; {user_note}"
-            conn.execute(
-                """
-                UPDATE review_flags
-                SET status = 'resolved', resolved_at = ?, resolution_note = ?
-                WHERE flag_type = 'duplicate_person_email'
-                  AND flag_key = ?
-                  AND status = 'open'
-                """,
-                (timestamp, flag_note, group_key),
-            )
+            if cleanup_group_exists:
+                conn.execute(
+                    """
+                    UPDATE review_flags
+                    SET status = 'resolved', resolved_at = ?, resolution_note = ?
+                    WHERE flag_type = 'duplicate_person_email'
+                      AND flag_key = ?
+                      AND status = 'open'
+                    """,
+                    (timestamp, flag_note, cleanup_group_key),
+                )
             self.insert_audit_log(
                 conn,
                 action="merge_duplicate_people",
@@ -21439,7 +21605,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             "merged_ids": loser_ids,
             "summary": summary,
             "detail": self.record_detail({"type": ["person"], "id": [str(keeper_id)]}),
-            "cleanup_detail": self.cleanup_groups({"type": ["duplicate_people"], "status": ["resolved"], "key": [group_key]}),
+            "cleanup_detail": self.cleanup_groups({"type": ["duplicate_people"], "status": ["resolved"], "key": [cleanup_group_key]}) if cleanup_group_exists else None,
         }
 
     def apply_duplicate_people_merge(

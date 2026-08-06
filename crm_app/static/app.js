@@ -4142,6 +4142,16 @@ function tagSortHeader(field, label) {
   `;
 }
 
+function tagPager(totalPages, className = "") {
+  return `
+    <div class="pager tag-pager ${escapeHtml(className)}">
+      <button class="icon-button" data-tag-page-action="prev" title="Previous page" ${state.tagPage <= 1 ? "disabled" : ""}>‹</button>
+      <span class="muted">Page ${state.tagPage} of ${totalPages}</span>
+      <button class="icon-button" data-tag-page-action="next" title="Next page" ${state.tagPage >= totalPages ? "disabled" : ""}>›</button>
+    </div>
+  `;
+}
+
 function setTagManageNotice(message, tone = "info") {
   state.tagManageNotice = message ? { message, tone } : null;
 }
@@ -9203,11 +9213,7 @@ async function renderTags() {
           .join("")}
       </select>
       ${tagSavedViewControls(savedViews)}
-      <div class="pager">
-        <button class="icon-button" id="prevTagPage" title="Previous page" ${state.tagPage <= 1 ? "disabled" : ""}>‹</button>
-        <span class="muted">Page ${state.tagPage} of ${totalPages}</span>
-        <button class="icon-button" id="nextTagPage" title="Next page" ${state.tagPage >= totalPages ? "disabled" : ""}>›</button>
-      </div>
+      ${tagPager(totalPages)}
     </div>
     ${
       data.tags.length
@@ -9250,7 +9256,8 @@ async function renderTags() {
                 `)
                 .join("")}
             </tbody>
-          </table>`
+          </table>
+          ${totalPages > 1 ? tagPager(totalPages, "tag-pager-bottom") : ""}`
         : `<div class="empty-state"><h3>No tags</h3><p>No tags matched this filter.</p></div>`
     }
   `;
@@ -9329,13 +9336,15 @@ async function renderTags() {
       renderTags();
     });
   });
-  document.querySelector("#prevTagPage").addEventListener("click", () => {
-    state.tagPage = Math.max(1, state.tagPage - 1);
-    renderTags();
-  });
-  document.querySelector("#nextTagPage").addEventListener("click", () => {
-    state.tagPage += 1;
-    renderTags();
+  document.querySelectorAll("[data-tag-page-action]").forEach((button) => {
+    button.addEventListener("click", () => {
+      if (button.dataset.tagPageAction === "prev") {
+        state.tagPage = Math.max(1, state.tagPage - 1);
+      } else {
+        state.tagPage += 1;
+      }
+      renderTags();
+    });
   });
   wireTagManagementControls(els.tags);
   wireTagButtons(els.tags);

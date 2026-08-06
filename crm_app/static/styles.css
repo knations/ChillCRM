@@ -2760,6 +2760,11 @@ button {
   gap: 8px;
 }
 
+.tag-pager-bottom {
+  justify-content: flex-end;
+  margin-top: 14px;
+}
+
 .table-scroll {
   border-radius: 8px;
   max-width: 100%;

@@ -752,7 +752,7 @@ function passkeyCredentialPayload(credential, challengeToken, mode) {
 }
 
 function setStatus(text) {
-  els.status.textContent = text;
+  if (els.status) els.status.textContent = text;
 }
 
 function setRuntimeContext(runtime = {}) {
@@ -786,13 +786,8 @@ function renderAuthControl() {
     return;
   }
   els.authControl.innerHTML = `
-    <span class="auth-user">${escapeHtml(user.display_name || user.email || "Signed in")}</span>
-    <button class="auth-change-password" type="button">Password</button>
     <button class="auth-logout" type="button">Sign Out</button>
   `;
-  els.authControl.querySelector(".auth-change-password")?.addEventListener("click", () => {
-    showPasswordOverlay(true);
-  });
   els.authControl.querySelector(".auth-logout")?.addEventListener("click", async () => {
     setStatus("Signing out");
     await postJson("/api/auth/logout", {});

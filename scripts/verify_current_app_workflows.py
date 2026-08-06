@@ -45,11 +45,15 @@ def main() -> int:
     assert "function linkifyText" in app_js
     assert "call-log-note-text" in app_js
     assert 'target="_blank" rel="noopener noreferrer"' in app_js
-    assert 'data-view="calendar"' in (PROJECT_ROOT / "crm_app" / "static" / "index.html").read_text(encoding="utf-8")
+    index_html = (PROJECT_ROOT / "crm_app" / "static" / "index.html").read_text(encoding="utf-8")
+    assert 'data-view="calendar"' in index_html
+    assert 'id="environmentBadge" class="environment-badge" hidden' in index_html
+    assert 'id="statusText" class="status-text" hidden' in index_html
     assert "renderCalendar" in app_js
     assert "/api/calendar_events" in app_js
     assert "local_today" in app_js
     assert "/api/complete_scheduled_call" in app_js
+    assert "auth-change-password" not in app_js
 
     timeline_probe = handler.__new__(handler)
     timeline = timeline_probe.person_timeline(

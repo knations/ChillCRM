@@ -3943,6 +3943,56 @@ button {
   margin-top: 12px;
 }
 
+.portal-collapsible {
+  padding-bottom: 14px;
+}
+
+.portal-collapsed-summary {
+  align-items: center;
+  cursor: pointer;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  list-style: none;
+  min-height: 46px;
+}
+
+.portal-collapsed-summary::-webkit-details-marker {
+  display: none;
+}
+
+.portal-collapsed-summary h3 {
+  margin-bottom: 2px;
+}
+
+.portal-summary-actions {
+  align-items: center;
+  display: inline-flex;
+  flex-shrink: 0;
+  gap: 8px;
+}
+
+.portal-expand-label {
+  min-height: 34px;
+  pointer-events: none;
+}
+
+.portal-collapsible[open] .portal-expand-label::before {
+  content: "Close";
+}
+
+.portal-collapsible[open] .portal-expand-label {
+  font-size: 0;
+}
+
+.portal-collapsible[open] .portal-expand-label::before {
+  font-size: 14px;
+}
+
+.portal-expanded-panel {
+  margin-top: 12px;
+}
+
 .portal-module-tile {
   border: 1px solid var(--line);
   border-radius: 8px;

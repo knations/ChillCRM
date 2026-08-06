@@ -6612,10 +6612,10 @@ function personDetailBody(detail) {
       sectionClass: "files-section",
     }),
     detailTags(detail, detail.tags || []),
-    personPortalSection(detail.portal || null, record.id),
     linkedResources(detail.linked_resources || []),
     recordLifecycleSection(detail),
     reviewFlagsSection(detail.review_flags || []),
+    personPortalSection(detail.portal || null, record.id),
     detail.company ? linkSection("Company", [detail.company], "company") : "",
     detail.possible_person ? linkSection("Possible Match", [detail.possible_person], "person") : "",
     detail.contact ? linkSection("Contact", [detail.contact], "person") : "",
@@ -6760,49 +6760,57 @@ function personPortalSection(portal, personId) {
   const clientNotes = portal.client_notes || [];
   const sharedDocuments = portal.shared_documents || [];
   const previewUrl = `/portal?person_id=${encodeURIComponent(personId || "")}`;
+  const moduleSummary = modules
+    .map((module) => `${formatNumber(module.count || 0)} ${module.label || ""}`.trim())
+    .join(" · ");
   return `
-    <div class="detail-section person-portal-section">
-      <div class="inline-header">
+    <details class="detail-section person-portal-section portal-collapsible">
+      <summary class="portal-collapsed-summary">
         <div>
           <h3>Portal</h3>
-          <p class="muted portal-section-subtitle">Client-visible prep only. Internal notes, calls, tasks, and audit stay private.</p>
+          <p class="muted portal-section-subtitle">${escapeHtml(moduleSummary || "Client-visible prep")}</p>
         </div>
-        <span class="pill ${portal.enabled ? "green" : ""}">${escapeHtml(status)}</span>
-      </div>
-      <div class="portal-module-grid">
-        ${modules.map((module) => `
-          <div class="portal-module-tile">
-            <span>${escapeHtml(module.label || "")}</span>
-            <strong>${formatNumber(module.count || 0)}</strong>
-          </div>
-        `).join("")}
-      </div>
-      <div class="portal-control-row">
-        <label>
-          <span>Portal Status</span>
-          <select id="portalStatus">
-            ${["draft", "active", "paused", "archived"].map((value) => `<option value="${value}" ${selectedStatus === value ? "selected" : ""}>${escapeHtml(labelize(value))}</option>`).join("")}
-          </select>
-        </label>
-        <button id="savePortalProfileButton" class="text-button" type="button">Save Portal</button>
-        <a class="text-button portal-preview-button" href="${safeHref(previewUrl)}" target="_blank" rel="noopener noreferrer">Preview Portal</a>
-      </div>
-      <div class="portal-entry-panel portal-shared-documents-panel">
-        <h4>Shared Documents</h4>
-        <div class="portal-mini-list">
-          ${sharedDocuments.length ? sharedDocuments.slice(0, 6).map((doc) => `
-            <div class="portal-mini-item">
-              <strong>${escapeHtml(doc.title || "Shared document")}</strong>
-              <span>${escapeHtml(labelize(doc.visibility_status || "shared"))}${doc.shared_at ? ` · ${escapeHtml(formatDate(doc.shared_at))}` : ""}</span>
+        <div class="portal-summary-actions">
+          <span class="pill ${portal.enabled ? "green" : ""}">${escapeHtml(status)}</span>
+          <span class="text-button portal-expand-label">Open</span>
+        </div>
+      </summary>
+      <div class="portal-expanded-panel">
+        <p class="muted portal-section-subtitle">Client-visible prep only. Internal notes, calls, tasks, and audit stay private.</p>
+        <div class="portal-module-grid">
+          ${modules.map((module) => `
+            <div class="portal-module-tile">
+              <span>${escapeHtml(module.label || "")}</span>
+              <strong>${formatNumber(module.count || 0)}</strong>
             </div>
-          `).join("") : `<p class="muted">No shared documents yet. Use Share on a file in the Files section.</p>`}
+          `).join("")}
         </div>
-      </div>
-      <div class="portal-entry-grid">
-        <div class="portal-entry-panel">
-          <h4>Client Next Steps</h4>
+        <div class="portal-control-row">
+          <label>
+            <span>Portal Status</span>
+            <select id="portalStatus">
+              ${["draft", "active", "paused", "archived"].map((value) => `<option value="${value}" ${selectedStatus === value ? "selected" : ""}>${escapeHtml(labelize(value))}</option>`).join("")}
+            </select>
+          </label>
+          <button id="savePortalProfileButton" class="text-button" type="button">Save Portal</button>
+          <a class="text-button portal-preview-button" href="${safeHref(previewUrl)}" target="_blank" rel="noopener noreferrer">Preview Portal</a>
+        </div>
+        <div class="portal-entry-panel portal-shared-documents-panel">
+          <h4>Shared Documents</h4>
           <div class="portal-mini-list">
-            ${nextSteps.length ? nextSteps.map((step) => `
+            ${sharedDocuments.length ? sharedDocuments.slice(0, 6).map((doc) => `
+              <div class="portal-mini-item">
+                <strong>${escapeHtml(doc.title || "Shared document")}</strong>
+                <span>${escapeHtml(labelize(doc.visibility_status || "shared"))}${doc.shared_at ? ` · ${escapeHtml(formatDate(doc.shared_at))}` : ""}</span>
+              </div>
+            `).join("") : `<p class="muted">No shared documents yet. Use Share on a file in the Files section.</p>`}
+          </div>
+        </div>
+        <div class="portal-entry-grid">
+          <div class="portal-entry-panel">
+            <h4>Client Next Steps</h4>
+            <div class="portal-mini-list">
+              ${nextSteps.length ? nextSteps.map((step) => `
               <div class="portal-mini-item">
                 <div>
                   <strong>${escapeHtml(step.title || "")}</strong>
@@ -6813,53 +6821,54 @@ function personPortalSection(portal, personId) {
                   <button class="text-button portal-next-step-status-button" type="button" data-next-step-id="${escapeHtml(step.source_id)}" data-status="archived">Archive</button>
                 </div>
               </div>
-            `).join("") : `<p class="muted">No client next steps yet.</p>`}
+              `).join("") : `<p class="muted">No client next steps yet.</p>`}
+            </div>
+            <label>
+              <span>Next Step</span>
+              <input id="portalNextStepTitle" type="text" placeholder="Client-visible next step">
+            </label>
+            <label>
+              <span>Due Date</span>
+              <input id="portalNextStepDue" type="date">
+            </label>
+            <textarea id="portalNextStepDetails" class="note-input compact-input" rows="3" placeholder="Optional client-facing details"></textarea>
+            <button id="addPortalNextStepButton" class="text-button" type="button">Add Next Step</button>
           </div>
-          <label>
-            <span>Next Step</span>
-            <input id="portalNextStepTitle" type="text" placeholder="Client-visible next step">
-          </label>
-          <label>
-            <span>Due Date</span>
-            <input id="portalNextStepDue" type="date">
-          </label>
-          <textarea id="portalNextStepDetails" class="note-input compact-input" rows="3" placeholder="Optional client-facing details"></textarea>
-          <button id="addPortalNextStepButton" class="text-button" type="button">Add Next Step</button>
-        </div>
-        <div class="portal-entry-panel">
-          <h4>Client Notes</h4>
-          <div class="portal-mini-list">
-            ${clientNotes.length ? clientNotes.map((note) => `
-              <div class="portal-mini-item">
-                <div>
-                  <strong>${escapeHtml(note.title || "Client Note")}</strong>
-                  <span>${escapeHtml(labelize(note.visibility_status || "draft"))}${note.published_at ? ` · ${escapeHtml(formatDate(note.published_at))}` : ""}</span>
+          <div class="portal-entry-panel">
+            <h4>Client Notes</h4>
+            <div class="portal-mini-list">
+              ${clientNotes.length ? clientNotes.map((note) => `
+                <div class="portal-mini-item">
+                  <div>
+                    <strong>${escapeHtml(note.title || "Client Note")}</strong>
+                    <span>${escapeHtml(labelize(note.visibility_status || "draft"))}${note.published_at ? ` · ${escapeHtml(formatDate(note.published_at))}` : ""}</span>
+                  </div>
+                  <div class="portal-mini-actions">
+                    ${(note.visibility_status || "draft") === "published"
+                      ? `<button class="text-button portal-client-note-status-button" type="button" data-client-note-id="${escapeHtml(note.source_id)}" data-status="draft">Unpublish</button>`
+                      : `<button class="text-button portal-client-note-status-button" type="button" data-client-note-id="${escapeHtml(note.source_id)}" data-status="published">Publish</button>`}
+                    <button class="text-button portal-client-note-status-button" type="button" data-client-note-id="${escapeHtml(note.source_id)}" data-status="archived">Archive</button>
+                  </div>
                 </div>
-                <div class="portal-mini-actions">
-                  ${(note.visibility_status || "draft") === "published"
-                    ? `<button class="text-button portal-client-note-status-button" type="button" data-client-note-id="${escapeHtml(note.source_id)}" data-status="draft">Unpublish</button>`
-                    : `<button class="text-button portal-client-note-status-button" type="button" data-client-note-id="${escapeHtml(note.source_id)}" data-status="published">Publish</button>`}
-                  <button class="text-button portal-client-note-status-button" type="button" data-client-note-id="${escapeHtml(note.source_id)}" data-status="archived">Archive</button>
-                </div>
-              </div>
-            `).join("") : `<p class="muted">No client notes yet.</p>`}
+              `).join("") : `<p class="muted">No client notes yet.</p>`}
+            </div>
+            <label>
+              <span>Note Title</span>
+              <input id="portalClientNoteTitle" type="text" placeholder="Optional title">
+            </label>
+            <textarea id="portalClientNoteBody" class="note-input compact-input" rows="4" placeholder="Client-visible note only"></textarea>
+            <label>
+              <span>Visibility</span>
+              <select id="portalClientNoteStatus">
+                <option value="draft">Draft</option>
+                <option value="published">Published</option>
+              </select>
+            </label>
+            <button id="addPortalClientNoteButton" class="text-button" type="button">Add Client Note</button>
           </div>
-          <label>
-            <span>Note Title</span>
-            <input id="portalClientNoteTitle" type="text" placeholder="Optional title">
-          </label>
-          <textarea id="portalClientNoteBody" class="note-input compact-input" rows="4" placeholder="Client-visible note only"></textarea>
-          <label>
-            <span>Visibility</span>
-            <select id="portalClientNoteStatus">
-              <option value="draft">Draft</option>
-              <option value="published">Published</option>
-            </select>
-          </label>
-          <button id="addPortalClientNoteButton" class="text-button" type="button">Add Client Note</button>
         </div>
       </div>
-    </div>
+    </details>
   `;
 }
 

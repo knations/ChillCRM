@@ -1627,7 +1627,7 @@ async function renderDashboard() {
   setStatus("Loading dashboard");
   const data = await fetchJson("/api/summary");
   setRuntimeContext(data.runtime);
-  const maxDeals = Math.max(...data.pipeline.map((stage) => stage.deal_count), 1);
+  const maxDeals = Math.max(...(data.pipeline || []).map((stage) => stage.deal_count), 1);
   els.dashboard.innerHTML = `
     <div class="section-header dashboard-today-header">
       <div>
@@ -1636,59 +1636,7 @@ async function renderDashboard() {
       </div>
     </div>
     ${salesCommandCenterPanel(data.sales_command_center)}
-    <div class="band dashboard-snapshot">
-      <div class="band-header">
-        <h3>Snapshot</h3>
-        <span class="muted">${formatNumber(data.counts.people + data.counts.companies + data.counts.leads)} records</span>
-      </div>
-      <div class="metric-grid dashboard-snapshot-grid">
-        ${metric("People", data.counts.people)}
-        ${metric("Leads", data.counts.leads)}
-        ${metric("Deals", data.counts.deals)}
-        ${metric("Open Tasks", data.counts.open_tasks)}
-        ${metric("Overdue", data.counts.overdue_tasks, "metric-alert")}
-        ${metric("Due Soon", data.counts.due_soon_tasks)}
-      </div>
-    </div>
-    <div class="band dashboard-pipeline-band">
-      <div class="band-header">
-        <h3>Sales Pipeline</h3>
-        <button class="text-button nav-jump" data-view="pipeline">Open Pipeline</button>
-      </div>
-      <div class="pipeline">
-        ${data.pipeline
-          .map((stage) => {
-            const width = percentValue((Number(stage.deal_count || 0) / maxDeals) * 100, 3);
-            return `
-              <div class="stage">
-                <div class="stage-name">${escapeHtml(stage.name)}</div>
-                <progress class="bar-progress" value="${width}" max="100" aria-label="${escapeHtml(stage.name || "Stage")} pipeline share"></progress>
-                <div class="stage-count">${formatNumber(stage.deal_count)} deals</div>
-                <div class="stage-value">${formatMoney(stage.total_value)}</div>
-              </div>
-            `;
-          })
-          .join("")}
-      </div>
-    </div>
-    <div class="band dashboard-secondary-work">
-      <div class="band-header">
-        <h3>Follow Up</h3>
-        <button class="text-button nav-jump" data-view="followup">Open</button>
-      </div>
-      ${taskTable(data.upcoming_tasks, true)}
-    </div>
-    <div class="band dashboard-secondary-work">
-      <div class="band-header">
-        <h3>Recently Updated</h3>
-      </div>
-      ${recordTable(data.recently_updated, "recent")}
-    </div>
-    ${productionStatusPanel(data.production_status)}
-    ${startTodayPanel(data.start_today)}
-    ${savedViewsSection(data.saved_views || [])}
-    ${applicationSegmentSection(data.profile_segments || [])}
-    ${cleanupSummarySection(data.cleanup_summary || {})}
+    ${dashboardReferencePanel(data, maxDeals)}
   `;
   wireRecordButtons(els.dashboard);
   wireTaskButtons(els.dashboard);
@@ -1699,6 +1647,50 @@ async function renderDashboard() {
   wireCleanupSummaryButtons(els.dashboard);
   wireProfileSegmentButtons(els.dashboard);
   setStatus("Ready");
+}
+
+function dashboardReferencePanel(data, maxDeals) {
+  const counts = data.counts || {};
+  const pipeline = data.pipeline || [];
+  return `
+    <details class="band dashboard-reference-panel">
+      <summary>
+        <span>Reference</span>
+        <small>${formatNumber(counts.people || 0)} people · ${formatNumber(counts.deals || 0)} deals · ${formatNumber(counts.open_tasks || 0)} open tasks</small>
+      </summary>
+      <div class="dashboard-reference-grid">
+        <div class="dashboard-reference-metrics">
+          ${metric("People", counts.people || 0)}
+          ${metric("Leads", counts.leads || 0)}
+          ${metric("Deals", counts.deals || 0)}
+          ${metric("Open Tasks", counts.open_tasks || 0)}
+          ${metric("Overdue", counts.overdue_tasks || 0, "metric-alert")}
+          ${metric("Due Soon", counts.due_soon_tasks || 0)}
+        </div>
+        <div class="dashboard-reference-pipeline">
+          <div class="band-header compact">
+            <h3>Sales Pipeline</h3>
+            <button class="text-button nav-jump" data-view="pipeline">Open Pipeline</button>
+          </div>
+          <div class="pipeline">
+            ${pipeline
+              .map((stage) => {
+                const width = percentValue((Number(stage.deal_count || 0) / maxDeals) * 100, 3);
+                return `
+                  <div class="stage">
+                    <div class="stage-name">${escapeHtml(stage.name)}</div>
+                    <progress class="bar-progress" value="${width}" max="100" aria-label="${escapeHtml(stage.name || "Stage")} pipeline share"></progress>
+                    <div class="stage-count">${formatNumber(stage.deal_count)} deals</div>
+                    <div class="stage-value">${formatMoney(stage.total_value)}</div>
+                  </div>
+                `;
+              })
+              .join("")}
+          </div>
+        </div>
+      </div>
+    </details>
+  `;
 }
 
 async function renderOwnerBrief() {
@@ -2020,7 +2012,6 @@ function pipelineDealCard(deal) {
 
 function salesCommandCenterPanel(center) {
   if (!center?.title) return "";
-  const metrics = center.metrics || [];
   const tone = center.status === "ready" ? "green" : center.status === "attention" ? "coral" : "gold";
   const priorityCards = [
     {
@@ -2048,7 +2039,6 @@ function salesCommandCenterPanel(center) {
       preset: "deals_won_needs_upgrade",
     },
   ];
-  const supportingMetrics = metrics.filter((item) => !["Overdue", "Due Today", "Deal Follow-Ups", "No Deal Date", "Won Needs Upgrade"].includes(item.label || ""));
   return `
     <div class="band sales-command-center ${escapeHtml(center.status || "")}">
       <div class="band-header">
@@ -2065,21 +2055,11 @@ function salesCommandCenterPanel(center) {
       <div class="sales-command-priority-grid">
         ${priorityCards.map(salesCommandPriorityCard).join("")}
       </div>
-      <div class="sales-command-metrics">
-        ${supportingMetrics.map((item) => `
-          <div class="sales-command-metric">
-            <span>${escapeHtml(item.label || "")}</span>
-            <strong>${formatNumber(item.value || 0)}</strong>
-          </div>
-        `).join("")}
-      </div>
       <div class="sales-command-grid">
         ${salesCommandList("Late Follow-Ups", [...(center.overdue_tasks || []), ...(center.overdue_deal_followups || [])], "mixed", { preset: "deals_overdue", empty: "Nothing is late." })}
         ${salesCommandList("Due Today", [...(center.due_today_tasks || []), ...(center.due_today_deal_followups || [])], "mixed", { preset: "deals_due_today", empty: "Nothing is due today." })}
         ${salesCommandList("Needs Next Action", center.missing_next_action_deals || [], "record", { preset: "deals_no_deal_date", empty: "Every active deal has a next action." })}
         ${salesCommandList("Won Upgrade Follow-Up", center.won_missing_upgrade_deals || [], "record", { preset: "deals_won_needs_upgrade", empty: "Won deals have upgrade paths." })}
-        ${salesCommandList("Recent Purchases", center.recent_purchases || [], "purchase", { empty: "No recent purchases yet." })}
-        ${salesCommandList("New Leads", center.new_leads || [], "record", { preset: "new_leads", empty: "No new leads waiting." })}
       </div>
     </div>
   `;

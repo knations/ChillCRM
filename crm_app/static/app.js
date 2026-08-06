@@ -1625,16 +1625,20 @@ function metric(label, value, className = "") {
 
 async function renderDashboard() {
   setStatus("Loading dashboard");
-  const data = await fetchJson("/api/summary");
+  const [data, calendarData] = await Promise.all([
+    fetchJson("/api/summary"),
+    fetchCalendarEventsForSelectedDate(),
+  ]);
   setRuntimeContext(data.runtime);
   const maxDeals = Math.max(...(data.pipeline || []).map((stage) => stage.deal_count), 1);
   els.dashboard.innerHTML = `
     <div class="section-header dashboard-today-header">
       <div>
         <h2>Today</h2>
-        <p>Only what needs attention, movement, or follow-up.</p>
+        <p>Scheduled calls, open tasks, and deal follow-up focus.</p>
       </div>
     </div>
+    ${actionCalendarPanel(calendarData, { title: "Due Today" })}
     ${salesCommandCenterPanel(data.sales_command_center)}
     ${dashboardReferencePanel(data, maxDeals)}
   `;
@@ -1646,7 +1650,21 @@ async function renderDashboard() {
   wireSavedViewButtons(els.dashboard, data.saved_views || []);
   wireCleanupSummaryButtons(els.dashboard);
   wireProfileSegmentButtons(els.dashboard);
+  wireActionCalendarControls(els.dashboard, renderDashboard);
+  wireCalendarButtons(els.dashboard);
   setStatus("Ready");
+}
+
+async function fetchCalendarEventsForSelectedDate() {
+  const today = localISODate();
+  if (!state.calendarDate) state.calendarDate = today;
+  const params = new URLSearchParams({
+    date: state.calendarDate,
+    local_today: today,
+  });
+  const data = await fetchJson(`/api/calendar_events?${params.toString()}`);
+  state.calendarDate = data.selected_date || state.calendarDate || today;
+  return data;
 }
 
 function dashboardReferencePanel(data, maxDeals) {
@@ -1862,52 +1880,75 @@ function pipelineMetric(label, value) {
 }
 
 async function renderCalendar() {
-  const today = localISODate();
-  if (!state.calendarDate) state.calendarDate = today;
   setStatus("Loading calendar");
-  const params = new URLSearchParams({
-    date: state.calendarDate,
-    local_today: today,
-  });
-  const data = await fetchJson(`/api/calendar_events?${params.toString()}`);
-  state.calendarDate = data.selected_date || state.calendarDate || today;
-  const localToday = data.today || today;
-  const selectedTitle = calendarDateTitle(state.calendarDate, localToday);
+  const data = await fetchCalendarEventsForSelectedDate();
   els.calendar.innerHTML = `
     <div class="section-header calendar-header">
       <div>
         <h2>Calendar</h2>
         <p>Scheduled calls and open tasks only.</p>
       </div>
-      <div class="calendar-date-controls" aria-label="Calendar day controls">
-        <button class="icon-button" id="prevCalendarDay" type="button" title="Previous day">‹</button>
-        <div class="calendar-date-label">
-          <strong>${escapeHtml(selectedTitle)}</strong>
-          <span>${escapeHtml(formatDate(state.calendarDate))}</span>
-        </div>
-        <button class="icon-button" id="nextCalendarDay" type="button" title="Next day">›</button>
-        <button class="text-button" id="todayCalendarDay" type="button" ${state.calendarDate === localToday ? "disabled" : ""}>Today</button>
-      </div>
     </div>
-    ${calendarSection("Overdue", data.overdue || [], { empty: "Nothing overdue." })}
-    ${calendarSection(selectedTitle, data.day || [], { empty: "Nothing scheduled for this day." })}
+    ${actionCalendarPanel(data, { title: "Action Calendar" })}
   `;
-  document.querySelector("#prevCalendarDay")?.addEventListener("click", () => {
-    state.calendarDate = addDaysToDate(state.calendarDate, -1);
-    renderCalendar();
-  });
-  document.querySelector("#nextCalendarDay")?.addEventListener("click", () => {
-    state.calendarDate = addDaysToDate(state.calendarDate, 1);
-    renderCalendar();
-  });
-  document.querySelector("#todayCalendarDay")?.addEventListener("click", () => {
-    state.calendarDate = localISODate();
-    renderCalendar();
-  });
+  wireActionCalendarControls(els.calendar, renderCalendar);
   wireRecordButtons(els.calendar);
   wireTaskButtons(els.calendar);
   wireCalendarButtons(els.calendar);
   setStatus("Ready");
+}
+
+function actionCalendarPanel(data, options = {}) {
+  const localToday = data.today || localISODate();
+  const selectedTitle = calendarDateTitle(state.calendarDate, localToday);
+  const overdue = data.overdue || [];
+  const day = data.day || [];
+  return `
+    <section class="band action-calendar-panel">
+      <div class="band-header action-calendar-header">
+        <div>
+          <h3>${escapeHtml(options.title || "Due Today")}</h3>
+          <p>Calls and tasks that require action.</p>
+        </div>
+        <div class="calendar-date-controls" aria-label="Calendar day controls">
+          <button class="icon-button prev-calendar-day" type="button" title="Previous day">‹</button>
+          <div class="calendar-date-label">
+            <strong>${escapeHtml(selectedTitle)}</strong>
+            <span>${escapeHtml(formatDate(state.calendarDate))}</span>
+          </div>
+          <button class="icon-button next-calendar-day" type="button" title="Next day">›</button>
+          <button class="text-button today-calendar-day" type="button" ${state.calendarDate === localToday ? "disabled" : ""}>Today</button>
+        </div>
+      </div>
+      <div class="action-calendar-tabs">
+        <div class="action-calendar-tab">
+          <span>Overdue</span>
+          <strong>${formatNumber(overdue.length)}</strong>
+        </div>
+        <div class="action-calendar-tab active">
+          <span>${escapeHtml(selectedTitle)}</span>
+          <strong>${formatNumber(day.length)}</strong>
+        </div>
+      </div>
+      ${calendarSection("Overdue", overdue, { empty: "Nothing overdue." })}
+      ${calendarSection(selectedTitle, day, { empty: "Nothing scheduled for this day." })}
+    </section>
+  `;
+}
+
+function wireActionCalendarControls(root, renderFn) {
+  root.querySelector(".prev-calendar-day")?.addEventListener("click", () => {
+    state.calendarDate = addDaysToDate(state.calendarDate, -1);
+    renderFn();
+  });
+  root.querySelector(".next-calendar-day")?.addEventListener("click", () => {
+    state.calendarDate = addDaysToDate(state.calendarDate, 1);
+    renderFn();
+  });
+  root.querySelector(".today-calendar-day")?.addEventListener("click", () => {
+    state.calendarDate = localISODate();
+    renderFn();
+  });
 }
 
 function calendarSection(title, events, options = {}) {
@@ -1962,6 +2003,7 @@ function wireCalendarButtons(root) {
         notes: notes.trim(),
       });
       if (updated.detail && detailMatchesCurrent(updated.detail)) renderDetail(updated.detail);
+      if (state.view === "dashboard") await renderDashboard();
       if (state.view === "calendar") await renderCalendar();
       setStatus("Call logged");
     });
@@ -2056,8 +2098,6 @@ function salesCommandCenterPanel(center) {
         ${priorityCards.map(salesCommandPriorityCard).join("")}
       </div>
       <div class="sales-command-grid">
-        ${salesCommandList("Late Follow-Ups", [...(center.overdue_tasks || []), ...(center.overdue_deal_followups || [])], "mixed", { preset: "deals_overdue", empty: "Nothing is late." })}
-        ${salesCommandList("Due Today", [...(center.due_today_tasks || []), ...(center.due_today_deal_followups || [])], "mixed", { preset: "deals_due_today", empty: "Nothing is due today." })}
         ${salesCommandList("Needs Next Action", center.missing_next_action_deals || [], "record", { preset: "deals_no_deal_date", empty: "Every active deal has a next action." })}
         ${salesCommandList("Won Upgrade Follow-Up", center.won_missing_upgrade_deals || [], "record", { preset: "deals_won_needs_upgrade", empty: "Won deals have upgrade paths." })}
       </div>

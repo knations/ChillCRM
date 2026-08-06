@@ -3047,13 +3047,31 @@ button {
 }
 
 .sort-indicator {
+  align-items: center;
   border-radius: 999px;
   background: var(--accent-soft);
   color: #065c5b;
-  font-size: 10px;
+  display: inline-flex;
+  font-size: 9px;
+  font-weight: 900;
+  height: 18px;
+  justify-content: center;
   line-height: 1;
-  padding: 3px 5px;
+  padding: 0;
   text-transform: none;
+  width: 18px;
+}
+
+.sr-only {
+  border: 0;
+  clip: rect(0, 0, 0, 0);
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  padding: 0;
+  position: absolute;
+  white-space: nowrap;
+  width: 1px;
 }
 
 .data-table tr:last-child td {

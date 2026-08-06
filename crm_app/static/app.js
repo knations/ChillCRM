@@ -4131,7 +4131,9 @@ function tagRecordTypeOptions() {
 function tagSortHeader(field, label) {
   const isActive = state.tagSortBy === field;
   const ariaSort = isActive ? (state.tagSortDirection === "asc" ? "ascending" : "descending") : "none";
-  const indicator = isActive ? `<span class="sort-indicator">${state.tagSortDirection === "asc" ? "Asc" : "Desc"}</span>` : "";
+  const indicator = isActive
+    ? `<span class="sort-indicator" aria-hidden="true">${state.tagSortDirection === "asc" ? "▲" : "▼"}</span><span class="sr-only">${ariaSort}</span>`
+    : "";
   return `
     <th aria-sort="${ariaSort}">
       <button class="sort-header-button ${isActive ? "active" : ""}" data-tag-sort="${escapeHtml(field)}" type="button">
@@ -5530,7 +5532,9 @@ function sortHeader(field, label) {
   const sort = currentListSort();
   const isActive = sort.field === field;
   const ariaSort = isActive ? (sort.direction === "asc" ? "ascending" : "descending") : "none";
-  const indicator = isActive ? `<span class="sort-indicator">${sort.direction === "asc" ? "Asc" : "Desc"}</span>` : "";
+  const indicator = isActive
+    ? `<span class="sort-indicator" aria-hidden="true">${sort.direction === "asc" ? "▲" : "▼"}</span><span class="sr-only">${ariaSort}</span>`
+    : "";
   return `
     <th aria-sort="${ariaSort}">
       <button class="sort-header-button ${isActive ? "active" : ""}" data-sort-field="${escapeHtml(field)}" type="button">

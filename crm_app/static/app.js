@@ -44,6 +44,7 @@ const state = {
   listDealQueue: "",
   pipelineDealQueue: "",
   pipelineShowEmptyStages: false,
+  dashboardFocusKey: "",
   calendarDate: "",
   listSavedViewId: {
     people: "",
@@ -126,6 +127,7 @@ const els = {
   environmentBadge: document.querySelector("#environmentBadge"),
   shell: document.querySelector(".app-shell"),
   dashboard: document.querySelector("#dashboardView"),
+  dashboardFocus: document.querySelector("#dashboardFocusView"),
   ownerBrief: document.querySelector("#ownerBriefView"),
   operationsStatus: document.querySelector("#operationsStatusView"),
   pipeline: document.querySelector("#pipelineView"),
@@ -1119,6 +1121,7 @@ function setView(view) {
     ? els.list
     : {
         dashboard: els.dashboard,
+        dashboardFocus: els.dashboardFocus,
         ownerBrief: els.ownerBrief,
         operationsStatus: els.operationsStatus,
         pipeline: els.pipeline,
@@ -1134,7 +1137,9 @@ function setView(view) {
       }[view];
   showOnlyMainView(activeView || els.dashboard);
   updateRecordWorkspaceForView(view);
-  if (view === "operationsStatus") {
+  if (view === "dashboardFocus") {
+    renderDashboardFocus();
+  } else if (view === "operationsStatus") {
     renderOperationsStatus();
   } else if (view === "ownerBrief") {
     renderOwnerBrief();
@@ -1646,6 +1651,7 @@ async function renderDashboard() {
   wireNavJumps(els.dashboard);
   wireNextAction(els.dashboard);
   wireWorkQueuePresets(els.dashboard);
+  wireDashboardFocusButtons(els.dashboard);
   wireSavedViewButtons(els.dashboard, data.saved_views || []);
   wireCleanupSummaryButtons(els.dashboard);
   wireProfileSegmentButtons(els.dashboard);
@@ -1657,13 +1663,140 @@ async function renderDashboard() {
 async function fetchCalendarEventsForSelectedDate() {
   const today = localISODate();
   if (!state.calendarDate) state.calendarDate = today;
-  const params = new URLSearchParams({
-    date: state.calendarDate,
-    local_today: today,
-  });
-  const data = await fetchJson(`/api/calendar_events?${params.toString()}`);
+  const data = await fetchCalendarEventsForDate(state.calendarDate, today);
   state.calendarDate = data.selected_date || state.calendarDate || today;
   return data;
+}
+
+async function fetchCalendarEventsForDate(dateValue, localToday = localISODate()) {
+  const params = new URLSearchParams({
+    date: dateValue || localToday,
+    local_today: localToday,
+  });
+  return fetchJson(`/api/calendar_events?${params.toString()}`);
+}
+
+const dashboardFocusConfigs = {
+  late: {
+    title: "Late",
+    subtitle: "Overdue tasks, scheduled calls, and deal follow-ups.",
+    actionTitle: "Overdue Actions",
+    dealTitle: "Overdue Deal Follow-Ups",
+    dealQueue: "overdue",
+  },
+  today: {
+    title: "Today",
+    subtitle: "Tasks, scheduled calls, and deal follow-ups due today.",
+    actionTitle: "Today Actions",
+    dealTitle: "Today Deal Follow-Ups",
+    dealQueue: "due_today",
+  },
+  no_next_action: {
+    title: "No Next Action",
+    subtitle: "Deals that need a dated next step.",
+    dealTitle: "Deals Missing Follow Up",
+    dealQueue: "no_deal_date",
+  },
+  upgrade: {
+    title: "Upgrade",
+    subtitle: "Won deals that still need an upgrade path.",
+    dealTitle: "Won Deals Needing Upgrade",
+    dealQueue: "won_needs_upgrade",
+  },
+};
+
+async function openDashboardFocus(key) {
+  state.dashboardFocusKey = key;
+  setView("dashboardFocus");
+}
+
+async function renderDashboardFocus() {
+  const key = state.dashboardFocusKey || "today";
+  const config = dashboardFocusConfigs[key] || dashboardFocusConfigs.today;
+  setStatus(`Loading ${config.title}`);
+  const localToday = localISODate();
+  const requests = [];
+  const needsActions = key === "late" || key === "today";
+  if (needsActions) requests.push(fetchCalendarEventsForDate(localToday, localToday));
+  if (config.dealQueue) requests.push(fetchDashboardFocusDeals(config.dealQueue));
+  const results = await Promise.all(requests);
+  const calendarData = needsActions ? results.shift() : null;
+  const dealData = config.dealQueue ? results.shift() : null;
+  const actions = key === "late" ? calendarData?.overdue || [] : key === "today" ? calendarData?.day || [] : [];
+  const deals = dealData?.records || [];
+  els.dashboardFocus.innerHTML = `
+    <div class="section-header dashboard-focus-header">
+      <div>
+        <button type="button" class="text-button dashboard-focus-back">← Dashboard</button>
+        <h2>${escapeHtml(config.title)}</h2>
+        <p>${escapeHtml(config.subtitle)}</p>
+      </div>
+      <span class="pill">${formatNumber(actions.length + deals.length)} item${actions.length + deals.length === 1 ? "" : "s"}</span>
+    </div>
+    ${
+      needsActions
+        ? dashboardFocusSection(config.actionTitle, actions, {
+            empty: key === "late" ? "No overdue actions." : "No actions scheduled for today.",
+            rowRenderer: calendarActionCard,
+          })
+        : ""
+    }
+    ${dashboardFocusSection(config.dealTitle, deals, {
+      empty: "No deals in this bucket.",
+      rowRenderer: dashboardFocusDealCard,
+      total: dealData?.total,
+    })}
+  `;
+  els.dashboardFocus.querySelector(".dashboard-focus-back")?.addEventListener("click", () => setView("dashboard"));
+  wireRecordButtons(els.dashboardFocus);
+  wireTaskButtons(els.dashboardFocus);
+  wireCalendarButtons(els.dashboardFocus);
+  setStatus("Ready");
+}
+
+async function fetchDashboardFocusDeals(queue) {
+  const params = new URLSearchParams({
+    type: "deals",
+    page: "1",
+    page_size: "100",
+    q: "",
+    sort: queue === "won_needs_upgrade" ? "value" : "updated_at",
+    direction: "desc",
+    deal_queue: queue,
+  });
+  return fetchJson(`/api/list?${params.toString()}`);
+}
+
+function dashboardFocusSection(title, rows, options = {}) {
+  const total = Number.isFinite(Number(options.total)) ? Number(options.total) : rows.length;
+  return `
+    <section class="band dashboard-focus-section">
+      <div class="band-header">
+        <h3>${escapeHtml(title)}</h3>
+        <span class="muted">${formatNumber(total)} item${total === 1 ? "" : "s"}</span>
+      </div>
+      <div class="dashboard-focus-list">
+        ${rows.length ? rows.map(options.rowRenderer).join("") : `<div class="empty-calendar-card">${escapeHtml(options.empty || "Nothing here.")}</div>`}
+      </div>
+    </section>
+  `;
+}
+
+function dashboardFocusDealCard(record) {
+  const meta = [
+    record.stage_name || record.stage,
+    record.value ? formatMoney(record.value, record.currency || "USD") : "",
+    record.match_context,
+  ].filter(Boolean).join(" · ");
+  return `
+    <article class="dashboard-focus-card">
+      <div>
+        <strong>${escapeHtml(record.name || "(blank)")}</strong>
+        ${meta ? `<p>${escapeHtml(meta)}</p>` : ""}
+      </div>
+      <button type="button" class="text-button record-button" data-type="deal" data-id="${escapeHtml(record.source_id)}">Open</button>
+    </article>
+  `;
 }
 
 function dashboardReferencePanel(data, maxDeals) {
@@ -2039,25 +2172,25 @@ function salesCommandCenterPanel(center) {
       label: "Late",
       value: (center.overdue_tasks || []).length + (center.overdue_deal_followups || []).length,
       helper: "Overdue tasks and deal follow-ups",
-      view: "followup",
+      focusKey: "late",
     },
     {
       label: "Today",
       value: (center.due_today_tasks || []).length + (center.due_today_deal_followups || []).length,
       helper: "Follow-ups due now",
-      view: "followup",
+      focusKey: "today",
     },
     {
       label: "No Next Action",
       value: Number(center.deal_followup_counts?.missing || 0) + (center.missing_next_action_deals || []).length,
       helper: "Deals that need a dated next step",
-      preset: "deals_no_deal_date",
+      focusKey: "no_next_action",
     },
     {
       label: "Upgrade",
       value: Number(center.deal_followup_counts?.won_missing_upgrade || 0),
       helper: "Won deals needing an upgrade path",
-      preset: "deals_won_needs_upgrade",
+      focusKey: "upgrade",
     },
   ];
   return `
@@ -2077,17 +2210,19 @@ function salesCommandCenterPanel(center) {
         ${priorityCards.map(salesCommandPriorityCard).join("")}
       </div>
       <div class="sales-command-grid">
-        ${salesCommandList("Needs Next Action", center.missing_next_action_deals || [], "record", { preset: "deals_no_deal_date", empty: "Every active deal has a next action." })}
-        ${salesCommandList("Won Upgrade Follow-Up", center.won_missing_upgrade_deals || [], "record", { preset: "deals_won_needs_upgrade", empty: "Won deals have upgrade paths." })}
+        ${salesCommandList("Needs Next Action", center.missing_next_action_deals || [], "record", { focusKey: "no_next_action", empty: "Every active deal has a next action." })}
+        ${salesCommandList("Won Upgrade Follow-Up", center.won_missing_upgrade_deals || [], "record", { focusKey: "upgrade", empty: "Won deals have upgrade paths." })}
       </div>
     </div>
   `;
 }
 
 function salesCommandPriorityCard(card) {
-  const action = card.preset
-    ? `class="sales-priority-card work-queue-preset" data-preset="${escapeHtml(card.preset)}"`
-    : `class="sales-priority-card nav-jump" data-view="${escapeHtml(card.view || "followup")}"`;
+  const action = card.focusKey
+    ? `class="sales-priority-card dashboard-focus-button" data-focus="${escapeHtml(card.focusKey)}"`
+    : card.preset
+      ? `class="sales-priority-card work-queue-preset" data-preset="${escapeHtml(card.preset)}"`
+      : `class="sales-priority-card nav-jump" data-view="${escapeHtml(card.view || "followup")}"`;
   return `
     <button type="button" ${action}>
       <span>${escapeHtml(card.label)}</span>
@@ -2103,6 +2238,7 @@ function salesCommandList(title, rows, mode, options = {}) {
     <div class="sales-command-list">
       <div class="sales-command-list-header">
         <h4>${escapeHtml(title)}</h4>
+        ${options.focusKey ? `<button type="button" class="text-button dashboard-focus-button" data-focus="${escapeHtml(options.focusKey)}">Open</button>` : ""}
         ${options.preset ? `<button type="button" class="text-button work-queue-preset" data-preset="${escapeHtml(options.preset)}">Open</button>` : ""}
       </div>
       ${
@@ -2848,6 +2984,12 @@ function wireWorkQueuePresets(root) {
   });
   root.querySelectorAll(".work-queue-archive-number").forEach((button) => {
     button.addEventListener("click", () => openArchivePhonePreset(button.dataset.phone || ""));
+  });
+}
+
+function wireDashboardFocusButtons(root) {
+  root.querySelectorAll(".dashboard-focus-button").forEach((button) => {
+    button.addEventListener("click", () => openDashboardFocus(button.dataset.focus || "today"));
   });
 }
 

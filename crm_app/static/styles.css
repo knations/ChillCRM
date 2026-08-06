@@ -864,6 +864,51 @@ button {
   padding: 0 12px 12px;
 }
 
+.dashboard-focus-header {
+  align-items: center;
+}
+
+.dashboard-focus-header .text-button {
+  margin-bottom: 10px;
+}
+
+.dashboard-focus-section {
+  margin-top: 14px;
+}
+
+.dashboard-focus-list {
+  display: grid;
+  gap: 10px;
+  padding: 0 16px 16px;
+}
+
+.dashboard-focus-card {
+  align-items: center;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding: 12px;
+}
+
+.dashboard-focus-card div {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.dashboard-focus-card strong,
+.dashboard-focus-card p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.dashboard-focus-card p {
+  color: var(--muted);
+}
+
 .owner-brief-header .pill {
   align-self: flex-start;
 }
@@ -6834,6 +6879,11 @@ button {
   .dashboard-reference-grid {
     grid-template-columns: 1fr;
     padding: 0 14px 14px;
+  }
+
+  .dashboard-focus-card {
+    align-items: stretch;
+    grid-template-columns: 1fr;
   }
 
   .sales-priority-card {

@@ -7239,6 +7239,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             quality_options = self.list_quality_filter_options(conn, record_type)
             provenance_options = self.list_provenance_filter_options(conn, record_type)
             lifecycle_counts = self.people_lifecycle_counts(conn) if record_type == "people" else {}
+            operator_avatar_options = self.list_operator_avatar_options(conn) if record_type == "people" else []
 
         return {
             "type": record_type,
@@ -7252,6 +7253,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             "owner_user_id": owner_user_id,
             "owner_options": owner_options,
             "operator_avatar": operator_avatar or "",
+            "operator_avatar_options": operator_avatar_options,
             "quality_issue": quality_issue,
             "quality_options": quality_options,
             "provenance": provenance_filter,
@@ -7683,6 +7685,23 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                 WHERE t.owner_user_id IS NOT NULL
                 GROUP BY t.owner_user_id, u.name, u.email
                 ORDER BY count DESC, label COLLATE NOCASE
+                """
+            ).fetchall()
+        )
+
+    def list_operator_avatar_options(self, conn: sqlite3.Connection) -> list[dict[str, Any]]:
+        return rows_to_dicts(
+            conn.execute(
+                """
+                SELECT trim(cfv.field_value) AS value,
+                       trim(cfv.field_value) AS label,
+                       count(*) AS count
+                FROM custom_field_values cfv
+                WHERE cfv.record_type = 'person'
+                  AND lower(trim(cfv.field_name)) = lower('OPERATOR AVATAR')
+                  AND coalesce(trim(cfv.field_value), '') != ''
+                GROUP BY trim(cfv.field_value)
+                ORDER BY lower(trim(cfv.field_value))
                 """
             ).fetchall()
         )
@@ -17611,6 +17630,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             "profile_image": self.public_profile_image(self.active_profile_image_row(conn, "person", record_id)),
             "portal": portal,
             "edit_options": self.edit_options(conn, "person"),
+            "operator_avatar_options": self.list_operator_avatar_options(conn),
             "owner": self.owner_for(conn, record.get("owner_user_id")),
             "company": company,
             "deals": deals,

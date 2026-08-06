@@ -4465,9 +4465,17 @@ function peopleLifecycleFilterControls(data = {}) {
   return `<button class="text-button people-lifecycle-toggle ${showingAll ? "active" : ""}" id="peopleLifecycleToggle" type="button" data-next="${showingAll ? "active" : "all"}">${escapeHtml(label)}</button>`;
 }
 
-function peopleOperatorAvatarFilterControl() {
+function peopleOperatorAvatarFilterControl(data = {}) {
   if (state.listType !== "people") return "";
-  return `<input id="listOperatorAvatar" type="search" value="${escapeHtml(state.listOperatorAvatar)}" placeholder="Operator Avatar" aria-label="Filter by Operator Avatar" autocomplete="off">`;
+  const options = data.operator_avatar_options || [];
+  return `
+    <select id="listOperatorAvatar" aria-label="Filter by Operator Avatar">
+      <option value="">All Operator Avatars</option>
+      ${options
+        .map((item) => `<option value="${escapeHtml(item.value)}" ${item.value === state.listOperatorAvatar ? "selected" : ""}>${escapeHtml(item.label)} (${formatNumber(item.count)})</option>`)
+        .join("")}
+    </select>
+  `;
 }
 
 function provenanceFilterLabel(value) {
@@ -4695,6 +4703,18 @@ function uniqueTags(tags) {
   });
 }
 
+function uniqueStrings(values) {
+  const seen = new Set();
+  return (values || [])
+    .map((value) => String(value || "").trim())
+    .filter((value) => {
+      const key = value.toLowerCase();
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+}
+
 function tagSuggestionOptions(tags) {
   return uniqueTags(tags)
     .map((tag) => {
@@ -4849,7 +4869,7 @@ async function renderList() {
         ${savedViewControls(savedViews)}
         <input id="listSearch" type="search" value="${escapeHtml(state.q)}" placeholder="Filter ${escapeHtml(listTitles[state.listType].toLowerCase())}">
         ${peopleLifecycleFilterControls(data)}
-        ${peopleOperatorAvatarFilterControl()}
+        ${peopleOperatorAvatarFilterControl(data)}
         ${tagSearchControl(tagSuggestions, selectedTag)}
         ${ownerFilterControls(data.owner_options || [])}
         ${simplifiedPeopleFilters ? "" : listProvenanceFilterControls(data.provenance_options || [])}
@@ -5034,14 +5054,11 @@ async function renderList() {
     });
   }
   if (listOperatorAvatar) {
-    listOperatorAvatar.addEventListener("input", () => {
-      state.listOperatorAvatar = listOperatorAvatar.value.trim();
-      window.clearTimeout(state.debounce);
-      state.debounce = window.setTimeout(() => {
-        clearSelectedSavedView();
-        state.page = 1;
-        renderList();
-      }, 220);
+    listOperatorAvatar.addEventListener("change", () => {
+      clearSelectedSavedView();
+      state.listOperatorAvatar = listOperatorAvatar.value;
+      state.page = 1;
+      renderList();
     });
   }
   if (listOwnerFilter) {
@@ -6479,6 +6496,8 @@ function personOperatorAvatar(detail) {
 function personOperatorAvatarSection(detail) {
   if (detail?.type !== "person") return "";
   const avatarName = personOperatorAvatar(detail);
+  const avatarOptions = uniqueStrings([avatarName, ...(detail.operator_avatar_options || []).map((item) => item.value || item.label || "")]);
+  const listId = "operatorAvatarOptions";
   return `
     <div class="detail-section operator-avatar-section">
       <div class="inline-header">
@@ -6487,7 +6506,10 @@ function personOperatorAvatarSection(detail) {
       </div>
       <label class="operator-avatar-field">
         <span>OPERATOR AVATAR</span>
-        <input id="operatorAvatarInput" type="text" value="${escapeHtml(avatarName)}" placeholder="Name">
+        <input id="operatorAvatarInput" type="text" value="${escapeHtml(avatarName)}" placeholder="Name" list="${listId}" autocomplete="off">
+        <datalist id="${listId}">
+          ${avatarOptions.map((value) => `<option value="${escapeHtml(value)}"></option>`).join("")}
+        </datalist>
       </label>
     </div>
   `;

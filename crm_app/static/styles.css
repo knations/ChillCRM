@@ -5956,6 +5956,57 @@ button {
   margin-top: 12px;
 }
 
+.duplicate-merge-workbench {
+  display: grid;
+  gap: 10px;
+  margin: 12px 0;
+}
+
+.duplicate-merge-card {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  display: grid;
+  grid-template-columns: 130px 160px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  padding: 12px;
+}
+
+.duplicate-merge-card.keeper {
+  border-color: #9cc9ad;
+  box-shadow: inset 3px 0 0 #2f8f5b;
+}
+
+.duplicate-merge-choice {
+  align-items: center;
+  color: var(--muted);
+  display: flex;
+  font-size: 13px;
+  font-weight: 700;
+  gap: 7px;
+  min-height: 32px;
+  text-transform: uppercase;
+}
+
+.duplicate-merge-choice input {
+  accent-color: #2f8f5b;
+  height: 18px;
+  width: 18px;
+}
+
+.duplicate-merge-record {
+  min-width: 0;
+}
+
+.duplicate-merge-card.keeper .keeper-choice {
+  color: #1f6b44;
+}
+
+.duplicate-merge-card.keeper .merge-choice {
+  opacity: 0.45;
+}
+
 .cleanup-recovery-card {
   border-color: #d8c99b;
   background: #fffaf0;
@@ -7316,6 +7367,10 @@ button {
   .archive-association-mini,
   .source-mix-row,
   .saved-view-grid.compact {
+    grid-template-columns: 1fr;
+  }
+
+  .duplicate-merge-card {
     grid-template-columns: 1fr;
   }
 

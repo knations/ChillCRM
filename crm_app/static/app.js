@@ -11268,14 +11268,21 @@ function cleanupFieldComparison(comparisons) {
 function duplicatePeopleMergePanel(detail) {
   if (detail.type !== "duplicate_people" || detail.status !== "open" || !detail.merge_draft?.keeper) return "";
   const keeper = detail.merge_draft.keeper;
-  const mergeableCount = Math.max(0, Number(detail.counts?.record_count || 0) - 1);
+  const keeperId = Number(keeper.record_id || 0);
+  const records = detail.records || [];
+  const mergeableCount = Math.max(0, records.length - 1);
   return `
     <div class="detail-section merge-apply-panel">
       <div class="inline-header">
-        <h3>Apply Reviewed Merge</h3>
+        <h3>Merge Duplicates</h3>
         <span class="pill">Owner/Admin</span>
       </div>
-      <p>Keep ${escapeHtml(keeper.record_name || `Person #${keeper.record_id}`)} active, move linked history onto that person, fill blank keeper fields, and preserve conflicts in a merge note. Duplicate people are marked inactive, not deleted.</p>
+      <p>Select the active keeper, then choose exactly which duplicate People records should merge into it. Nothing merges until you confirm.</p>
+      <div class="duplicate-merge-workbench">
+        ${records
+          .map((record) => duplicatePeopleMergeCard(record, keeperId))
+          .join("")}
+      </div>
       <div class="cleanup-record-stats">
         <span>${formatNumber(mergeableCount)} duplicate records</span>
         <span>Tags, notes, tasks, deals, files</span>
@@ -11283,7 +11290,34 @@ function duplicatePeopleMergePanel(detail) {
       </div>
       <textarea id="duplicatePeopleMergeNote" class="note-input" rows="3" placeholder="Optional merge note"></textarea>
       <div class="review-actions">
-        <button class="text-button primary-action" id="applyDuplicatePeopleMergeButton" data-keeper-id="${escapeHtml(keeper.record_id || "")}">Merge People</button>
+        <button class="text-button primary-action" id="applyDuplicatePeopleMergeButton">Merge Selected People</button>
+      </div>
+    </div>
+  `;
+}
+
+function duplicatePeopleMergeCard(record, keeperId) {
+  const recordId = Number(record.source_id || 0);
+  const isKeeper = recordId === keeperId;
+  const recordLabel = record.name || `Person #${recordId}`;
+  return `
+    <div class="duplicate-merge-card ${isKeeper ? "keeper" : ""}" data-person-id="${escapeHtml(recordId)}">
+      <label class="duplicate-merge-choice keeper-choice">
+        <input type="radio" name="duplicatePeopleKeeper" value="${escapeHtml(recordId)}" ${isKeeper ? "checked" : ""}>
+        <span>Keep Active</span>
+      </label>
+      <label class="duplicate-merge-choice merge-choice">
+        <input type="checkbox" class="duplicatePeopleMergeCheckbox" value="${escapeHtml(recordId)}" ${isKeeper ? "disabled" : "checked"}>
+        <span>Merge Into Keeper</span>
+      </label>
+      <div class="duplicate-merge-record">
+        <div class="cleanup-record-title">
+          <button class="record-button" data-type="person" data-id="${escapeHtml(recordId)}" type="button">${escapeHtml(recordLabel)}</button>
+          ${(record.badges || []).map((badge) => `<span class="pill">${escapeHtml(badge)}</span>`).join("")}
+        </div>
+        <div class="muted">${escapeHtml([record.email, formatPhoneDisplay(record.phone || record.mobile), record.detail].filter(Boolean).join(" · "))}</div>
+        ${cleanupProfileSummary(record.profile_summary || [])}
+        ${cleanupRecordStats(record)}
       </div>
     </div>
   `;
@@ -11292,9 +11326,34 @@ function duplicatePeopleMergePanel(detail) {
 function wireDuplicatePeopleMerge(detail) {
   const button = document.querySelector("#applyDuplicatePeopleMergeButton");
   if (!button) return;
+  const syncMergeChoices = () => {
+    const keeperId = Number(document.querySelector("input[name='duplicatePeopleKeeper']:checked")?.value || 0);
+    document.querySelectorAll(".duplicate-merge-card").forEach((card) => {
+      const cardId = Number(card.dataset.personId || 0);
+      const checkbox = card.querySelector(".duplicatePeopleMergeCheckbox");
+      card.classList.toggle("keeper", cardId === keeperId);
+      if (!checkbox) return;
+      checkbox.disabled = cardId === keeperId;
+      if (cardId === keeperId) checkbox.checked = false;
+    });
+  };
+  document.querySelectorAll("input[name='duplicatePeopleKeeper']").forEach((input) => {
+    input.addEventListener("change", syncMergeChoices);
+  });
+  syncMergeChoices();
   button.addEventListener("click", async () => {
-    const keeperName = detail.merge_draft?.keeper?.record_name || `Person #${button.dataset.keeperId || ""}`;
-    const ok = window.confirm(`Merge this duplicate people group into ${keeperName}? The duplicates will be marked inactive and preserved in the audit trail.`);
+    const keeperInput = document.querySelector("input[name='duplicatePeopleKeeper']:checked");
+    const keeperId = Number(keeperInput?.value || 0);
+    const mergeIds = Array.from(document.querySelectorAll(".duplicatePeopleMergeCheckbox:checked"))
+      .map((input) => Number(input.value || 0))
+      .filter(Boolean);
+    const keeperRecord = (detail.records || []).find((record) => Number(record.source_id || 0) === keeperId);
+    const keeperName = keeperRecord?.name || `Person #${keeperId}`;
+    if (!keeperId || !mergeIds.length) {
+      setStatus("Choose a keeper and at least one duplicate to merge");
+      return;
+    }
+    const ok = window.confirm(`Merge ${mergeIds.length} selected duplicate people into ${keeperName}? Selected duplicates will be marked inactive and preserved in the audit trail.`);
     if (!ok) return;
     const note = document.querySelector("#duplicatePeopleMergeNote")?.value.trim() || "";
     await runDetailAction(
@@ -11304,7 +11363,8 @@ function wireDuplicatePeopleMerge(detail) {
         const merged = await postJson("/api/merge_duplicate_people", {
           key: detail.group_key,
           status: detail.status,
-          keeper_id: Number(button.dataset.keeperId || 0),
+          keeper_id: keeperId,
+          merge_ids: mergeIds,
           note,
         });
         await renderCleanup();
@@ -11512,7 +11572,7 @@ async function renderCleanup() {
         .join("")}
     </div>
     <div class="cleanup-grid">
-      <div class="signal"><strong>${formatNumber(data.totals?.duplicate_contact_email_groups || 0)}</strong><span>Duplicate person email flags</span></div>
+      <div class="signal"><strong>${formatNumber(data.totals?.duplicate_contact_email_groups || 0)}</strong><span>Duplicate people groups</span></div>
       <div class="signal"><strong>${formatNumber(data.totals?.duplicate_lead_email_groups || 0)}</strong><span>Duplicate lead email flags</span></div>
       <div class="signal"><strong>${formatNumber(data.totals?.contact_lead_overlap_groups || 0)}</strong><span>Lead/person email flags</span></div>
       <div class="signal"><strong>${formatNumber(data.totals?.duplicate_tag_groups || 0)}</strong><span>Duplicate tag definition flags</span></div>

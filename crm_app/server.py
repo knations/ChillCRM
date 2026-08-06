@@ -20224,7 +20224,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         cleanup_sort = (params.get("sort", ["priority"])[0] or "priority").strip().lower()
         configs = {
             "duplicate_people": {
-                "label": "Duplicate Person Emails",
+                "label": "Duplicate People",
                 "flag_type": "duplicate_person_email",
                 "record_label": "people",
             },
@@ -20713,7 +20713,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
 
     def cleanup_group_guidance(self, conn: sqlite3.Connection, group_type: str, group_key: str, status: str) -> dict[str, Any]:
         detail_config = {
-            "duplicate_people": {"label": "Duplicate Person Emails", "flag_type": "duplicate_person_email"},
+            "duplicate_people": {"label": "Duplicate People", "flag_type": "duplicate_person_email"},
             "duplicate_leads": {"label": "Duplicate Lead Emails", "flag_type": "duplicate_lead_email"},
             "lead_person_overlap": {"label": "Lead/Person Email Overlaps", "flag_type": "lead_person_email_overlap"},
             "duplicate_tags": {"label": "Duplicate Tag Definitions", "flag_type": "duplicate_tag_definition"},
@@ -21312,6 +21312,8 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
     ) -> dict[str, Any]:
         group_key = normalize_text(payload.get("key") or payload.get("group_key") or payload.get("email"))
         keeper_id = self.optional_int(payload.get("keeper_id"))
+        raw_merge_ids = payload.get("merge_ids")
+        merge_ids = self.optional_int_list(raw_merge_ids)
         status = str(payload.get("status") or "open").strip().lower()
         user_note = self.clean_optional(payload.get("note")) or ""
         if not group_key:
@@ -21358,9 +21360,14 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                 keeper_id = draft_keeper_id
             if keeper_id not in available_ids:
                 raise ValueError("Keeper person must be one of the duplicate people in this group.")
-            loser_ids = [int(row["id"]) for row in people if int(row["id"]) != keeper_id]
+            if not merge_ids:
+                raise ValueError("Choose at least one duplicate person to merge.")
+            selected_ids = {item for item in merge_ids if item in available_ids and item != keeper_id}
+            if len(selected_ids) != len(set(merge_ids)):
+                raise ValueError("Every selected duplicate must belong to this duplicate people group, and the keeper cannot be selected as a duplicate.")
+            loser_ids = [int(row["id"]) for row in people if int(row["id"]) in selected_ids]
             if not loser_ids:
-                raise ValueError("No duplicate people remain after choosing the keeper.")
+                raise ValueError("Choose at least one duplicate person other than the keeper.")
 
             keeper = row_to_dict(conn.execute("SELECT * FROM people WHERE id = ?", (keeper_id,)).fetchone())
             loser_records = [
@@ -25989,6 +25996,20 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         if not text:
             return None
         return int(text)
+
+    def optional_int_list(self, value: Any) -> list[int]:
+        if value is None:
+            return []
+        if isinstance(value, list):
+            raw_values = value
+        else:
+            raw_values = str(value).split(",")
+        parsed: list[int] = []
+        for item in raw_values:
+            text = self.clean_optional(item)
+            if text:
+                parsed.append(int(text))
+        return parsed
 
     def optional_float(self, value: Any) -> float | None:
         text = self.clean_optional(value)

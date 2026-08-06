@@ -2460,7 +2460,7 @@ async function renderOperationsStatus() {
       ${metric("Tasks", data.counts.tasks)}
       ${metric("Tags", data.counts.tags)}
       ${metric("Linked Resources", data.counts.linked_resources)}
-      ${metric("Archive Items", data.counts.archive_items)}
+      ${metric("Files & History", data.counts.archive_items)}
       ${metric("Open Flags", statusCounts.open || 0, Number(statusCounts.open || 0) ? "metric-alert" : "")}
     </div>
     ${productionGatePanel(data.production_gates)}
@@ -2500,9 +2500,9 @@ async function renderOperationsStatus() {
       </div>
       <div class="band">
         <div class="band-header">
-          <h3>Imported Archive</h3>
+          <h3>Files & History</h3>
           <div class="inline-actions">
-            <button class="text-button nav-jump" data-view="archive">Open Archive</button>
+            <button class="text-button nav-jump" data-view="archive">Open Files & History</button>
             <a class="text-button action-link" href="${safeHref(archiveAssociation.report || "/reports/archive_association_audit.md")}" target="_blank" rel="noopener noreferrer">Audit</a>
           </div>
         </div>
@@ -2833,7 +2833,7 @@ function operationalWorkQueuePanel(queue) {
         </div>
         <div class="work-queue-list">
           <div class="mini-header">
-            <strong>Archive Review</strong>
+            <strong>History Review</strong>
             <div class="mini-actions">
               <button class="text-button work-queue-preset" data-preset="archive_review_unreviewed">Unreviewed</button>
               <button class="text-button work-queue-preset" data-preset="archive_review_needs_lookup">Needs Lookup</button>
@@ -2925,7 +2925,7 @@ function sourceMixList(items) {
 }
 
 function archiveReviewGroupList(items) {
-  if (!items.length) return `<div class="empty-state compact"><h3>No archive review groups</h3><p>Unlinked call/text groups will appear here.</p></div>`;
+  if (!items.length) return `<div class="empty-state compact"><h3>No history review groups</h3><p>Unlinked call/text groups will appear here.</p></div>`;
   return `
     <div class="archive-review-mini-list">
       ${items.slice(0, 6)
@@ -3971,14 +3971,14 @@ function archiveReviewStatusOptions() {
     ["unreviewed", "Unreviewed"],
     ["needs_lookup", "Needs Lookup"],
     ["ready_to_link", "Ready to Link"],
-    ["archive_only", "Archive-only Reviewed"],
+    ["archive_only", "History-only Reviewed"],
   ];
 }
 
 function archiveTriageLaneOptions() {
   return [
     ["", "All triage lanes"],
-    ["batch_archive_only", "Likely archive-only"],
+    ["batch_archive_only", "Likely history-only"],
     ["needs_lookup", "Needs lookup"],
     ["ready_to_link_candidate", "Ready-to-link candidate"],
     ["manual_review", "Manual review"],
@@ -3990,7 +3990,7 @@ function archiveReviewStatusLabel(status) {
     unreviewed: "Unreviewed",
     needs_lookup: "Needs Lookup",
     ready_to_link: "Ready to Link",
-    archive_only: "Archive-only Reviewed",
+    archive_only: "History-only Reviewed",
   }[status] || "Unreviewed";
 }
 
@@ -5865,10 +5865,10 @@ async function showArchiveItem(id) {
   setStatus("Loading archive item");
   const detail = await fetchJson(`/api/archive_item?id=${encodeURIComponent(id)}`);
   if (detail.error) {
-    openMobileDetailView("Archive");
+    openMobileDetailView("Files & History");
     els.detail.innerHTML = `
       <div class="detail-content">
-        ${detailHeader("Could not open archive item", detail.error, null, { mobileBackLabel: mobileDetailBackLabel() })}
+        ${detailHeader("Could not open item", detail.error, null, { mobileBackLabel: mobileDetailBackLabel() })}
       </div>
     `;
     return;
@@ -5880,13 +5880,14 @@ async function showArchiveItem(id) {
 function renderArchiveItemDetail(detail) {
   const item = detail.item || {};
   setRecordWorkspace(false);
-  openMobileDetailView("Archive");
+  openMobileDetailView("Files & History");
   state.currentDetail = null;
   state.currentArchiveItem = item;
-  const title = item.title || item.label || "Archive Item";
+  const title = item.title || item.label || "File or History Item";
+  const itemKind = item.item_type === "document" ? "File" : "History";
   els.detail.innerHTML = `
     <div class="detail-content">
-      ${detailHeader(title, `${item.label || archiveItemLabel(item.item_type)} · Archive #${item.id || ""}`, null, { mobileBackLabel: mobileDetailBackLabel() })}
+      ${detailHeader(title, `${item.label || archiveItemLabel(item.item_type)} · ${itemKind} #${item.id || ""}`, null, { mobileBackLabel: mobileDetailBackLabel() })}
       <div id="detailActionError" class="form-error" hidden></div>
       ${archiveItemSnapshot(item)}
       ${archiveReviewPanel(item)}
@@ -5967,7 +5968,7 @@ function archiveItemLinkPanel(item) {
           <input id="archiveLinkRecordId" name="record_id" type="number" min="1" inputmode="numeric">
         </label>
       </form>
-      <button class="text-button" id="linkArchiveItemButton" type="button" data-id="${item.id || ""}">Link Archive Item</button>
+      <button class="text-button" id="linkArchiveItemButton" type="button" data-id="${item.id || ""}">Link Item</button>
     </div>
   `;
 }
@@ -5987,7 +5988,7 @@ function archiveReviewPanel(item) {
           <span>Status</span>
           <select id="archiveReviewStatus" name="status">
             <option value="" ${status ? "" : "selected"}>Choose review status</option>
-            <option value="archive_only" ${status === "archive_only" ? "selected" : ""}>Archive-only reviewed</option>
+            <option value="archive_only" ${status === "archive_only" ? "selected" : ""}>History-only reviewed</option>
             <option value="needs_lookup" ${status === "needs_lookup" ? "selected" : ""}>Needs lookup</option>
             <option value="ready_to_link" ${status === "ready_to_link" ? "selected" : ""}>Ready to link</option>
           </select>
@@ -6018,9 +6019,9 @@ function wireArchiveReviewForm(root, item) {
       await runDetailAction(
         button,
         {
-          progress: "Saving archive review",
-          success: openNext ? "Archive review saved; next item opened" : "Archive review saved",
-          failure: "Archive review failed",
+          progress: "Saving review",
+          success: openNext ? "Review saved; next item opened" : "Review saved",
+          failure: "Review failed",
         },
         async () => {
           const updated = await postJson("/api/save_archive_review", {
@@ -6062,7 +6063,7 @@ function archiveItemFacts(item) {
       ? `<a href="${safeHref(item.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(item.title || item.label)}</a>`
       : "";
   const fields = [
-    ["Archive ID", item.id],
+    ["Item ID", item.id],
     ["Legacy ID", item.zendesk_record_id],
     ["Source", item.source_collection],
     ["Status", item.status],
@@ -6074,7 +6075,7 @@ function archiveItemFacts(item) {
   ].filter(([, value]) => value !== null && value !== undefined && value !== "");
   return `
     <div class="detail-section">
-      <h3>Archive Details</h3>
+      <h3>${item.item_type === "document" ? "File Details" : "History Details"}</h3>
       ${item.body ? `<p>${escapeHtml(item.body)}</p>` : ""}
       ${externalLink ? `<p>${externalLink}</p>` : ""}
       <dl class="kv">
@@ -9479,7 +9480,7 @@ function linkedResourceRow(resource) {
 }
 
 async function renderArchive() {
-  setStatus("Loading archive");
+  setStatus("Loading files and history");
   const focusState = captureInputFocus("archiveSearch");
   const params = new URLSearchParams({
     page: String(state.archivePage),
@@ -9517,8 +9518,8 @@ async function renderArchive() {
   els.archive.innerHTML = `
     <div class="section-header">
       <div>
-        <h2>Archive</h2>
-        <p>${formatNumber(data.total)} matching items · calls, texts, documents, orders, and conversions</p>
+        <h2>Files & History</h2>
+        <p>${formatNumber(data.total)} matching items · active documents plus historical calls, texts, orders, and conversions</p>
       </div>
       <a class="text-button action-link" href="/api/export?${escapeHtml(exportParams.toString())}">Export CSV</a>
     </div>
@@ -9530,9 +9531,9 @@ async function renderArchive() {
     ${archiveReviewQueuePanel(data.unlinked_communications, data.review_status)}
     ${archiveReviewTriagePanel(data.archive_triage, data.triage_lane)}
     <div class="table-tools">
-      <input id="archiveSearch" type="search" value="${escapeHtml(state.archiveQ)}" placeholder="Filter archive text, files, phones, or records">
+      <input id="archiveSearch" type="search" value="${escapeHtml(state.archiveQ)}" placeholder="Filter files, history, phones, or records">
       <select id="archiveItemTypeFilter" aria-label="Archive item type">
-        <option value="" ${state.archiveItemType ? "" : "selected"}>All item types</option>
+        <option value="" ${state.archiveItemType ? "" : "selected"}>All files/history</option>
         ${(data.item_type_counts || [])
           .map((item) => `<option value="${escapeHtml(item.value)}" ${state.archiveItemType === item.value ? "selected" : ""}>${escapeHtml(archiveItemLabel(item.value))} (${formatNumber(item.count)})</option>`)
           .join("")}
@@ -9592,7 +9593,7 @@ async function renderArchive() {
             </thead>
             <tbody>${data.items.map(archiveRow).join("")}</tbody>
           </table>`
-        : `<div class="empty-state"><h3>No archive items</h3><p>No imported archive items matched this filter.</p></div>`
+        : `<div class="empty-state"><h3>No files or history</h3><p>No files or history items matched this filter.</p></div>`
     }
   `;
   const archiveSavedView = document.querySelector("#archiveSavedView");
@@ -9611,7 +9612,7 @@ async function renderArchive() {
     renderArchive();
   });
   document.querySelector("#saveArchiveViewButton").addEventListener("click", async () => {
-    const name = window.prompt("Save this archive view as");
+    const name = window.prompt("Save this files/history view as");
     if (!name?.trim()) return;
     setStatus("Saving view");
     const saved = await postJson("/api/save_view", {
@@ -9626,7 +9627,7 @@ async function renderArchive() {
   document.querySelector("#deleteArchiveViewButton").addEventListener("click", async () => {
     const viewId = state.archiveSavedViewId;
     if (!viewId) return;
-    const ok = window.confirm("Delete this saved archive view?");
+    const ok = window.confirm("Delete this saved files/history view?");
     if (!ok) return;
     setStatus("Deleting view");
     await postJson("/api/delete_view", { id: Number(viewId) });
@@ -9780,7 +9781,7 @@ function archiveDecisionEvidencePanel(summary, activePreset) {
         </div>
         <div class="archive-decision-actions">
           <button class="text-button archive-preset-button" type="button" data-preset="${active ? "" : escapeHtml(summary.preset || "")}">
-            ${active ? "Show All Archive" : "Show Evidence Set"}
+            ${active ? "Show All Files & History" : "Show Evidence Set"}
           </button>
           <button class="text-button next-action-decision" type="button" data-key="unlinked_archive_matching">Open Decision</button>
           <button class="text-button next-action-fill" type="button" data-key="unlinked_archive_matching">Fill Recommended</button>
@@ -9809,8 +9810,8 @@ function archiveReviewQueuePanel(summary, activeReviewStatus) {
     <div class="band archive-review-panel">
       <div class="band-header">
         <div>
-          <h3>Manual Archive Review Queue</h3>
-          <p>Track unlinked calls/texts without forcing weak matches. Mark items as archive-only, needs lookup, or ready to link from the sidebar inspector.</p>
+          <h3>Manual History Review Queue</h3>
+          <p>Track unlinked calls/texts without forcing weak matches. Mark items as history-only, needs lookup, or ready to link from the sidebar inspector.</p>
         </div>
         <span class="pill ${countFor("unreviewed") ? "gold" : "green"}">${formatNumber(countFor("unreviewed"))} unreviewed</span>
       </div>
@@ -9854,7 +9855,7 @@ function archiveReviewTriagePanel(triage, activeTriageLane = "") {
     <div class="band archive-triage-panel">
       <div class="band-header">
         <div>
-          <h3>${escapeHtml(triage.title || "Archive Review Triage")}</h3>
+          <h3>${escapeHtml((triage.title || "History Review Triage").replace("Archive", "History"))}</h3>
           <p>${escapeHtml(triage.message || "Suggested review lanes for unlinked calls/texts.")}</p>
         </div>
         <span class="pill ${Number(triage.unreviewed || 0) ? "gold" : "green"}">${formatNumber(triage.unreviewed || 0)} unreviewed</span>
@@ -9862,7 +9863,7 @@ function archiveReviewTriagePanel(triage, activeTriageLane = "") {
       <div class="archive-decision-body">
         <div class="archive-decision-metrics archive-triage-metrics">
           <span><strong>${formatNumber(triage.total || 0)}</strong>Total</span>
-          <span><strong>${formatNumber(statusCount("archive_only"))}</strong>Likely archive-only</span>
+          <span><strong>${formatNumber(statusCount("archive_only"))}</strong>Likely history-only</span>
           <span><strong>${formatNumber(statusCount("needs_lookup"))}</strong>Needs lookup</span>
           <span><strong>${formatNumber(statusCount("ready_to_link"))}</strong>Ready candidates</span>
         </div>
@@ -9908,7 +9909,7 @@ function archiveReviewTriagePanel(triage, activeTriageLane = "") {
 
 function archiveSummaryCards(data) {
   const cards = (data.item_type_counts || []).slice(0, 5);
-  if (!cards.length) return `<div class="signal"><strong>0</strong><span>Archive Items</span></div>`;
+  if (!cards.length) return `<div class="signal"><strong>0</strong><span>Files & History</span></div>`;
   return cards
     .map((item) => `<div class="signal"><strong>${formatNumber(item.count)}</strong><span>${escapeHtml(archiveItemLabel(item.value))}</span></div>`)
     .join("");
@@ -9922,17 +9923,17 @@ function archiveAssociationCoveragePanel(association) {
     <div class="band archive-association-panel">
       <div class="band-header">
         <div>
-          <h3>Association Coverage</h3>
-          <p>${escapeHtml(summary.reason || "Archive items are preserved locally with their current record associations.")}</p>
+          <h3>Link Coverage</h3>
+          <p>${escapeHtml(summary.reason || "Files and historical items are preserved with their current record associations.")}</p>
         </div>
         <span class="pill ${exactCandidates ? "gold" : "green"}">${exactCandidates ? `${formatNumber(exactCandidates)} phone candidates` : "No auto-link candidates"}</span>
       </div>
       <div class="archive-decision-body">
         <div class="archive-decision-metrics archive-association-metrics">
           <span><strong>${formatNumber(summary.link_coverage_percent || 0)}%</strong>Linked coverage</span>
-          <span><strong>${formatNumber(summary.linked_archive_items || 0)}</strong>Linked archive</span>
-          <span><strong>${formatNumber(summary.unlinked_archive_items || 0)}</strong>Unlinked archive</span>
-          <span><strong>${formatNumber(summary.linked_documents || 0)}/${formatNumber(summary.document_total || 0)}</strong>Document files</span>
+          <span><strong>${formatNumber(summary.linked_archive_items || 0)}</strong>Linked items</span>
+          <span><strong>${formatNumber(summary.unlinked_archive_items || 0)}</strong>Unlinked history</span>
+          <span><strong>${formatNumber(summary.linked_documents || 0)}/${formatNumber(summary.document_total || 0)}</strong>Active document files</span>
           <span><strong>${formatNumber(summary.unlinked_call_recording_urls || 0)}</strong>Recording URLs</span>
           <span><strong>${formatNumber(summary.unlinked_unreviewed_call_texts || 0)}</strong>Unreviewed calls/texts</span>
         </div>

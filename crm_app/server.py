@@ -1186,6 +1186,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             "/api/add_call_log",
             "/api/update_note",
             "/api/update_call_log",
+            "/api/complete_scheduled_call",
             "/api/add_task",
             "/api/save_portal_profile",
             "/api/add_portal_next_step",
@@ -3371,6 +3372,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             "/api/list": lambda: self.list_records(params),
             "/api/pipeline_board": lambda: self.pipeline_board(params),
             "/api/detail": lambda: self.record_detail(params),
+            "/api/calendar_events": lambda: self.calendar_events(params),
             "/api/tasks": lambda: self.tasks(params),
             "/api/activity": lambda: self.activity(params),
             "/api/archive": lambda: self.archive_items(params),
@@ -3417,6 +3419,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             "/api/add_call_log": lambda: self.add_call_log(payload, auth_user, action_key),
             "/api/update_note": lambda: self.update_note(payload, auth_user, action_key),
             "/api/update_call_log": lambda: self.update_call_log(payload, auth_user, action_key),
+            "/api/complete_scheduled_call": lambda: self.complete_scheduled_call(payload, auth_user, action_key),
             "/api/add_task": lambda: self.add_task(payload, auth_user, action_key),
             "/api/save_portal_profile": lambda: self.save_portal_profile(payload, auth_user, action_key),
             "/api/add_portal_next_step": lambda: self.add_portal_next_step(payload, auth_user, action_key),
@@ -18088,6 +18091,49 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             return text
         return timestamp.replace(second=0, microsecond=0).isoformat(timespec="minutes")
 
+    def parse_datetime_value(self, value: Any) -> datetime | None:
+        if isinstance(value, datetime):
+            timestamp = value
+        else:
+            text = self.clean_optional(value)
+            if not text:
+                return None
+            candidate = text.replace(" ", "T")
+            if candidate.endswith("Z"):
+                candidate = f"{candidate[:-1]}+00:00"
+            try:
+                timestamp = datetime.fromisoformat(candidate)
+            except ValueError:
+                return None
+        if timestamp.tzinfo is None:
+            return timestamp
+        return timestamp.astimezone().replace(tzinfo=None)
+
+    def calendar_date_text(self, value: Any) -> str:
+        text = self.clean_optional(value)
+        if text:
+            try:
+                return date.fromisoformat(text[:10]).isoformat()
+            except ValueError:
+                pass
+        return date.today().isoformat()
+
+    def calendar_event_date(self, value: Any) -> str:
+        timestamp = self.parse_datetime_value(value)
+        if timestamp:
+            return timestamp.date().isoformat()
+        text = self.clean_optional(value)
+        return text[:10] if text else ""
+
+    def call_log_is_scheduled(self, source: dict[str, Any], call_at: Any, created_at: Any) -> bool:
+        if self.clean_optional(source.get("logged_at")):
+            return False
+        if source.get("scheduled") is True:
+            return True
+        call_time = self.parse_datetime_value(call_at)
+        created_time = self.parse_datetime_value(created_at)
+        return bool(call_time and created_time and call_time > created_time)
+
     def call_log_sort_key(self, value: Any) -> str:
         text = self.clean_optional(value)
         if not text:
@@ -18148,6 +18194,8 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             "recording_url": self.clean_optional(source.get("recording_playback_url")) or self.clean_optional(source.get("recording_url")) or "",
             "recording_sid": self.clean_optional(source.get("recording_sid")) or "",
             "call_sid": self.clean_optional(source.get("call_sid")) or "",
+            "scheduled": self.call_log_is_scheduled(source, call_at, note.get("created_at")),
+            "logged_at": self.clean_optional(source.get("logged_at")) or "",
             "editable": bool(note.get("editable")),
         }
 
@@ -18170,6 +18218,125 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         )
         calls = [self.call_log_from_note(row) for row in rows]
         return sorted(calls, key=lambda call: self.call_log_sort_key(call.get("occurred_at")), reverse=True)
+
+    def calendar_task_rows(self, conn: sqlite3.Connection, selected_date: str, bucket: str) -> list[dict[str, Any]]:
+        rows = rows_to_dicts(
+            conn.execute(
+                """
+                SELECT 'task' AS event_type,
+                       t.id AS source_id,
+                       t.content AS title,
+                       t.due_date AS due_at,
+                       t.record_type,
+                       t.record_id,
+                       CASE
+                         WHEN t.record_type = 'person' THEN p.name
+                         WHEN t.record_type = 'company' THEN c.name
+                         WHEN t.record_type = 'lead' THEN l.name
+                         WHEN t.record_type = 'deal' THEN d.name
+                         ELSE NULL
+                       END AS record_name,
+                       CASE WHEN t.zendesk_task_id IS NULL THEN 'Local' ELSE 'Imported' END AS source_label
+                FROM tasks t
+                LEFT JOIN people p ON t.record_type = 'person' AND p.id = t.record_id
+                LEFT JOIN companies c ON t.record_type = 'company' AND c.id = t.record_id
+                LEFT JOIN leads l ON t.record_type = 'lead' AND l.id = t.record_id
+                LEFT JOIN deals d ON t.record_type = 'deal' AND d.id = t.record_id
+                WHERE t.completed = 0
+                  AND t.zendesk_task_id IS NULL
+                  AND t.due_date IS NOT NULL
+                ORDER BY t.due_date ASC, t.updated_at DESC, t.id DESC
+                LIMIT 500
+                """,
+            ).fetchall()
+        )
+        filtered: list[dict[str, Any]] = []
+        for row in rows:
+            event_date = self.calendar_event_date(row.get("due_at"))
+            if not event_date:
+                continue
+            if bucket == "overdue" and event_date >= selected_date:
+                continue
+            if bucket == "day" and event_date != selected_date:
+                continue
+            filtered.append(row)
+        return filtered[:100]
+
+    def calendar_scheduled_call_rows(self, conn: sqlite3.Connection, selected_date: str, bucket: str) -> list[dict[str, Any]]:
+        rows = rows_to_dicts(
+            conn.execute(
+                """
+                SELECT n.id AS source_id, n.content, n.created_at, n.updated_at, n.source_json,
+                       p.id AS record_id, p.name AS record_name
+                FROM notes n
+                JOIN people p ON n.record_type = 'person' AND p.id = n.record_id
+                WHERE coalesce(n.note_type, '') = 'call_log'
+                  AND n.zendesk_note_id IS NULL
+                  AND n.record_type = 'person'
+                ORDER BY n.created_at DESC, n.id DESC
+                LIMIT 500
+                """
+            ).fetchall()
+        )
+        calls: list[dict[str, Any]] = []
+        for row in rows:
+            call = self.call_log_from_note(row)
+            if not call.get("scheduled"):
+                continue
+            call_date = self.calendar_event_date(call.get("call_at") or call.get("occurred_at"))
+            if not call_date:
+                continue
+            if bucket == "overdue" and call_date >= selected_date:
+                continue
+            if bucket == "day" and call_date != selected_date:
+                continue
+            calls.append(
+                {
+                    "event_type": "call",
+                    "source_id": call.get("source_id"),
+                    "title": call.get("summary") or "Scheduled call",
+                    "notes": call.get("notes") or "",
+                    "due_at": call.get("call_at") or call.get("occurred_at"),
+                    "record_type": "person",
+                    "record_id": row.get("record_id"),
+                    "record_name": row.get("record_name"),
+                    "direction_label": call.get("direction_label"),
+                    "direction": call.get("direction"),
+                    "source_label": "Scheduled Call",
+                }
+            )
+        return sorted(calls, key=lambda item: self.activity_sort_key(item.get("due_at")))
+
+    def calendar_event_from_row(self, row: dict[str, Any], bucket: str) -> dict[str, Any]:
+        due_at = row.get("due_at")
+        event_date = self.calendar_event_date(due_at)
+        return {
+            "id": f"{row.get('event_type')}:{row.get('source_id')}",
+            "event_type": row.get("event_type"),
+            "source_id": row.get("source_id"),
+            "title": self.clean_optional(row.get("title")) or ("Scheduled call" if row.get("event_type") == "call" else "Task"),
+            "notes": self.clean_optional(row.get("notes")) or "",
+            "due_at": self.clean_optional(due_at) or "",
+            "date": event_date,
+            "time": self.parse_datetime_value(due_at).strftime("%-I:%M %p") if self.parse_datetime_value(due_at) and "T" in str(due_at) else "",
+            "bucket": bucket,
+            "record_type": self.clean_optional(row.get("record_type")) or "",
+            "record_id": row.get("record_id"),
+            "record_name": self.clean_optional(row.get("record_name")) or "",
+            "source_label": self.clean_optional(row.get("source_label")) or "",
+        }
+
+    def calendar_events(self, params: dict[str, list[str]]) -> dict[str, Any]:
+        selected_date = self.calendar_date_text(params.get("date", [""])[0])
+        with self.db() as conn:
+            overdue_rows = self.calendar_task_rows(conn, selected_date, "overdue") + self.calendar_scheduled_call_rows(conn, selected_date, "overdue")
+            day_rows = self.calendar_task_rows(conn, selected_date, "day") + self.calendar_scheduled_call_rows(conn, selected_date, "day")
+        return {
+            "selected_date": selected_date,
+            "today": date.today().isoformat(),
+            "overdue": sorted([self.calendar_event_from_row(row, "overdue") for row in overdue_rows], key=lambda item: self.activity_sort_key(item.get("due_at"))),
+            "day": sorted([self.calendar_event_from_row(row, "day") for row in day_rows], key=lambda item: self.activity_sort_key(item.get("due_at"))),
+        }
 
     def decoded_json_object(self, raw: Any) -> dict[str, Any]:
         if isinstance(raw, dict):
@@ -18453,6 +18620,8 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             )
 
         for call in call_logs:
+            if call.get("scheduled"):
+                continue
             recording_url = self.clean_optional(call.get("recording_url")) or ""
             note_urls = self.extract_urls(" ".join(str(part or "") for part in [call.get("summary"), call.get("notes")]))
             call_url = recording_url or (note_urls[0] if note_urls else "")
@@ -25295,12 +25464,14 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
 
         backup_path = self.create_backup(f"before_call_log_{record_type}_{record_id}")
         timestamp = now_iso()
+        scheduled = bool(self.parse_datetime_value(call_at) and self.parse_datetime_value(call_at) > self.parse_datetime_value(timestamp))
         source_payload = {
             "local_source": "call_log",
             "summary": summary,
             "notes": notes,
             "direction": direction,
             "call_at": call_at,
+            "scheduled": scheduled,
         }
         content = self.call_log_content(summary, notes, direction, call_at)
         with self.db() as conn:
@@ -25417,6 +25588,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             "direction": direction,
             "call_at": call_at,
         })
+        source_payload["scheduled"] = self.call_log_is_scheduled(source_payload, call_at, note["created_at"])
         content = self.call_log_content(summary, notes, direction, call_at)
         with self.db() as conn:
             note = conn.execute("SELECT * FROM notes WHERE id = ?", (note_id,)).fetchone()
@@ -25443,6 +25615,63 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             conn.commit()
             record_type = note["record_type"]
             record_id = note["record_id"]
+        return {"ok": True, "backup": str(backup_path), "detail": self.record_detail({"type": [record_type], "id": [str(record_id)]})}
+
+    def complete_scheduled_call(self, payload: dict[str, Any], actor_user: dict[str, Any] | None = None, permission_action: str | None = "notes_tasks_followups") -> dict[str, Any]:
+        note_id = int(payload.get("id", 0))
+        result_notes = str(payload.get("notes", "")).strip()
+        if not note_id:
+            raise ValueError("Scheduled call id is required.")
+        with self.db() as conn:
+            note = conn.execute("SELECT * FROM notes WHERE id = ?", (note_id,)).fetchone()
+            if not note:
+                raise ValueError(f"Scheduled call {note_id} not found.")
+            if note["zendesk_note_id"] is not None or str(note["note_type"] or "") != "call_log":
+                raise ValueError("Only local scheduled calls can be logged here.")
+            source = self.decoded_json_object(note["source_json"])
+            call = self.call_log_from_note(row_to_dict(note) or {})
+            if not call.get("scheduled"):
+                raise ValueError("This call is already logged.")
+            record_type = note["record_type"]
+            record_id = note["record_id"]
+
+        backup_path = self.create_backup(f"before_scheduled_call_log_{note_id}")
+        timestamp = now_iso()
+        source_payload = dict(source)
+        if not source_payload.get("local_source"):
+            source_payload["local_source"] = "call_log"
+        if result_notes:
+            source_payload["notes"] = result_notes
+        source_payload["scheduled"] = False
+        source_payload["logged_at"] = timestamp
+        summary = self.clean_optional(source_payload.get("summary")) or ""
+        notes = self.clean_optional(source_payload.get("notes")) or ""
+        direction = self.normalize_call_log_direction(source_payload.get("direction"))
+        call_at = self.normalize_call_log_at(source_payload.get("call_at"), strict=False)
+        content = self.call_log_content(summary, notes, direction, call_at)
+        with self.db() as conn:
+            note = conn.execute("SELECT * FROM notes WHERE id = ?", (note_id,)).fetchone()
+            if not note:
+                raise ValueError(f"Scheduled call {note_id} not found.")
+            if note["zendesk_note_id"] is not None or str(note["note_type"] or "") != "call_log":
+                raise ValueError("Only local scheduled calls can be logged here.")
+            conn.execute(
+                "UPDATE notes SET content = ?, updated_at = ?, source_json = ? WHERE id = ?",
+                (content, timestamp, json.dumps(source_payload, ensure_ascii=False), note_id),
+            )
+            self.insert_audit_log(
+                conn,
+                action="complete_scheduled_call",
+                record_type=note["record_type"],
+                record_id=note["record_id"],
+                field_name="call_log.scheduled",
+                old_value=note["content"],
+                new_value=content,
+                note=f"Backup: {backup_path.name}; note_id={note_id}",
+                actor_user=actor_user,
+                permission_action=permission_action,
+            )
+            conn.commit()
         return {"ok": True, "backup": str(backup_path), "detail": self.record_detail({"type": [record_type], "id": [str(record_id)]})}
 
     def add_task(self, payload: dict[str, Any], actor_user: dict[str, Any] | None = None, permission_action: str | None = "notes_tasks_followups") -> dict[str, Any]:

@@ -2512,6 +2512,98 @@ button {
   text-align: center;
 }
 
+.calendar-header {
+  align-items: center;
+}
+
+.calendar-date-controls {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.calendar-date-label {
+  align-items: center;
+  display: grid;
+  justify-items: center;
+  min-width: 132px;
+}
+
+.calendar-date-label strong {
+  font-size: 16px;
+}
+
+.calendar-date-label span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.calendar-section {
+  border-top: 1px solid var(--line);
+  margin-top: 16px;
+  padding-top: 16px;
+}
+
+.calendar-action-list {
+  display: grid;
+  gap: 10px;
+}
+
+.calendar-action-card,
+.empty-calendar-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.calendar-action-card {
+  align-items: start;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.calendar-action-card.is-overdue {
+  border-color: rgba(191, 75, 45, 0.35);
+}
+
+.calendar-action-main {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.calendar-action-main p,
+.calendar-action-main strong {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.calendar-action-main p {
+  color: var(--muted);
+}
+
+.calendar-action-notes {
+  color: var(--text) !important;
+  white-space: pre-wrap;
+}
+
+.calendar-action-topline,
+.calendar-action-buttons,
+.call-log-title-row {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.calendar-action-buttons {
+  justify-content: flex-end;
+}
+
 .tag-search-filter {
   align-items: center;
   display: inline-grid;
@@ -6238,6 +6330,23 @@ button {
   .main {
     background: #f5f5f7;
     padding: 12px 12px calc(28px + env(safe-area-inset-bottom));
+  }
+
+  .calendar-date-controls {
+    justify-content: flex-start;
+    width: 100%;
+  }
+
+  .calendar-date-label {
+    min-width: 108px;
+  }
+
+  .calendar-action-card {
+    grid-template-columns: 1fr;
+  }
+
+  .calendar-action-buttons {
+    justify-content: flex-start;
   }
 
   .detail-panel {

@@ -88,6 +88,7 @@ POST_PERMISSION_ACTIONS = {
     "/api/add_call_log": "notes_tasks_followups",
     "/api/update_note": "notes_tasks_followups",
     "/api/update_call_log": "notes_tasks_followups",
+    "/api/complete_scheduled_call": "notes_tasks_followups",
     "/api/add_task": "notes_tasks_followups",
     "/api/save_portal_profile": "manage_person_portal",
     "/api/add_portal_next_step": "manage_person_portal",

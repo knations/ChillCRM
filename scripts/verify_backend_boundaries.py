@@ -82,6 +82,7 @@ def main() -> int:
     assert access_control.ACTION_ROLE_PERMISSIONS["manage_users_roles"] == frozenset({"owner"})
     assert access_control.GET_PERMISSION_ACTIONS["/api/export_manifest"] == "view_dashboard_reports"
     assert access_control.POST_PERMISSION_ACTIONS["/api/add_call_log"] == "notes_tasks_followups"
+    assert access_control.POST_PERMISSION_ACTIONS["/api/complete_scheduled_call"] == "notes_tasks_followups"
 
     assert runtime_health.remote_write_lock_status(False, set())["mode"] == "unlocked"
     assert runtime_health.bulk_package_export_status(True)["mode"] == "enabled"

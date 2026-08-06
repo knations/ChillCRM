@@ -45,6 +45,10 @@ def main() -> int:
     assert "function linkifyText" in app_js
     assert "call-log-note-text" in app_js
     assert 'target="_blank" rel="noopener noreferrer"' in app_js
+    assert 'data-view="calendar"' in (PROJECT_ROOT / "crm_app" / "static" / "index.html").read_text(encoding="utf-8")
+    assert "renderCalendar" in app_js
+    assert "/api/calendar_events" in app_js
+    assert "/api/complete_scheduled_call" in app_js
 
     timeline_probe = handler.__new__(handler)
     timeline = timeline_probe.person_timeline(
@@ -58,6 +62,16 @@ def main() -> int:
                 "occurred_at": "2026-08-05T11:30:00+00:00",
                 "direction_label": "General",
                 "recording_url": "",
+                "scheduled": True,
+            },
+            {
+                "source_id": 45,
+                "summary": "Completed call",
+                "notes": "Completed notes",
+                "occurred_at": "2026-08-05T10:30:00+00:00",
+                "direction_label": "General",
+                "recording_url": "",
+                "scheduled": False,
             }
         ],
         notes=[],
@@ -97,8 +111,7 @@ def main() -> int:
     )
     call_events = [event for event in timeline if event.get("event_type") == "call"]
     assert len(call_events) == 1
-    assert call_events[0]["url"] == "https://example.com/recording"
-    assert call_events[0]["url_label"] == "Open Link"
+    assert call_events[0]["title"] == "Completed call"
     assert not [event for event in timeline if event.get("event_type") == "link"]
     assert not [event for event in timeline if event.get("event_type") == "audit"]
     assert not [event for event in timeline if event.get("event_type") == "tags"]
@@ -135,6 +148,12 @@ def main() -> int:
         people_status, people = read_json(f"{base_url}/api/list?type=people&page_size=10")
         assert people_status == 200
         assert people["type"] == "people"
+
+        calendar_status, calendar = read_json(f"{base_url}/api/calendar_events")
+        assert calendar_status == 200
+        assert "overdue" in calendar
+        assert "day" in calendar
+        assert "selected_date" in calendar
         assert int(people["total"]) > 0
         assert len(people["records"]) <= 10
         first_person = people["records"][0]

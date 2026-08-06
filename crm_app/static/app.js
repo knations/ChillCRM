@@ -44,6 +44,7 @@ const state = {
   listDealQueue: "",
   pipelineDealQueue: "",
   pipelineShowEmptyStages: false,
+  calendarDate: "",
   listSavedViewId: {
     people: "",
     companies: "",
@@ -126,6 +127,7 @@ const els = {
   ownerBrief: document.querySelector("#ownerBriefView"),
   operationsStatus: document.querySelector("#operationsStatusView"),
   pipeline: document.querySelector("#pipelineView"),
+  calendar: document.querySelector("#calendarView"),
   list: document.querySelector("#listView"),
   tags: document.querySelector("#tagsView"),
   customFields: document.querySelector("#customFieldsView"),
@@ -574,6 +576,29 @@ function formatDateTime(value) {
     hour: "numeric",
     minute: "2-digit",
   });
+}
+
+function localISODate(value = new Date()) {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function addDaysToDate(value, days) {
+  const base = value ? new Date(`${value}T12:00:00`) : new Date();
+  if (Number.isNaN(base.getTime())) return localISODate();
+  base.setDate(base.getDate() + days);
+  return localISODate(base);
+}
+
+function calendarDateTitle(value, todayValue = localISODate()) {
+  if (value === todayValue) return "Today";
+  if (value === addDaysToDate(todayValue, 1)) return "Tomorrow";
+  if (value === addDaysToDate(todayValue, -1)) return "Yesterday";
+  return formatDate(value);
 }
 
 function dateTimeInputValue(value) {
@@ -1098,6 +1123,7 @@ function setView(view) {
         ownerBrief: els.ownerBrief,
         operationsStatus: els.operationsStatus,
         pipeline: els.pipeline,
+        calendar: els.calendar,
         tags: els.tags,
         customFields: els.customFields,
         linkedResources: els.linkedResources,
@@ -1116,6 +1142,8 @@ function setView(view) {
     renderOwnerBrief();
   } else if (view === "pipeline") {
     renderPipelineBoard();
+  } else if (view === "calendar") {
+    renderCalendar();
   } else if (["people", "companies", "leads", "deals"].includes(view)) {
     state.listType = view;
     if (!profileFilterSupported(view)) {
@@ -1842,6 +1870,108 @@ function pipelineMetric(label, value) {
       <strong>${escapeHtml(value)}</strong>
     </div>
   `;
+}
+
+async function renderCalendar() {
+  const today = localISODate();
+  if (!state.calendarDate) state.calendarDate = today;
+  setStatus("Loading calendar");
+  const data = await fetchJson(`/api/calendar_events?date=${encodeURIComponent(state.calendarDate)}`);
+  state.calendarDate = data.selected_date || state.calendarDate || today;
+  const selectedTitle = calendarDateTitle(state.calendarDate, data.today || today);
+  els.calendar.innerHTML = `
+    <div class="section-header calendar-header">
+      <div>
+        <h2>Calendar</h2>
+        <p>Scheduled calls and open tasks only.</p>
+      </div>
+      <div class="calendar-date-controls" aria-label="Calendar day controls">
+        <button class="icon-button" id="prevCalendarDay" type="button" title="Previous day">‹</button>
+        <div class="calendar-date-label">
+          <strong>${escapeHtml(selectedTitle)}</strong>
+          <span>${escapeHtml(formatDate(state.calendarDate))}</span>
+        </div>
+        <button class="icon-button" id="nextCalendarDay" type="button" title="Next day">›</button>
+        <button class="text-button" id="todayCalendarDay" type="button" ${state.calendarDate === (data.today || today) ? "disabled" : ""}>Today</button>
+      </div>
+    </div>
+    ${calendarSection("Overdue", data.overdue || [], { empty: "Nothing overdue." })}
+    ${calendarSection(selectedTitle, data.day || [], { empty: "Nothing scheduled for this day." })}
+  `;
+  document.querySelector("#prevCalendarDay")?.addEventListener("click", () => {
+    state.calendarDate = addDaysToDate(state.calendarDate, -1);
+    renderCalendar();
+  });
+  document.querySelector("#nextCalendarDay")?.addEventListener("click", () => {
+    state.calendarDate = addDaysToDate(state.calendarDate, 1);
+    renderCalendar();
+  });
+  document.querySelector("#todayCalendarDay")?.addEventListener("click", () => {
+    state.calendarDate = data.today || localISODate();
+    renderCalendar();
+  });
+  wireRecordButtons(els.calendar);
+  wireTaskButtons(els.calendar);
+  wireCalendarButtons(els.calendar);
+  setStatus("Ready");
+}
+
+function calendarSection(title, events, options = {}) {
+  return `
+    <section class="calendar-section">
+      <div class="inline-header">
+        <h3>${escapeHtml(title)}</h3>
+        <span class="muted">${formatNumber(events.length)} action${events.length === 1 ? "" : "s"}</span>
+      </div>
+      <div class="calendar-action-list">
+        ${events.length ? events.map(calendarActionCard).join("") : `<div class="empty-calendar-card">${escapeHtml(options.empty || "No actions.")}</div>`}
+      </div>
+    </section>
+  `;
+}
+
+function calendarActionCard(event) {
+  const isCall = event.event_type === "call";
+  const recordType = event.record_type || "";
+  const recordId = event.record_id || "";
+  return `
+    <article class="calendar-action-card ${event.bucket === "overdue" ? "is-overdue" : ""}">
+      <div class="calendar-action-main">
+        <div class="calendar-action-topline">
+          <span class="timeline-type-pill">${isCall ? "Call" : "Task"}</span>
+          <span class="muted">${escapeHtml(event.time || formatDate(event.date || event.due_at) || "No time")}</span>
+        </div>
+        <strong>${escapeHtml(event.title || (isCall ? "Scheduled call" : "Task"))}</strong>
+        ${event.record_name ? `<p>${escapeHtml(event.record_name)}${recordType ? ` · ${escapeHtml(labelize(recordType))}` : ""}</p>` : ""}
+        ${event.notes ? `<p class="calendar-action-notes">${linkifyText(event.notes)}</p>` : ""}
+      </div>
+      <div class="calendar-action-buttons">
+        ${recordType && recordId ? `<button class="text-button record-button" type="button" data-type="${escapeHtml(recordType)}" data-id="${escapeHtml(recordId)}">Open</button>` : ""}
+        ${
+          isCall
+            ? `<button class="text-button log-scheduled-call-button" type="button" data-id="${escapeHtml(event.source_id)}">Log Call</button>`
+            : `<button class="text-button complete-task-button" type="button" data-id="${escapeHtml(event.source_id)}" data-completed="true">Complete</button>`
+        }
+      </div>
+    </article>
+  `;
+}
+
+function wireCalendarButtons(root) {
+  root.querySelectorAll(".log-scheduled-call-button").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const notes = window.prompt("Call notes or result", "");
+      if (notes === null) return;
+      setStatus("Logging call");
+      const updated = await postJson("/api/complete_scheduled_call", {
+        id: Number(button.dataset.id),
+        notes: notes.trim(),
+      });
+      if (updated.detail && detailMatchesCurrent(updated.detail)) renderDetail(updated.detail);
+      if (state.view === "calendar") await renderCalendar();
+      setStatus("Call logged");
+    });
+  });
 }
 
 function pipelineStageColumn(stage, deals) {
@@ -5466,6 +5596,7 @@ function wireTaskButtons(root) {
       if (state.view === "followup") renderFollowup();
       if (state.view === "dashboard") renderDashboard();
       if (state.view === "operationsStatus") renderOperationsStatus();
+      if (state.view === "calendar") renderCalendar();
       setStatus("Task saved");
     });
   });
@@ -5479,6 +5610,7 @@ function wireTaskButtons(root) {
       if (state.view === "followup") renderFollowup();
       if (state.view === "dashboard") renderDashboard();
       if (state.view === "operationsStatus") renderOperationsStatus();
+      if (state.view === "calendar") renderCalendar();
       setStatus(completed ? "Task completed" : "Task reopened");
     });
   });
@@ -5496,6 +5628,7 @@ function wireTaskButtons(root) {
       if (state.view === "followup") renderFollowup();
       if (state.view === "dashboard") renderDashboard();
       if (state.view === "operationsStatus") renderOperationsStatus();
+      if (state.view === "calendar") renderCalendar();
       setStatus("Local follow-up created");
     });
   });
@@ -7471,7 +7604,10 @@ function callLogsSection(callLogs, options = {}) {
           return `
           <div class="note call-log-card">
             <div class="call-log-read-head">
-              <strong>${escapeHtml(call.summary || "Call")}</strong>
+              <div class="call-log-title-row">
+                <strong>${escapeHtml(call.summary || (call.scheduled ? "Scheduled call" : "Call"))}</strong>
+                ${call.scheduled ? `<span class="pill">Scheduled</span>` : ""}
+              </div>
               <span class="muted">${callMeta}</span>
             </div>
             ${call.notes ? `<p class="call-log-note-text">${linkifyText(call.notes)}</p>` : ""}
@@ -7483,7 +7619,8 @@ function callLogsSection(callLogs, options = {}) {
             ` : ""}
             ${
               call.editable
-                ? `<details class="call-log-edit-details">
+                ? `${call.scheduled ? `<button class="text-button log-scheduled-call-button" type="button" data-id="${escapeHtml(call.source_id)}">Log Call</button>` : ""}
+                  <details class="call-log-edit-details">
                     <summary>Edit Call</summary>
                     <div class="call-log-head">
                       <input class="call-log-edit-summary" type="text" value="${escapeHtml(call.summary || "")}" placeholder="Call summary">
@@ -7859,6 +7996,7 @@ function wireDetailForms(detail) {
           content,
         });
         renderDetail(updated.detail);
+        if (state.view === "calendar") renderCalendar();
       });
     });
   }
@@ -8031,6 +8169,7 @@ function wireDetailForms(detail) {
         renderDetail(updated.detail);
         if (state.view === "dashboard") renderDashboard();
         if (state.view === "activity") renderActivity();
+        if (state.view === "calendar") renderCalendar();
       });
     });
   });
@@ -8054,6 +8193,7 @@ function wireDetailForms(detail) {
         renderDetail(updated.detail);
         if (state.view === "dashboard") renderDashboard();
         if (state.view === "activity") renderActivity();
+        if (state.view === "calendar") renderCalendar();
       });
     });
   });
@@ -8082,6 +8222,7 @@ function wireDetailForms(detail) {
           due_date: dueDate || null,
         });
         renderDetail(updated.detail);
+        if (state.view === "calendar") renderCalendar();
       });
     });
   }
@@ -8101,6 +8242,7 @@ function wireDetailForms(detail) {
         if (updated.detail) renderDetail(updated.detail);
         if (state.view === "followup") renderFollowup();
         if (state.view === "dashboard") renderDashboard();
+        if (state.view === "calendar") renderCalendar();
       });
     });
   });
@@ -8118,6 +8260,7 @@ function wireDetailForms(detail) {
         async () => {
           const updated = await postJson("/api/complete_task", { id: Number(button.dataset.id), completed });
           if (updated.detail) renderDetail(updated.detail);
+          if (state.view === "calendar") renderCalendar();
         }
       );
     });
@@ -8137,6 +8280,7 @@ function wireDetailForms(detail) {
       });
     });
   });
+  wireCalendarButtons(els.detail);
 }
 
 function wireProfileImageControls(detail) {

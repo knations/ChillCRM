@@ -50,6 +50,23 @@ button {
   grid-template-columns: 232px minmax(280px, 30vw) minmax(620px, 1fr);
 }
 
+.app-shell.focused-record-detail {
+  grid-template-columns: 232px minmax(0, 1fr);
+}
+
+.app-shell.focused-record-detail .main {
+  display: none;
+}
+
+.app-shell.focused-record-detail .detail-panel {
+  border-left: 0;
+}
+
+.app-shell.focused-record-detail .detail-content {
+  margin: 0 auto;
+  max-width: 1320px;
+}
+
 .app-shell.detail-collapsed {
   grid-template-columns: 232px minmax(0, 1fr);
 }
@@ -3829,14 +3846,24 @@ button {
   border-radius: 999px;
   color: var(--muted);
   display: inline-flex;
-  font-size: 18px;
+  font-size: 15px;
   font-weight: 700;
+  gap: 6px;
   height: 30px;
   justify-content: center;
   line-height: 1;
-  padding: 0;
+  padding: 0 10px;
   transition: background 0.16s ease, border-color 0.16s ease, color 0.16s ease, transform 0.16s ease;
-  width: 30px;
+  width: auto;
+}
+
+.detail-close-button > span:first-child {
+  font-size: 18px;
+  line-height: 1;
+}
+
+.detail-close-text {
+  font-size: 12px;
 }
 
 .detail-close-button:hover {
@@ -6448,6 +6475,10 @@ button {
   }
 
   .app-shell.record-workspace {
+    grid-template-columns: 208px minmax(0, 1fr);
+  }
+
+  .app-shell.focused-record-detail {
     grid-template-columns: 208px minmax(0, 1fr);
   }
 

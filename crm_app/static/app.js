@@ -249,6 +249,7 @@ function activateSearchWorkspace() {
   state.view = "search";
   state.mobileDetailReturnLabel = "Search";
   els.navButtons.forEach((button) => button.classList.remove("active"));
+  setFocusedRecordDetail(false);
   setRecordWorkspace(false);
   closeMobileDetailView();
   showOnlyMainView(els.list);
@@ -1222,6 +1223,11 @@ function setMobileDetailOpen(active) {
   document.body.classList.toggle("mobile-detail-open", state.mobileDetailOpen);
 }
 
+function setFocusedRecordDetail(active, type = "") {
+  const focused = Boolean(active && type === "person");
+  els.shell?.classList.toggle("focused-record-detail", focused);
+}
+
 function isMobileDetailViewport() {
   return window.matchMedia?.("(max-width: 1040px)").matches || false;
 }
@@ -1253,12 +1259,14 @@ function resetDetailScroll() {
 
 function updateRecordWorkspaceForView(view = state.view) {
   if (!recordWorkspaceView(view)) {
+    setFocusedRecordDetail(false);
     setRecordWorkspace(false);
     setDetailCollapsed(false);
     return;
   }
   const matchingDetail = Boolean(state.currentDetail && listTypeForDetailType(state.currentDetail.type) === view);
   setRecordWorkspace(matchingDetail);
+  setFocusedRecordDetail(matchingDetail, state.currentDetail?.type || "");
   setDetailCollapsed(!matchingDetail);
 }
 
@@ -1267,6 +1275,7 @@ function closeCurrentRecordDetail() {
   state.currentArchiveItem = null;
   state.currentCleanupGroup = null;
   closeMobileDetailView();
+  setFocusedRecordDetail(false);
   setRecordWorkspace(false);
   setDetailCollapsed(recordWorkspaceView(state.view));
   syncActiveListRows();
@@ -5339,6 +5348,7 @@ async function renderList() {
 async function renderCreateForm(listType) {
   setStatus("Loading create form");
   setRecordWorkspace(true);
+  setFocusedRecordDetail(false);
   openMobileDetailView(listTitles[listType] || "List");
   const type = listType === "people" ? "person" : listType === "companies" ? "company" : listType === "leads" ? "lead" : "deal";
   const fields = createFields(type);
@@ -5909,6 +5919,7 @@ async function showArchiveItem(id) {
 
 function renderArchiveItemDetail(detail) {
   const item = detail.item || {};
+  setFocusedRecordDetail(false);
   setRecordWorkspace(false);
   openMobileDetailView("Files & History");
   state.currentDetail = null;
@@ -6293,6 +6304,7 @@ async function nextCleanupReviewGroup(detail) {
 
 function renderDetail(detail) {
   setRecordWorkspace(true);
+  setFocusedRecordDetail(true, detail.type);
   openMobileDetailView();
   state.currentDetail = detail;
   state.currentArchiveItem = null;
@@ -6942,7 +6954,7 @@ function detailHeader(title, subtitle, detail = null, options = {}) {
   const hasProfileImageControl = detail?.type === "person";
   const headerMeta = Array.isArray(options.headerMeta) ? options.headerMeta.filter((item) => item?.value) : [];
   const closeButton = detail
-    ? `<button class="detail-close-button" type="button" aria-label="Close contact view" title="Close contact view">×</button>`
+    ? `<button class="detail-close-button" type="button" aria-label="Back to ${escapeHtml(mobileBackLabel)}" title="Back to ${escapeHtml(mobileBackLabel)}"><span aria-hidden="true">×</span><span class="detail-close-text">Back</span></button>`
     : "";
   return `
     <div class="detail-masthead">
@@ -7338,6 +7350,7 @@ function contactWebsiteHref(value) {
 }
 
 function renderTagDetail(detail) {
+  setFocusedRecordDetail(false);
   setRecordWorkspace(false);
   openMobileDetailView("Tags");
   state.currentDetail = null;
@@ -7393,6 +7406,7 @@ function renderTagDetail(detail) {
 }
 
 function renderCustomFieldDetail(detail) {
+  setFocusedRecordDetail(false);
   setRecordWorkspace(false);
   openMobileDetailView("Custom Fields");
   state.currentDetail = null;
@@ -7434,6 +7448,7 @@ function renderCustomFieldDetail(detail) {
 }
 
 function renderCleanupGroupDetail(detail) {
+  setFocusedRecordDetail(false);
   setRecordWorkspace(false);
   openMobileDetailView("Cleanup");
   state.currentDetail = null;

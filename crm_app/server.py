@@ -4618,9 +4618,12 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                     f"""
                     SELECT 'deal' AS type, d.id AS source_id, 'deal' AS kind, d.name,
                            NULL AS email, d.updated_at, s.name AS stage_name, d.value, d.currency,
+                           p.name AS contact_name, c.name AS organization_name,
                            'Choose upgrade path' AS match_context
                     FROM deals d
                     LEFT JOIN stages s ON s.id = d.stage_id
+                    LEFT JOIN people p ON p.id = d.person_id
+                    LEFT JOIN companies c ON c.id = d.company_id
                     WHERE coalesce(s.category, '') = 'won'
                       AND NOT EXISTS (
                         SELECT 1
@@ -4641,9 +4644,12 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                     """
                     SELECT 'deal' AS type, d.id AS source_id, 'deal' AS kind, d.name,
                            NULL AS email, d.updated_at, s.name AS stage_name, d.value, d.currency,
+                           p.name AS contact_name, c.name AS organization_name,
                            'Needs next action' AS match_context
                     FROM deals d
                     LEFT JOIN stages s ON s.id = d.stage_id
+                    LEFT JOIN people p ON p.id = d.person_id
+                    LEFT JOIN companies c ON c.id = d.company_id
                     WHERE coalesce(s.category, '') IN ('incoming', 'in_progress')
                       AND NOT EXISTS (
                         SELECT 1

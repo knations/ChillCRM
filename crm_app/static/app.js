@@ -1698,15 +1698,15 @@ const dashboardFocusConfigs = {
     dealQueue: "due_today",
   },
   no_next_action: {
-    title: "No Next Action",
+    title: "Next Steps",
     subtitle: "Deals that need a dated next step.",
-    dealTitle: "Deals Missing Follow Up",
+    dealTitle: "Next Steps",
     dealQueue: "no_deal_date",
   },
   upgrade: {
     title: "Upgrade",
     subtitle: "Won deals that still need an upgrade path.",
-    dealTitle: "Won Deals Needing Upgrade",
+    dealTitle: "Upgrade",
     dealQueue: "won_needs_upgrade",
   },
 };
@@ -1789,7 +1789,9 @@ function dashboardFocusSection(title, rows, options = {}) {
 }
 
 function dashboardFocusDealCard(record) {
+  const relationship = record.contact_name || record.organization_name || "";
   const meta = [
+    relationship,
     record.stage_name || record.stage,
     record.value ? formatMoney(record.value, record.currency || "USD") : "",
     record.match_context,
@@ -2187,7 +2189,7 @@ function salesCommandCenterPanel(center) {
       focusKey: "today",
     },
     {
-      label: "No Next Action",
+      label: "Next Steps",
       value: Number(center.deal_followup_counts?.missing || 0) + (center.missing_next_action_deals || []).length,
       helper: "Deals that need a dated next step",
       focusKey: "no_next_action",
@@ -2216,8 +2218,8 @@ function salesCommandCenterPanel(center) {
         ${priorityCards.map(salesCommandPriorityCard).join("")}
       </div>
       <div class="sales-command-grid">
-        ${salesCommandList("Needs Next Action", center.missing_next_action_deals || [], "record", { focusKey: "no_next_action", empty: "Every active deal has a next action." })}
-        ${salesCommandList("Won Upgrade Follow-Up", center.won_missing_upgrade_deals || [], "record", { focusKey: "upgrade", empty: "Won deals have upgrade paths." })}
+        ${salesCommandList("Next Steps", center.missing_next_action_deals || [], "record", { focusKey: "no_next_action", empty: "Every active deal has a next action." })}
+        ${salesCommandList("Upgrade", center.won_missing_upgrade_deals || [], "record", { focusKey: "upgrade", empty: "Won deals have upgrade paths." })}
       </div>
     </div>
   `;
@@ -2281,7 +2283,9 @@ function salesCommandTaskRow(task) {
 }
 
 function salesCommandRecordRow(record) {
+  const relationship = record.contact_name || record.organization_name || "";
   const meta = [
+    relationship,
     record.stage_name,
     record.value ? formatMoney(record.value, record.currency || "USD") : "",
     record.match_context,

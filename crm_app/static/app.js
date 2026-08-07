@@ -5414,11 +5414,11 @@ function listTable(records) {
         <thead>
           <tr>
             ${sortHeader("name", "Deal")}
-            ${sortHeader("stage", "Stage")}
-            ${sortHeader("value", "Value")}
             ${sortHeader("contact", "Contact")}
-            ${sortHeader("estimated_close_date", "Close Date")}
+            ${sortHeader("value", "Value")}
+            ${sortHeader("stage", "Stage")}
             ${sortHeader("updated_at", "Updated")}
+            ${sortHeader("estimated_close_date", "Closed")}
           </tr>
         </thead>
         <tbody>
@@ -5426,11 +5426,11 @@ function listTable(records) {
             .map((record) => `
               <tr ${listRowAttributes("deal", record.source_id)}>
                 <td><button class="record-button" data-type="deal" data-id="${record.source_id}">${escapeHtml(record.name || "(blank)")}</button>${lifecyclePillForRecord(record)}</td>
-                <td><span class="pill gold">${escapeHtml(record.stage_name || "")}</span></td>
-                <td>${formatMoney(record.value, record.currency || "USD")}</td>
                 <td class="muted">${escapeHtml(record.contact_name || record.organization_name || "")}</td>
-                <td class="muted">${formatDate(record.estimated_close_date)}</td>
+                <td>${formatMoney(record.value, record.currency || "USD")}</td>
+                <td><span class="pill gold">${escapeHtml(record.stage_name || "")}</span></td>
                 <td class="muted">${formatDate(record.updated_at)}</td>
+                <td class="muted">${formatDate(record.estimated_close_date)}</td>
               </tr>
             `)
             .join("")}

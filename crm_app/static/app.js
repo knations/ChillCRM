@@ -2037,6 +2037,7 @@ function actionCalendarPanel(data, options = {}) {
             <strong>${escapeHtml(selectedTitle)}</strong>
             <span>${escapeHtml(formatDate(state.calendarDate))}</span>
           </div>
+          <input class="calendar-date-picker" type="date" value="${escapeHtml(state.calendarDate || localToday)}" aria-label="Jump to date">
           <button class="icon-button next-calendar-day" type="button" title="Next day">›</button>
           <button class="text-button today-calendar-day" type="button" ${state.calendarDate === localToday ? "disabled" : ""}>Today</button>
         </div>
@@ -2068,6 +2069,12 @@ function wireActionCalendarControls(root, renderFn) {
   });
   root.querySelector(".today-calendar-day")?.addEventListener("click", () => {
     state.calendarDate = localISODate();
+    renderFn();
+  });
+  root.querySelector(".calendar-date-picker")?.addEventListener("change", (event) => {
+    const value = event.currentTarget?.value || "";
+    if (!value) return;
+    state.calendarDate = value;
     renderFn();
   });
 }

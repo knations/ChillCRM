@@ -2594,6 +2594,22 @@ button {
   font-size: 12px;
 }
 
+.calendar-date-picker {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--text);
+  font: inherit;
+  min-height: 36px;
+  padding: 7px 10px;
+}
+
+.calendar-date-picker:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+  outline: 0;
+}
+
 .action-calendar-panel {
   margin-bottom: 14px;
 }

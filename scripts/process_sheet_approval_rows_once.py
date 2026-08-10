@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import getpass
 import json
+import os
 import re
 import sys
 import urllib.error
@@ -130,7 +131,9 @@ def main() -> int:
     args = parser.parse_args()
 
     rows = json.loads(Path(args.input).read_text(encoding="utf-8"))
-    token = getpass.getpass("CHILLCRM_AUTOMATION_TOKEN: ").strip()
+    token = os.environ.get("CHILLCRM_AUTOMATION_TOKEN", "").strip()
+    if not token:
+        token = getpass.getpass("CHILLCRM_AUTOMATION_TOKEN: ").strip()
     if not token:
         raise SystemExit("No token entered. Nothing processed.")
 

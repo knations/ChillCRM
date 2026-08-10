@@ -1,10 +1,11 @@
 #!/bin/zsh
 cd "/Users/kevinsvault/Downloads/ZendDeskSellProject" || exit 1
 
-echo "CHILLCRM Clean Task Source Blocks"
+echo "CHILLCRM Delete Duplicate Automation Tasks"
 echo
-echo "This removes pasted Source links from visible task text."
-echo "The source data is preserved in task metadata, not deleted."
+echo "This deletes only the approved accidental duplicate task IDs: 29 and 30."
+echo "It preserves the original Aaron and Liana tasks and does not touch other CRM data."
+echo
 echo "It uses the production Supabase/Postgres DATABASE_URL from macOS Keychain."
 echo "If it is not saved yet, paste it once here and future maintenance runs will reuse it."
 echo "Recommended format:"
@@ -36,10 +37,10 @@ fi
 export DATABASE_URL
 
 echo
-echo "Type exactly: CLEAN TASK SOURCE BLOCKS"
+echo "Type exactly: DELETE DUPLICATE TASKS 29 30"
 read "CONFIRMATION?Confirmation: "
 
-.venv/bin/python scripts/clean_task_source_blocks.py \
+.venv/bin/python scripts/delete_duplicate_automation_tasks.py \
   --execute \
   --ssl-root-cert "config/supabase-prod-ca-2021.crt" \
   --confirm "$CONFIRMATION"

@@ -1,16 +1,12 @@
 #!/bin/zsh
 cd "/Users/kevinsvault/Downloads/ZendDeskSellProject" || exit 1
 
-echo "CHILLCRM Clean Task Source Blocks"
+echo "CHILLCRM Verify Duplicate Automation Tasks"
 echo
-echo "This removes pasted Source links from visible task text."
-echo "The source data is preserved in task metadata, not deleted."
+echo "This checks whether duplicate task IDs 29 and 30 still exist."
+echo "It does not delete or change any CRM data."
 echo "It uses the production Supabase/Postgres DATABASE_URL from macOS Keychain."
 echo "If it is not saved yet, paste it once here and future maintenance runs will reuse it."
-echo "Recommended format:"
-echo "postgresql://postgres.ckjbnummsxqcyeahzynz:YOUR-PASSWORD@aws-1-us-east-2.pooler.supabase.com:5432/postgres"
-echo
-echo "The URL will not be written to project files, shell history, reports, or chat."
 echo
 
 KEYCHAIN_SERVICE="CHILLCRM_DATABASE_URL"
@@ -21,7 +17,7 @@ if [[ -z "$DATABASE_URL" ]]; then
   read -s "DATABASE_URL?DATABASE_URL: "
   echo
   if [[ -z "$DATABASE_URL" ]]; then
-    echo "No database URL entered. Nothing changed."
+    echo "No database URL entered. Nothing checked."
     echo
     echo "Press any key to close..."
     read -k 1
@@ -35,15 +31,10 @@ fi
 
 export DATABASE_URL
 
-echo
-echo "Type exactly: CLEAN TASK SOURCE BLOCKS"
-read "CONFIRMATION?Confirmation: "
-
-.venv/bin/python scripts/clean_task_source_blocks.py \
-  --execute \
-  --ssl-root-cert "config/supabase-prod-ca-2021.crt" \
-  --confirm "$CONFIRMATION"
+.venv/bin/python scripts/delete_duplicate_automation_tasks.py \
+  --ssl-root-cert "config/supabase-prod-ca-2021.crt"
 
 echo
+echo "If the output says missing task IDs 29 and 30, that means the duplicates are already gone."
 echo "Press any key to close..."
 read -k 1

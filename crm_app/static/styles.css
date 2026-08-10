@@ -2610,6 +2610,49 @@ button {
   outline: 0;
 }
 
+.calendar-quick-add {
+  border-top: 1px solid var(--line);
+  display: grid;
+  gap: 12px;
+  margin: 18px 20px 0;
+  padding-top: 16px;
+}
+
+.calendar-quick-add-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(120px, 160px) minmax(140px, 180px) minmax(120px, 150px) minmax(220px, 1fr);
+}
+
+.calendar-quick-add label,
+.calendar-quick-add-detail {
+  color: var(--muted);
+  display: grid;
+  font-size: 12px;
+  font-weight: 800;
+  gap: 6px;
+  text-transform: uppercase;
+}
+
+.calendar-quick-add select,
+.calendar-quick-add input {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  min-height: 36px;
+  padding: 7px 10px;
+  outline: 0;
+}
+
+.calendar-quick-add select:focus,
+.calendar-quick-add input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
 .action-calendar-panel {
   margin-bottom: 14px;
 }
@@ -6761,6 +6804,14 @@ button {
 
   .calendar-section {
     margin: 0 14px;
+  }
+
+  .calendar-quick-add {
+    margin: 16px 14px 0;
+  }
+
+  .calendar-quick-add-grid {
+    grid-template-columns: 1fr;
   }
 
   .calendar-action-card {

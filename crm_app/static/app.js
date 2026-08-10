@@ -110,6 +110,9 @@ const state = {
   tagSuggestionRequestId: 0,
   personTagDebounce: null,
   personTagSuggestionRequestId: 0,
+  calendarPersonDebounce: null,
+  calendarPersonSuggestionRequestId: 0,
+  calendarPersonSuggestions: [],
   searchRequestId: 0,
   searchReturnView: "dashboard",
   currentDetail: null,
@@ -2054,6 +2057,7 @@ function actionCalendarPanel(data, options = {}) {
       </div>
       ${calendarSection("Overdue", overdue, { empty: "Nothing overdue." })}
       ${calendarSection(selectedTitle, day, { empty: "Nothing scheduled for this day." })}
+      ${calendarQuickAddForm(localToday)}
     </section>
   `;
 }
@@ -2077,6 +2081,186 @@ function wireActionCalendarControls(root, renderFn) {
     state.calendarDate = value;
     renderFn();
   });
+  wireCalendarQuickAdd(root, renderFn);
+}
+
+function calendarQuickAddForm(localToday) {
+  const selectedDate = state.calendarDate || localToday;
+  return `
+    <div class="calendar-quick-add">
+      <div class="inline-header">
+        <h3>Add</h3>
+        <button class="text-button calendar-quick-add-save" type="button">Save</button>
+      </div>
+      <div class="calendar-quick-add-grid">
+        <label>
+          <span>Type</span>
+          <select id="calendarQuickAddType">
+            <option value="task">Task</option>
+            <option value="call">Call</option>
+          </select>
+        </label>
+        <label>
+          <span>Date</span>
+          <input id="calendarQuickAddDate" type="date" value="${escapeHtml(selectedDate)}">
+        </label>
+        <label class="calendar-quick-add-time" hidden>
+          <span>Time</span>
+          <input id="calendarQuickAddTime" type="time">
+        </label>
+        <label class="calendar-quick-add-person">
+          <span>Person</span>
+          <input id="calendarQuickAddPersonSearch" type="text" list="calendarQuickAddPeople" placeholder="Search people" autocomplete="off">
+          <datalist id="calendarQuickAddPeople"></datalist>
+          <input id="calendarQuickAddPersonId" type="hidden">
+        </label>
+      </div>
+      <label class="calendar-quick-add-detail">
+        <span>Detail</span>
+        <textarea id="calendarQuickAddDetail" class="note-input" rows="3" placeholder="What needs to happen?"></textarea>
+      </label>
+      <p class="form-error calendar-quick-add-error" hidden></p>
+    </div>
+  `;
+}
+
+function wireCalendarQuickAdd(root, renderFn) {
+  const typeInput = root.querySelector("#calendarQuickAddType");
+  const timeField = root.querySelector(".calendar-quick-add-time");
+  const personInput = root.querySelector("#calendarQuickAddPersonSearch");
+  const personIdInput = root.querySelector("#calendarQuickAddPersonId");
+  const datalist = root.querySelector("#calendarQuickAddPeople");
+  const detailInput = root.querySelector("#calendarQuickAddDetail");
+  const dateInput = root.querySelector("#calendarQuickAddDate");
+  const saveButton = root.querySelector(".calendar-quick-add-save");
+  const error = root.querySelector(".calendar-quick-add-error");
+  if (!typeInput || !personInput || !personIdInput || !detailInput || !dateInput || !saveButton) return;
+
+  const syncType = () => {
+    if (timeField) timeField.hidden = typeInput.value !== "call";
+  };
+  const clearError = () => {
+    if (!error) return;
+    error.textContent = "";
+    error.hidden = true;
+  };
+  const showError = (message) => {
+    if (!error) return;
+    error.textContent = message;
+    error.hidden = false;
+  };
+  const renderSuggestions = (people) => {
+    state.calendarPersonSuggestions = people || [];
+    if (!datalist) return;
+    datalist.innerHTML = state.calendarPersonSuggestions
+      .map((person) => `<option value="${escapeHtml(calendarPersonOptionLabel(person))}" data-id="${escapeHtml(person.source_id)}"></option>`)
+      .join("");
+  };
+  const selectedPerson = () => {
+    const hiddenId = String(personIdInput.value || "").trim();
+    const typed = String(personInput.value || "").trim().toLowerCase();
+    return (
+      state.calendarPersonSuggestions.find((person) => String(person.source_id) === hiddenId) ||
+      state.calendarPersonSuggestions.find((person) => calendarPersonOptionLabel(person).toLowerCase() === typed) ||
+      null
+    );
+  };
+
+  syncType();
+  typeInput.addEventListener("change", syncType);
+  personInput.addEventListener("input", () => {
+    clearError();
+    personIdInput.value = "";
+    const value = personInput.value.trim();
+    window.clearTimeout(state.calendarPersonDebounce);
+    state.calendarPersonDebounce = window.setTimeout(async () => {
+      if (value.length < 2) {
+        renderSuggestions([]);
+        return;
+      }
+      const requestId = ++state.calendarPersonSuggestionRequestId;
+      const params = new URLSearchParams({
+        type: "people",
+        page: "1",
+        page_size: "10",
+        q: value,
+        sort: "name",
+        direction: "asc",
+        lifecycle: "active",
+      });
+      const data = await fetchJson(`/api/list?${params.toString()}`);
+      if (requestId !== state.calendarPersonSuggestionRequestId) return;
+      renderSuggestions(data.records || []);
+    }, 180);
+  });
+  personInput.addEventListener("change", () => {
+    const person = selectedPerson();
+    personIdInput.value = person?.source_id || "";
+  });
+  saveButton.addEventListener("click", async () => {
+    clearError();
+    const person = selectedPerson();
+    const detail = detailInput.value.trim();
+    const date = dateInput.value.trim();
+    if (!person?.source_id) {
+      showError("Choose a person from the suggestions.");
+      return;
+    }
+    if (!date) {
+      showError("Choose a date.");
+      return;
+    }
+    if (!detail) {
+      showError("Add the task or call detail.");
+      return;
+    }
+    saveButton.disabled = true;
+    try {
+      setStatus("Adding action");
+      if (typeInput.value === "call") {
+        const time = root.querySelector("#calendarQuickAddTime")?.value.trim() || "";
+        await postJson("/api/add_call_log", {
+          type: "person",
+          id: Number(person.source_id),
+          summary: detail,
+          notes: "",
+          direction: "",
+          call_at: calendarQuickAddCallAt(date, time),
+        });
+      } else {
+        await postJson("/api/add_task", {
+          type: "person",
+          id: Number(person.source_id),
+          content: detail,
+          due_date: date,
+        });
+      }
+      state.calendarDate = date;
+      renderFn();
+      setStatus("Action added");
+    } catch (err) {
+      showError(err.message || "Could not add action.");
+      setStatus("Action failed");
+    } finally {
+      saveButton.disabled = false;
+    }
+  });
+}
+
+function calendarPersonOptionLabel(person) {
+  const name = person?.name || person?.label || "Unnamed person";
+  const detail = [person?.email, formatPhoneDisplay(person?.phone)].filter(Boolean).join(" · ");
+  return detail ? `${name} · ${detail}` : name;
+}
+
+function calendarQuickAddCallAt(date, time) {
+  if (time) return `${date}T${time}`;
+  if (date !== localISODate()) return `${date}T09:00`;
+  const now = new Date();
+  now.setMinutes(now.getMinutes() + 15);
+  const hours = String(now.getHours()).padStart(2, "0");
+  const minutes = String(now.getMinutes()).padStart(2, "0");
+  return `${date}T${hours}:${minutes}`;
 }
 
 function calendarSection(title, events, options = {}) {

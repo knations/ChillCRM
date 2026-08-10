@@ -3604,19 +3604,34 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             if path == "/api/auth/logout":
                 self.logout_response()
                 return
-            if path == "/api/automation/add_person_task":
+            if path in {
+                "/api/automation/add_person_task",
+                "/api/automation/add_person_note",
+                "/api/automation/add_person_call",
+            }:
                 authorization_error = self.automation_authorization_error()
                 if authorization_error:
                     payload, status = authorization_error
                     self.send_json(payload, status)
                     return
-                if self.should_block_remote_write("/api/add_task"):
+                write_path = {
+                    "/api/automation/add_person_task": "/api/add_task",
+                    "/api/automation/add_person_note": "/api/add_note",
+                    "/api/automation/add_person_call": "/api/add_call_log",
+                }[path]
+                if self.should_block_remote_write(write_path):
                     self.send_remote_write_locked(path)
                     return
-                if self.should_block_local_write("/api/add_task"):
+                if self.should_block_local_write(write_path):
                     self.send_local_write_frozen(path)
                     return
-                payload, status = self.add_automation_person_task(self.read_json_body())
+                request_payload = self.read_json_body()
+                if path == "/api/automation/add_person_task":
+                    payload, status = self.add_automation_person_task(request_payload)
+                elif path == "/api/automation/add_person_note":
+                    payload, status = self.add_automation_person_note(request_payload)
+                else:
+                    payload, status = self.add_automation_person_call(request_payload)
                 self.send_json(payload, status)
                 return
             auth_user = self.current_auth_user()
@@ -26145,12 +26160,6 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         if error_payload:
             return error_payload, status
         assert person is not None
-        actor_user = {
-            "id": None,
-            "email": "automation@chillcrm.local",
-            "name": "ChillCRM Automation",
-            "roles": ["automation"],
-        }
         result = self.add_task(
             {
                 "type": "person",
@@ -26158,8 +26167,77 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                 "content": content,
                 "due_date": payload.get("due_date"),
             },
-            actor_user=actor_user,
+            actor_user=self.automation_actor_user(),
             permission_action="automation_add_person_task",
+        )
+        result["automation"] = {
+            "person_id": person["id"],
+            "person_name": person.get("name"),
+            "person_email": person.get("email"),
+        }
+        return result, 200
+
+    def automation_actor_user(self) -> dict[str, Any]:
+        return {
+            "id": None,
+            "email": "automation@chillcrm.local",
+            "name": "ChillCRM Automation",
+            "roles": ["automation"],
+        }
+
+    def automation_content_with_source(self, content: str, source: Any) -> str:
+        source_text = self.clean_optional(source)
+        if source_text:
+            return f"{content}\n\nSource: {source_text}"
+        return content
+
+    def add_automation_person_note(self, payload: dict[str, Any]) -> tuple[dict[str, Any], int]:
+        content = str(payload.get("content") or "").strip()
+        if not content:
+            return {"ok": False, "error": "Note content is required.", "code": "note_content_required"}, 400
+        person, error_payload, status = self.resolve_automation_person(payload)
+        if error_payload:
+            return error_payload, status
+        assert person is not None
+        result = self.add_note(
+            {
+                "type": "person",
+                "id": person["id"],
+                "content": self.automation_content_with_source(content, payload.get("source")),
+            },
+            actor_user=self.automation_actor_user(),
+            permission_action="automation_add_person_note",
+        )
+        result["automation"] = {
+            "person_id": person["id"],
+            "person_name": person.get("name"),
+            "person_email": person.get("email"),
+        }
+        return result, 200
+
+    def add_automation_person_call(self, payload: dict[str, Any]) -> tuple[dict[str, Any], int]:
+        content = str(payload.get("content") or payload.get("notes") or "").strip()
+        summary = str(payload.get("summary") or "").strip()
+        if not summary:
+            summary = content[:120].strip()
+        if not content and not summary:
+            return {"ok": False, "error": "Call summary or notes are required.", "code": "call_content_required"}, 400
+        person, error_payload, status = self.resolve_automation_person(payload)
+        if error_payload:
+            return error_payload, status
+        assert person is not None
+        call_at = self.clean_optional(payload.get("call_at")) or self.clean_optional(payload.get("date"))
+        result = self.add_call_log(
+            {
+                "type": "person",
+                "id": person["id"],
+                "summary": summary,
+                "notes": self.automation_content_with_source(content or summary, payload.get("source")),
+                "direction": payload.get("direction") or "general",
+                "call_at": call_at,
+            },
+            actor_user=self.automation_actor_user(),
+            permission_action="automation_add_person_call",
         )
         result["automation"] = {
             "person_id": person["id"],

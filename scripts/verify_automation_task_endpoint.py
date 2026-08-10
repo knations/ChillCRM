@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify the narrow automation task endpoint without production writes."""
+"""Verify narrow automation Person endpoints without production writes."""
 
 from __future__ import annotations
 
@@ -37,6 +37,40 @@ def task_count_for_person(db_path: Path, person_id: int, content: str) -> int:
             conn.execute(
                 "SELECT count(*) FROM tasks WHERE record_type = 'person' AND record_id = ? AND content = ?",
                 (person_id, content),
+            ).fetchone()[0]
+        )
+
+
+def note_count_for_person(db_path: Path, person_id: int, content: str) -> int:
+    with sqlite3.connect(db_path) as conn:
+        return int(
+            conn.execute(
+                """
+                SELECT count(*)
+                FROM notes
+                WHERE record_type = 'person'
+                  AND record_id = ?
+                  AND content = ?
+                  AND coalesce(note_type, '') != 'call_log'
+                """,
+                (person_id, content),
+            ).fetchone()[0]
+        )
+
+
+def call_count_for_person(db_path: Path, person_id: int, summary: str) -> int:
+    with sqlite3.connect(db_path) as conn:
+        return int(
+            conn.execute(
+                """
+                SELECT count(*)
+                FROM notes
+                WHERE record_type = 'person'
+                  AND record_id = ?
+                  AND note_type = 'call_log'
+                  AND source_json LIKE ?
+                """,
+                (person_id, f'%"{summary}"%'),
             ).fetchone()[0]
         )
 
@@ -134,12 +168,48 @@ def main() -> int:
             assert payload["automation"]["person_id"] == person_id
             assert task_count_for_person(tmp_db, person_id, content) == 1
 
+            note_content = "Automation verifier note\n\nSource: Otter debrief verifier"
+            assert note_count_for_person(tmp_db, person_id, note_content) == 0
+            payload, status = probe.add_automation_person_note(
+                {
+                    "person_id": person_id,
+                    "content": "Automation verifier note",
+                    "source": "Otter debrief verifier",
+                },
+            )
+            assert status == 200, payload
+            assert payload["ok"] is True
+            assert payload["automation"]["person_id"] == person_id
+            assert note_count_for_person(tmp_db, person_id, note_content) == 1
+
+            call_summary = "Automation verifier call"
+            assert call_count_for_person(tmp_db, person_id, call_summary) == 0
+            payload, status = probe.add_automation_person_call(
+                {
+                    "person_id": person_id,
+                    "summary": call_summary,
+                    "content": "Discussed follow-up from transcript.",
+                    "date": "2026-08-10",
+                    "source": "Otter debrief verifier",
+                },
+            )
+            assert status == 200, payload
+            assert payload["ok"] is True
+            assert payload["automation"]["person_id"] == person_id
+            assert call_count_for_person(tmp_db, person_id, call_summary) == 1
+
             payload, status = probe.add_automation_person_task(
                 {"person_name": ambiguous_name, "content": "Should not create"},
             )
             assert status == 400, payload
             assert payload["code"] == "person_match_ambiguous"
             assert len(payload["possible_matches"]) == 2
+
+            payload, status = probe.add_automation_person_note(
+                {"person_name": ambiguous_name, "content": "Should not create"},
+            )
+            assert status == 400, payload
+            assert payload["code"] == "person_match_ambiguous"
         finally:
             for key, value in env_backup.items():
                 if value is None:
@@ -147,7 +217,7 @@ def main() -> int:
                 else:
                     os.environ[key] = value
 
-    print("CHILLCRM automation task endpoint verifier passed.")
+    print("CHILLCRM automation Person endpoints verifier passed.")
     return 0
 
 

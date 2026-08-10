@@ -53,6 +53,16 @@ https://chillcrm.app/api/webhooks/zapier_purchase
 
 The webhook must include the configured server-side secret. The app matches existing People by email, fills blank basics when appropriate, creates a purchase entry, and avoids duplicate deliveries when an order or transaction ID is repeated.
 
+## Automation Task Intake
+
+Codex/Otter debrief automations may create follow-up tasks on existing People records through the narrow server-to-server endpoint:
+
+```text
+POST https://chillcrm.app/api/automation/add_person_task
+```
+
+This endpoint requires the server-side `CHILLCRM_AUTOMATION_TOKEN` and accepts it only as a bearer token or `X-CHILLCRM-AUTOMATION-TOKEN` header. The token is not a general CRM session and does not permit broad reads or writes. Automation must identify a Person by `person_id`, exact email, or exact case-insensitive name; ambiguous matches stop without guessing.
+
 ## Files
 
 Files added to a Person should stay attached to that Person. Hosted production file access is private and served through authenticated app routes and short-lived storage links.

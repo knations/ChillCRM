@@ -2477,6 +2477,49 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             )
         return None
 
+    def automation_token_secret(self) -> str:
+        return os.environ.get("CHILLCRM_AUTOMATION_TOKEN", "").strip()
+
+    def automation_token_from_headers(self) -> str:
+        headers = getattr(self, "headers", {})
+        auth_header = str(headers.get("Authorization", "") if hasattr(headers, "get") else "").strip()
+        if auth_header.lower().startswith("bearer "):
+            return auth_header[7:].strip()
+        return str(headers.get("X-CHILLCRM-AUTOMATION-TOKEN", "") if hasattr(headers, "get") else "").strip()
+
+    def automation_authorization_error(self) -> tuple[dict[str, Any], int] | None:
+        expected = self.automation_token_secret()
+        if not expected:
+            return (
+                {
+                    "ok": False,
+                    "error": "Automation task intake is not configured.",
+                    "code": "automation_token_not_configured",
+                    "required_env": "CHILLCRM_AUTOMATION_TOKEN",
+                },
+                503,
+            )
+        supplied = self.automation_token_from_headers()
+        if not supplied:
+            return (
+                {
+                    "ok": False,
+                    "error": "Automation token is required.",
+                    "code": "automation_token_required",
+                },
+                401,
+            )
+        if not hmac.compare_digest(supplied, expected):
+            return (
+                {
+                    "ok": False,
+                    "error": "Automation token is invalid.",
+                    "code": "automation_token_invalid",
+                },
+                403,
+            )
+        return None
+
     def twilio_auth_token(self) -> str:
         return os.environ.get("CHILLCRM_TWILIO_AUTH_TOKEN", "").strip() or os.environ.get("TWILIO_AUTH_TOKEN", "").strip()
 
@@ -3560,6 +3603,21 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                 return
             if path == "/api/auth/logout":
                 self.logout_response()
+                return
+            if path == "/api/automation/add_person_task":
+                authorization_error = self.automation_authorization_error()
+                if authorization_error:
+                    payload, status = authorization_error
+                    self.send_json(payload, status)
+                    return
+                if self.should_block_remote_write("/api/add_task"):
+                    self.send_remote_write_locked(path)
+                    return
+                if self.should_block_local_write("/api/add_task"):
+                    self.send_local_write_frozen(path)
+                    return
+                payload, status = self.add_automation_person_task(self.read_json_body())
+                self.send_json(payload, status)
                 return
             auth_user = self.current_auth_user()
             if self.should_require_auth_for_post(path) and not auth_user:
@@ -26000,6 +26058,115 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             )
             conn.commit()
         return {"ok": True, "backup": str(backup_path), "detail": self.record_detail({"type": [record_type], "id": [str(record_id)]})}
+
+    def resolve_automation_person(self, payload: dict[str, Any]) -> tuple[dict[str, Any] | None, dict[str, Any] | None, int]:
+        person_id = self.clean_optional(payload.get("person_id"))
+        person_email = self.clean_optional(payload.get("person_email"))
+        person_name = self.clean_optional(payload.get("person_name"))
+
+        with self.db() as conn:
+            if person_id:
+                try:
+                    resolved_id = int(person_id)
+                except (TypeError, ValueError):
+                    return None, {"ok": False, "error": "person_id must be a number.", "code": "person_id_invalid"}, 400
+                row = conn.execute(
+                    "SELECT id, name, email FROM people WHERE id = ?",
+                    (resolved_id,),
+                ).fetchone()
+                if row:
+                    return row_to_dict(row), None, 200
+                return None, {"ok": False, "error": "No Person matched person_id.", "code": "person_not_found"}, 404
+
+            if person_email:
+                rows = rows_to_dicts(
+                    conn.execute(
+                        """
+                        SELECT id, name, email
+                        FROM people
+                        WHERE lower(trim(email)) = lower(trim(?))
+                        ORDER BY name COLLATE NOCASE, id
+                        """,
+                        (person_email,),
+                    ).fetchall()
+                )
+                if len(rows) == 1:
+                    return rows[0], None, 200
+                if len(rows) > 1:
+                    return (
+                        None,
+                        {
+                            "ok": False,
+                            "error": "Multiple People matched person_email; automation will not guess.",
+                            "code": "person_match_ambiguous",
+                            "possible_matches": rows[:10],
+                        },
+                        400,
+                    )
+                return None, {"ok": False, "error": "No Person matched person_email.", "code": "person_not_found"}, 404
+
+            if person_name:
+                rows = rows_to_dicts(
+                    conn.execute(
+                        """
+                        SELECT id, name, email
+                        FROM people
+                        WHERE lower(trim(name)) = lower(trim(?))
+                        ORDER BY name COLLATE NOCASE, id
+                        """,
+                        (person_name,),
+                    ).fetchall()
+                )
+                if len(rows) == 1:
+                    return rows[0], None, 200
+                if len(rows) > 1:
+                    return (
+                        None,
+                        {
+                            "ok": False,
+                            "error": "Multiple People matched person_name; automation will not guess.",
+                            "code": "person_match_ambiguous",
+                            "possible_matches": rows[:10],
+                        },
+                        400,
+                    )
+                return None, {"ok": False, "error": "No Person matched person_name.", "code": "person_not_found"}, 404
+
+        return None, {"ok": False, "error": "Provide person_id, person_email, or person_name.", "code": "person_resolution_required"}, 400
+
+    def add_automation_person_task(self, payload: dict[str, Any]) -> tuple[dict[str, Any], int]:
+        content = str(payload.get("content") or "").strip()
+        if not content:
+            return {"ok": False, "error": "Task content is required.", "code": "task_content_required"}, 400
+        source = self.clean_optional(payload.get("source"))
+        if source:
+            content = f"{content}\n\nSource: {source}"
+        person, error_payload, status = self.resolve_automation_person(payload)
+        if error_payload:
+            return error_payload, status
+        assert person is not None
+        actor_user = {
+            "id": None,
+            "email": "automation@chillcrm.local",
+            "name": "ChillCRM Automation",
+            "roles": ["automation"],
+        }
+        result = self.add_task(
+            {
+                "type": "person",
+                "id": person["id"],
+                "content": content,
+                "due_date": payload.get("due_date"),
+            },
+            actor_user=actor_user,
+            permission_action="automation_add_person_task",
+        )
+        result["automation"] = {
+            "person_id": person["id"],
+            "person_name": person.get("name"),
+            "person_email": person.get("email"),
+        }
+        return result, 200
 
     def add_task(self, payload: dict[str, Any], actor_user: dict[str, Any] | None = None, permission_action: str | None = "notes_tasks_followups") -> dict[str, Any]:
         record_type = str(payload.get("type", "")).lower()

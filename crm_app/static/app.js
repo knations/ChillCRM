@@ -2089,7 +2089,7 @@ function calendarQuickAddForm(localToday) {
   return `
     <div class="calendar-quick-add">
       <div class="inline-header">
-        <h3>Add</h3>
+        <span></span>
         <button class="text-button calendar-quick-add-toggle" type="button">Add</button>
       </div>
       <div class="calendar-quick-add-body" hidden>

@@ -2090,41 +2090,48 @@ function calendarQuickAddForm(localToday) {
     <div class="calendar-quick-add">
       <div class="inline-header">
         <h3>Add</h3>
-        <button class="text-button calendar-quick-add-save" type="button">Save</button>
+        <button class="text-button calendar-quick-add-toggle" type="button">Add</button>
       </div>
-      <div class="calendar-quick-add-grid">
-        <label>
-          <span>Type</span>
-          <select id="calendarQuickAddType">
-            <option value="task">Task</option>
-            <option value="call">Call</option>
-          </select>
+      <div class="calendar-quick-add-body" hidden>
+        <div class="calendar-quick-add-grid">
+          <label>
+            <span>Type</span>
+            <select id="calendarQuickAddType">
+              <option value="task">Task</option>
+              <option value="call">Call</option>
+            </select>
+          </label>
+          <label>
+            <span>Date</span>
+            <input id="calendarQuickAddDate" type="date" value="${escapeHtml(selectedDate)}">
+          </label>
+          <label class="calendar-quick-add-time" hidden>
+            <span>Time</span>
+            <input id="calendarQuickAddTime" type="time">
+          </label>
+          <label class="calendar-quick-add-person">
+            <span>Person</span>
+            <input id="calendarQuickAddPersonSearch" type="text" list="calendarQuickAddPeople" placeholder="Search people" autocomplete="off">
+            <datalist id="calendarQuickAddPeople"></datalist>
+            <input id="calendarQuickAddPersonId" type="hidden">
+          </label>
+        </div>
+        <label class="calendar-quick-add-detail">
+          <span>Detail</span>
+          <textarea id="calendarQuickAddDetail" class="note-input" rows="3" placeholder="What needs to happen?"></textarea>
         </label>
-        <label>
-          <span>Date</span>
-          <input id="calendarQuickAddDate" type="date" value="${escapeHtml(selectedDate)}">
-        </label>
-        <label class="calendar-quick-add-time" hidden>
-          <span>Time</span>
-          <input id="calendarQuickAddTime" type="time">
-        </label>
-        <label class="calendar-quick-add-person">
-          <span>Person</span>
-          <input id="calendarQuickAddPersonSearch" type="text" list="calendarQuickAddPeople" placeholder="Search people" autocomplete="off">
-          <datalist id="calendarQuickAddPeople"></datalist>
-          <input id="calendarQuickAddPersonId" type="hidden">
-        </label>
+        <div class="calendar-quick-add-actions">
+          <button class="text-button calendar-quick-add-save" type="button">Save</button>
+        </div>
+        <p class="form-error calendar-quick-add-error" hidden></p>
       </div>
-      <label class="calendar-quick-add-detail">
-        <span>Detail</span>
-        <textarea id="calendarQuickAddDetail" class="note-input" rows="3" placeholder="What needs to happen?"></textarea>
-      </label>
-      <p class="form-error calendar-quick-add-error" hidden></p>
     </div>
   `;
 }
 
 function wireCalendarQuickAdd(root, renderFn) {
+  const toggleButton = root.querySelector(".calendar-quick-add-toggle");
+  const body = root.querySelector(".calendar-quick-add-body");
   const typeInput = root.querySelector("#calendarQuickAddType");
   const timeField = root.querySelector(".calendar-quick-add-time");
   const personInput = root.querySelector("#calendarQuickAddPersonSearch");
@@ -2134,6 +2141,12 @@ function wireCalendarQuickAdd(root, renderFn) {
   const dateInput = root.querySelector("#calendarQuickAddDate");
   const saveButton = root.querySelector(".calendar-quick-add-save");
   const error = root.querySelector(".calendar-quick-add-error");
+  toggleButton?.addEventListener("click", () => {
+    if (!body) return;
+    body.hidden = !body.hidden;
+    toggleButton.textContent = body.hidden ? "Add" : "Close";
+    if (!body.hidden) detailInput?.focus();
+  });
   if (!typeInput || !personInput || !personIdInput || !detailInput || !dateInput || !saveButton) return;
 
   const syncType = () => {

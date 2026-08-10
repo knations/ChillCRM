@@ -2624,6 +2624,15 @@ button {
   grid-template-columns: minmax(120px, 160px) minmax(140px, 180px) minmax(120px, 150px) minmax(220px, 1fr);
 }
 
+.calendar-quick-add-body {
+  display: grid;
+  gap: 12px;
+}
+
+.calendar-quick-add-body[hidden] {
+  display: none;
+}
+
 .calendar-quick-add label,
 .calendar-quick-add-detail {
   color: var(--muted);
@@ -2651,6 +2660,11 @@ button {
 .calendar-quick-add input:focus {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.calendar-quick-add-actions {
+  display: flex;
+  justify-content: flex-end;
 }
 
 .action-calendar-panel {

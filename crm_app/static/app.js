@@ -2299,6 +2299,7 @@ function calendarActionCard(event) {
   const recordType = event.record_type || "";
   const recordId = event.record_id || "";
   const canOpenRecord = recordType && recordId && detailTypeSupported(recordType);
+  const title = isCall ? event.title : taskDisplayText(event.title);
   return `
     <article class="calendar-action-card ${event.bucket === "overdue" ? "is-overdue" : ""}">
       <div class="calendar-action-main">
@@ -2306,7 +2307,7 @@ function calendarActionCard(event) {
           <span class="timeline-type-pill">${isCall ? "Call" : "Task"}</span>
           <span class="muted">${escapeHtml(event.time || formatDate(event.date || event.due_at) || "No time")}</span>
         </div>
-        <strong>${escapeHtml(event.title || (isCall ? "Scheduled call" : "Task"))}</strong>
+        <div class="calendar-action-title">${escapeHtml(title || (isCall ? "Scheduled call" : "Task"))}</div>
         ${event.record_name ? `<p>${escapeHtml(event.record_name)}${recordType ? ` · ${escapeHtml(labelize(recordType))}` : ""}</p>` : ""}
         ${event.notes ? `<p class="calendar-action-notes">${linkifyText(event.notes)}</p>` : ""}
       </div>
@@ -2476,10 +2477,11 @@ function salesCommandTaskRow(task) {
   const type = task.record_type || "";
   const id = task.record_id || "";
   const recordName = task.record_name || "Unlinked";
+  const taskText = taskDisplayText(task.content);
   return `
     <div class="sales-command-row">
       <div>
-        <strong>${escapeHtml(task.content || "Untitled follow-up")}</strong>
+        <span class="dashboard-task-title">${escapeHtml(taskText || "Untitled follow-up")}</span>
         <span>${escapeHtml(formatDate(task.due_date) || "No due date")} · ${escapeHtml(task.task_source_label || "Task")}</span>
       </div>
       ${
@@ -10551,12 +10553,14 @@ function taskTable(tasks, compact) {
       </thead>
       <tbody>
         ${tasks
-          .map((task) => `
+          .map((task) => {
+            const taskText = taskDisplayText(task.content);
+            return `
             <tr class="${compact ? "" : "task-edit-card task-table-edit-row"}">
               <td>${
                 compact
-                  ? escapeHtml(task.content || "")
-                  : `<textarea class="task-edit-content task-table-textarea" rows="2">${escapeHtml(task.content || "")}</textarea>`
+                  ? escapeHtml(taskText)
+                  : `<textarea class="task-edit-content task-table-textarea" rows="2">${escapeHtml(taskText)}</textarea>`
               }</td>
               <td>
                 ${task.record_id && detailTypeSupported(task.record_type)
@@ -10578,7 +10582,8 @@ function taskTable(tasks, compact) {
                 </div>
               </td>
             </tr>
-          `)
+          `;
+          })
           .join("")}
       </tbody>
     </table>
@@ -10587,10 +10592,11 @@ function taskTable(tasks, compact) {
 
 function followupTaskCard(task) {
   const canOpen = task.record_id && detailTypeSupported(task.record_type);
+  const taskText = taskDisplayText(task.content);
   return `
     <article class="followup-task-card task-edit-card">
       <div class="followup-task-main">
-        <textarea class="task-edit-content task-table-textarea" rows="3">${escapeHtml(task.content || "")}</textarea>
+        <textarea class="task-edit-content task-table-textarea" rows="3">${escapeHtml(taskText)}</textarea>
         <div class="followup-task-meta">
           <span class="pill ${task.task_source === "local" ? "green" : ""}">${escapeHtml(task.task_source_label || "Imported")}</span>
           <span class="pill ${task.completed ? "" : "gold"}">${task.completed ? "Completed" : "Open"}</span>
@@ -10627,11 +10633,15 @@ function taskActionButton(task) {
 
 function taskLocalCopyButton(task) {
   if (task.completed || task.task_source !== "imported" || !task.record_id || !detailTypeSupported(task.record_type)) return "";
-  return `<button class="text-button copy-imported-task-button" data-id="${task.source_id}" data-task="${escapeHtml(task.content || "")}">Copy Local</button>`;
+  return `<button class="text-button copy-imported-task-button" data-id="${task.source_id}" data-task="${escapeHtml(taskDisplayText(task.content))}">Copy Local</button>`;
 }
 
 function taskDateInputValue(value) {
   return value ? String(value).slice(0, 10) : "";
+}
+
+function taskDisplayText(value) {
+  return String(value || "").split(/\n\s*\nSource:\s*/i)[0].trim();
 }
 
 function personTagPicker(detail) {
@@ -11087,7 +11097,7 @@ function tasksSection(tasks, options = {}) {
           compact
             ? `
               <div class="note compact-task-card">
-                <p>${escapeHtml(task.content || "Task")}</p>
+                <p>${escapeHtml(taskDisplayText(task.content) || "Task")}</p>
                 <div class="compact-task-footer">
                   ${task.due_date ? `<span>${escapeHtml(formatDate(task.due_date))}</span>` : ""}
                   ${taskActionButton(task)}
@@ -11096,7 +11106,7 @@ function tasksSection(tasks, options = {}) {
             `
             : `
               <div class="note task-edit-card">
-                <textarea class="task-edit-content note-input compact-input" rows="3">${escapeHtml(task.content || "")}</textarea>
+                <textarea class="task-edit-content note-input compact-input" rows="3">${escapeHtml(taskDisplayText(task.content))}</textarea>
                 <div class="task-edit-row">
                   <label>
                     <span>Due</span>

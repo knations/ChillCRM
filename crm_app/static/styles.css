@@ -2755,9 +2755,18 @@ button {
 }
 
 .calendar-action-main p,
-.calendar-action-main strong {
+.calendar-action-title {
   margin: 0;
   overflow-wrap: anywhere;
+}
+
+.calendar-action-title,
+.dashboard-task-title {
+  color: var(--text);
+  display: block;
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 1.35;
 }
 
 .calendar-action-main p {

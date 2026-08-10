@@ -26166,9 +26166,6 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         content = str(payload.get("content") or "").strip()
         if not content:
             return {"ok": False, "error": "Task content is required.", "code": "task_content_required"}, 400
-        source = self.clean_optional(payload.get("source"))
-        if source:
-            content = f"{content}\n\nSource: {source}"
         person, error_payload, status = self.resolve_automation_person(payload)
         if error_payload:
             return error_payload, status
@@ -26179,6 +26176,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                 "id": person["id"],
                 "content": content,
                 "due_date": payload.get("due_date"),
+                "source_json": self.automation_task_source_json(payload.get("source")),
             },
             actor_user=self.automation_actor_user(),
             permission_action="automation_add_person_task",
@@ -26261,8 +26259,9 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             {
                 "type": "owner",
                 "id": owner["id"],
-                "content": self.automation_content_with_source(content, payload.get("source")),
+                "content": content,
                 "due_date": payload.get("due_date"),
+                "source_json": self.automation_task_source_json(payload.get("source")),
             },
             actor_user=self.automation_actor_user(),
             permission_action="automation_add_owner_task",
@@ -26287,6 +26286,13 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         if source_text:
             return f"{content}\n\nSource: {source_text}"
         return content
+
+    def automation_task_source_json(self, source: Any) -> dict[str, Any]:
+        source_text = self.clean_optional(source)
+        payload: dict[str, Any] = {"local_source": "automation_transcript_task"}
+        if source_text:
+            payload["notes"] = source_text
+        return payload
 
     def add_automation_person_note(self, payload: dict[str, Any]) -> tuple[dict[str, Any], int]:
         content = str(payload.get("content") or "").strip()
@@ -26349,6 +26355,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         content = str(payload.get("content", "")).strip()
         due_date = self.clean_optional(payload.get("due_date"))
         remind_at = self.clean_optional(payload.get("remind_at"))
+        source_json = self.task_source_json_for_insert(payload.get("source_json"))
         if record_type not in {"person", "company", "lead", "deal", "owner"}:
             raise ValueError("Unsupported task target.")
         if not content:
@@ -26386,7 +26393,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                     0,
                     timestamp,
                     timestamp,
-                    "{}",
+                    source_json,
                 ),
             )
             if task_id is None:
@@ -26408,6 +26415,22 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         if record_type in {"person", "company", "lead", "deal"}:
             response["detail"] = self.record_detail({"type": [record_type], "id": [str(record_id)]})
         return response
+
+    def task_source_json_for_insert(self, value: Any) -> str:
+        if isinstance(value, dict):
+            return json.dumps(value, ensure_ascii=False)
+        if isinstance(value, str):
+            text = value.strip()
+            if not text:
+                return "{}"
+            try:
+                parsed = json.loads(text)
+            except json.JSONDecodeError:
+                return json.dumps({"notes": text}, ensure_ascii=False)
+            if isinstance(parsed, dict):
+                return json.dumps(parsed, ensure_ascii=False)
+            return json.dumps({"notes": text}, ensure_ascii=False)
+        return "{}"
 
     def update_task(self, payload: dict[str, Any], actor_user: dict[str, Any] | None = None, permission_action: str | None = "notes_tasks_followups") -> dict[str, Any]:
         task_id = int(payload.get("id", 0))

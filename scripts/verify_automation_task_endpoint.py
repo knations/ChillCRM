@@ -50,6 +50,16 @@ def task_count_for_person(db_path: Path, person_id: int, content: str) -> int:
         )
 
 
+def task_source_for_person(db_path: Path, person_id: int, content: str) -> dict:
+    with sqlite3.connect(db_path) as conn:
+        row = conn.execute(
+            "SELECT source_json FROM tasks WHERE record_type = 'person' AND record_id = ? AND content = ? ORDER BY id DESC LIMIT 1",
+            (person_id, content),
+        ).fetchone()
+    assert row is not None
+    return json.loads(row[0] or "{}")
+
+
 def task_count_for_owner(db_path: Path, owner_id: int, content: str) -> int:
     with sqlite3.connect(db_path) as conn:
         return int(
@@ -58,6 +68,16 @@ def task_count_for_owner(db_path: Path, owner_id: int, content: str) -> int:
                 (owner_id, content),
             ).fetchone()[0]
         )
+
+
+def task_source_for_owner(db_path: Path, owner_id: int, content: str) -> dict:
+    with sqlite3.connect(db_path) as conn:
+        row = conn.execute(
+            "SELECT source_json FROM tasks WHERE record_type = 'owner' AND record_id = ? AND content = ? ORDER BY id DESC LIMIT 1",
+            (owner_id, content),
+        ).fetchone()
+    assert row is not None
+    return json.loads(row[0] or "{}")
 
 
 def note_count_for_person(db_path: Path, person_id: int, content: str) -> int:
@@ -173,7 +193,7 @@ def main() -> int:
             probe.headers = {"Authorization": f"Bearer {TOKEN}"}
             assert probe.automation_authorization_error() is None
 
-            content = "Automation verifier task\n\nSource: Otter debrief verifier"
+            content = "Automation verifier task"
             assert task_count_for_person(tmp_db, person_id, content) == 0
             payload, status = probe.add_automation_person_task(
                 {
@@ -187,8 +207,11 @@ def main() -> int:
             assert payload["ok"] is True
             assert payload["automation"]["person_id"] == person_id
             assert task_count_for_person(tmp_db, person_id, content) == 1
+            source = task_source_for_person(tmp_db, person_id, content)
+            assert source["local_source"] == "automation_transcript_task"
+            assert source["notes"] == "Otter debrief verifier"
 
-            owner_content = "Automation verifier owner task\n\nSource: Otter owner brief verifier"
+            owner_content = "Automation verifier owner task"
             assert task_count_for_owner(tmp_db, owner_id, owner_content) == 0
             payload, status = probe.add_automation_owner_task(
                 {
@@ -202,6 +225,9 @@ def main() -> int:
             assert payload["ok"] is True
             assert payload["automation"]["owner_id"] == owner_id
             assert task_count_for_owner(tmp_db, owner_id, owner_content) == 1
+            source = task_source_for_owner(tmp_db, owner_id, owner_content)
+            assert source["local_source"] == "automation_transcript_task"
+            assert source["notes"] == "Otter owner brief verifier"
 
             note_content = "Automation verifier note\n\nSource: Otter debrief verifier"
             assert note_count_for_person(tmp_db, person_id, note_content) == 0

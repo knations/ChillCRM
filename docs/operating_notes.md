@@ -61,9 +61,12 @@ Codex/Otter debrief automations may create approved follow-up items on existing 
 POST https://chillcrm.app/api/automation/add_person_task
 POST https://chillcrm.app/api/automation/add_person_note
 POST https://chillcrm.app/api/automation/add_person_call
+POST https://chillcrm.app/api/automation/add_owner_task
 ```
 
 These endpoints require the server-side `CHILLCRM_AUTOMATION_TOKEN` and accept it only as a bearer token or `X-CHILLCRM-AUTOMATION-TOKEN` header. The token is not a general CRM session and does not permit broad reads or writes. Automation must identify a Person by `person_id`, exact email, or exact case-insensitive name; ambiguous matches stop without guessing.
+
+Owner tasks use `/api/automation/add_owner_task` and identify an active app user by `owner_id`, exact `owner_email`, or exact case-insensitive `owner_name`. Owner tasks appear in the dashboard/calendar work queue without attaching to a Person, Company, Lead, or Deal.
 
 ## Files
 

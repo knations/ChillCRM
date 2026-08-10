@@ -3608,6 +3608,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                 "/api/automation/add_person_task",
                 "/api/automation/add_person_note",
                 "/api/automation/add_person_call",
+                "/api/automation/add_owner_task",
             }:
                 authorization_error = self.automation_authorization_error()
                 if authorization_error:
@@ -3618,6 +3619,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                     "/api/automation/add_person_task": "/api/add_task",
                     "/api/automation/add_person_note": "/api/add_note",
                     "/api/automation/add_person_call": "/api/add_call_log",
+                    "/api/automation/add_owner_task": "/api/add_task",
                 }[path]
                 if self.should_block_remote_write(write_path):
                     self.send_remote_write_locked(path)
@@ -3630,8 +3632,10 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                     payload, status = self.add_automation_person_task(request_payload)
                 elif path == "/api/automation/add_person_note":
                     payload, status = self.add_automation_person_note(request_payload)
-                else:
+                elif path == "/api/automation/add_person_call":
                     payload, status = self.add_automation_person_call(request_payload)
+                else:
+                    payload, status = self.add_automation_owner_task(request_payload)
                 self.send_json(payload, status)
                 return
             auth_user = self.current_auth_user()
@@ -3851,7 +3855,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         if status not in {"open", "completed", "all", "overdue", "due_soon"}:
             status = "open"
         record_type = str(settings.get("record_type") or "").strip().lower()
-        if record_type not in {"", "person", "company", "lead", "deal", "unlinked"}:
+        if record_type not in {"", "person", "company", "lead", "deal", "owner", "unlinked"}:
             record_type = ""
         task_source = str(settings.get("source") or "").strip().lower()
         if task_source not in {"", "imported", "local"}:
@@ -4492,6 +4496,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                              WHEN t.record_type = 'company' THEN c.name
                              WHEN t.record_type = 'lead' THEN l.name
                              WHEN t.record_type = 'deal' THEN d.name
+                             WHEN t.record_type = 'owner' THEN au.display_name
                              ELSE NULL
                            END AS record_name
                     FROM tasks t
@@ -4499,6 +4504,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                     LEFT JOIN companies c ON t.record_type = 'company' AND c.id = t.record_id
                     LEFT JOIN leads l ON t.record_type = 'lead' AND l.id = t.record_id
                     LEFT JOIN deals d ON t.record_type = 'deal' AND d.id = t.record_id
+                    LEFT JOIN app_users au ON t.record_type = 'owner' AND au.id = t.record_id
                     WHERE t.completed = 0 AND t.due_date IS NOT NULL AND date(t.due_date) = date('now')
                     ORDER BY t.updated_at DESC, t.id DESC
                     LIMIT 4
@@ -8352,6 +8358,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                 LEFT JOIN companies c ON t.record_type = 'company' AND c.id = t.record_id
                 LEFT JOIN leads l ON t.record_type = 'lead' AND l.id = t.record_id
                 LEFT JOIN deals d ON t.record_type = 'deal' AND d.id = t.record_id
+                LEFT JOIN app_users au ON t.record_type = 'owner' AND au.id = t.record_id
                 WHERE {where}
                 """,
                 values,
@@ -8366,6 +8373,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                     LEFT JOIN companies c ON t.record_type = 'company' AND c.id = t.record_id
                     LEFT JOIN leads l ON t.record_type = 'lead' AND l.id = t.record_id
                     LEFT JOIN deals d ON t.record_type = 'deal' AND d.id = t.record_id
+                    LEFT JOIN app_users au ON t.record_type = 'owner' AND au.id = t.record_id
                     WHERE {source_where}
                     GROUP BY CASE WHEN t.zendesk_task_id IS NULL THEN 'local' ELSE 'imported' END
                     """,
@@ -8492,7 +8500,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         values: list[Any] = []
         if record_type == "unlinked":
             where += " AND (t.record_type IS NULL OR t.record_type = '' OR t.record_id IS NULL)"
-        elif record_type in {"person", "company", "lead", "deal"}:
+        elif record_type in {"person", "company", "lead", "deal", "owner"}:
             where += " AND t.record_type = ?"
             values.append(record_type)
         if task_source == "imported":
@@ -8508,9 +8516,10 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                     OR c.name LIKE ? OR c.email LIKE ?
                     OR l.name LIKE ? OR l.email LIKE ? OR l.organization_name LIKE ?
                     OR d.name LIKE ?
+                    OR au.display_name LIKE ? OR au.email LIKE ?
                 )
             """
-            values.extend([like] * 9)
+            values.extend([like] * 11)
         return where, values
 
     def task_sort_fields(self) -> set[str]:
@@ -8561,6 +8570,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                          WHEN t.record_type = 'company' THEN c.name
                          WHEN t.record_type = 'lead' THEN l.name
                          WHEN t.record_type = 'deal' THEN d.name
+                         WHEN t.record_type = 'owner' THEN au.display_name
                          ELSE NULL
                        END AS record_name
                 FROM tasks t
@@ -8568,6 +8578,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                 LEFT JOIN companies c ON t.record_type = 'company' AND c.id = t.record_id
                 LEFT JOIN leads l ON t.record_type = 'lead' AND l.id = t.record_id
                 LEFT JOIN deals d ON t.record_type = 'deal' AND d.id = t.record_id
+                LEFT JOIN app_users au ON t.record_type = 'owner' AND au.id = t.record_id
                 WHERE {where}
                 ORDER BY {order_by}
                 LIMIT ? OFFSET ?
@@ -18370,6 +18381,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                          WHEN t.record_type = 'company' THEN c.name
                          WHEN t.record_type = 'lead' THEN l.name
                          WHEN t.record_type = 'deal' THEN d.name
+                         WHEN t.record_type = 'owner' THEN au.display_name
                          ELSE NULL
                        END AS record_name,
                        CASE WHEN t.zendesk_task_id IS NULL THEN 'Local' ELSE 'Imported' END AS source_label
@@ -18378,6 +18390,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                 LEFT JOIN companies c ON t.record_type = 'company' AND c.id = t.record_id
                 LEFT JOIN leads l ON t.record_type = 'lead' AND l.id = t.record_id
                 LEFT JOIN deals d ON t.record_type = 'deal' AND d.id = t.record_id
+                LEFT JOIN app_users au ON t.record_type = 'owner' AND au.id = t.record_id
                 WHERE t.completed = 0
                   AND t.zendesk_task_id IS NULL
                   AND t.due_date IS NOT NULL
@@ -26177,6 +26190,90 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         }
         return result, 200
 
+    def resolve_automation_owner(self, payload: dict[str, Any]) -> tuple[dict[str, Any] | None, dict[str, Any] | None, int]:
+        owner_id = self.clean_optional(payload.get("owner_id"))
+        owner_email = self.clean_optional(payload.get("owner_email"))
+        owner_name = self.clean_optional(payload.get("owner_name"))
+
+        with self.db() as conn:
+            if owner_id:
+                try:
+                    resolved_id = int(owner_id)
+                except (TypeError, ValueError):
+                    return None, {"ok": False, "error": "owner_id must be a number.", "code": "owner_id_invalid"}, 400
+                row = conn.execute(
+                    "SELECT id, display_name, email FROM app_users WHERE id = ? AND status = 'active'",
+                    (resolved_id,),
+                ).fetchone()
+                if row:
+                    return row_to_dict(row), None, 200
+                return None, {"ok": False, "error": "No active owner matched owner_id.", "code": "owner_not_found"}, 404
+
+            if owner_email:
+                rows = rows_to_dicts(
+                    conn.execute(
+                        """
+                        SELECT id, display_name, email
+                        FROM app_users
+                        WHERE status = 'active'
+                          AND lower(trim(email)) = lower(trim(?))
+                        ORDER BY display_name COLLATE NOCASE, id
+                        """,
+                        (owner_email,),
+                    ).fetchall()
+                )
+                if len(rows) == 1:
+                    return rows[0], None, 200
+                if len(rows) > 1:
+                    return None, {"ok": False, "error": "Multiple owners matched owner_email; automation will not guess.", "code": "owner_match_ambiguous", "possible_matches": rows[:10]}, 400
+                return None, {"ok": False, "error": "No active owner matched owner_email.", "code": "owner_not_found"}, 404
+
+            if owner_name:
+                rows = rows_to_dicts(
+                    conn.execute(
+                        """
+                        SELECT id, display_name, email
+                        FROM app_users
+                        WHERE status = 'active'
+                          AND lower(trim(display_name)) = lower(trim(?))
+                        ORDER BY display_name COLLATE NOCASE, id
+                        """,
+                        (owner_name,),
+                    ).fetchall()
+                )
+                if len(rows) == 1:
+                    return rows[0], None, 200
+                if len(rows) > 1:
+                    return None, {"ok": False, "error": "Multiple owners matched owner_name; automation will not guess.", "code": "owner_match_ambiguous", "possible_matches": rows[:10]}, 400
+                return None, {"ok": False, "error": "No active owner matched owner_name.", "code": "owner_not_found"}, 404
+
+        return None, {"ok": False, "error": "Provide owner_id, owner_email, or owner_name.", "code": "owner_resolution_required"}, 400
+
+    def add_automation_owner_task(self, payload: dict[str, Any]) -> tuple[dict[str, Any], int]:
+        content = str(payload.get("content") or "").strip()
+        if not content:
+            return {"ok": False, "error": "Task content is required.", "code": "task_content_required"}, 400
+        owner, error_payload, status = self.resolve_automation_owner(payload)
+        if error_payload:
+            return error_payload, status
+        assert owner is not None
+        result = self.add_task(
+            {
+                "type": "owner",
+                "id": owner["id"],
+                "content": self.automation_content_with_source(content, payload.get("source")),
+                "due_date": payload.get("due_date"),
+            },
+            actor_user=self.automation_actor_user(),
+            permission_action="automation_add_owner_task",
+        )
+        result["automation"] = {
+            "owner_id": owner["id"],
+            "owner_name": owner.get("display_name"),
+            "owner_email": owner.get("email"),
+        }
+        return result, 200
+
     def automation_actor_user(self) -> dict[str, Any]:
         return {
             "id": None,
@@ -26252,7 +26349,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         content = str(payload.get("content", "")).strip()
         due_date = self.clean_optional(payload.get("due_date"))
         remind_at = self.clean_optional(payload.get("remind_at"))
-        if record_type not in {"person", "company", "lead", "deal"}:
+        if record_type not in {"person", "company", "lead", "deal", "owner"}:
             raise ValueError("Unsupported task target.")
         if not content:
             raise ValueError("Task content is required.")
@@ -26307,7 +26404,10 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                 permission_action=permission_action,
             )
             conn.commit()
-        return {"ok": True, "backup": str(backup_path), "detail": self.record_detail({"type": [record_type], "id": [str(record_id)]})}
+        response = {"ok": True, "backup": str(backup_path), "task_id": task_id}
+        if record_type in {"person", "company", "lead", "deal"}:
+            response["detail"] = self.record_detail({"type": [record_type], "id": [str(record_id)]})
+        return response
 
     def update_task(self, payload: dict[str, Any], actor_user: dict[str, Any] | None = None, permission_action: str | None = "notes_tasks_followups") -> dict[str, Any]:
         task_id = int(payload.get("id", 0))
@@ -26325,7 +26425,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             if str(task["content"] or "") == content and old_due_date == due_date:
                 record_type = task["record_type"]
                 record_id = task["record_id"]
-                if record_type and record_id:
+                if record_type in {"person", "company", "lead", "deal"} and record_id:
                     return {"ok": True, "backup": None, "detail": self.record_detail({"type": [record_type], "id": [str(record_id)]})}
                 return {"ok": True, "backup": None}
 
@@ -26358,7 +26458,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             conn.commit()
             record_type = task["record_type"]
             record_id = task["record_id"]
-        if record_type and record_id:
+        if record_type in {"person", "company", "lead", "deal"} and record_id:
             return {"ok": True, "backup": str(backup_path), "detail": self.record_detail({"type": [record_type], "id": [str(record_id)]})}
         return {"ok": True, "backup": str(backup_path)}
 
@@ -26476,7 +26576,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             conn.commit()
             record_type = task["record_type"]
             record_id = task["record_id"]
-        if record_type and record_id:
+        if record_type in {"person", "company", "lead", "deal"} and record_id:
             return {"ok": True, "backup": str(backup_path), "detail": self.record_detail({"type": [record_type], "id": [str(record_id)]})}
         return {"ok": True, "backup": str(backup_path)}
 
@@ -26516,7 +26616,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         return {"ok": True, "backup": str(backup_path), "cleanup": self.cleanup()}
 
     def record_exists(self, record_type: str, record_id: int) -> bool:
-        table = {"person": "people", "company": "companies", "lead": "leads", "deal": "deals"}.get(record_type)
+        table = {"person": "people", "company": "companies", "lead": "leads", "deal": "deals", "owner": "app_users"}.get(record_type)
         if not table:
             return False
         with self.db() as conn:

@@ -31,12 +31,31 @@ def first_person_id(db_path: Path) -> int:
     return int(row[0])
 
 
+def first_owner(db_path: Path) -> tuple[int, str]:
+    with sqlite3.connect(db_path) as conn:
+        row = conn.execute(
+            "SELECT id, display_name FROM app_users WHERE status = 'active' ORDER BY id LIMIT 1"
+        ).fetchone()
+    assert row is not None
+    return int(row[0]), str(row[1])
+
+
 def task_count_for_person(db_path: Path, person_id: int, content: str) -> int:
     with sqlite3.connect(db_path) as conn:
         return int(
             conn.execute(
                 "SELECT count(*) FROM tasks WHERE record_type = 'person' AND record_id = ? AND content = ?",
                 (person_id, content),
+            ).fetchone()[0]
+        )
+
+
+def task_count_for_owner(db_path: Path, owner_id: int, content: str) -> int:
+    with sqlite3.connect(db_path) as conn:
+        return int(
+            conn.execute(
+                "SELECT count(*) FROM tasks WHERE record_type = 'owner' AND record_id = ? AND content = ?",
+                (owner_id, content),
             ).fetchone()[0]
         )
 
@@ -114,6 +133,7 @@ def main() -> int:
         shutil.copy2(DEFAULT_DB, tmp_db)
         ensure_runtime_schema(tmp_db)
         person_id = first_person_id(tmp_db)
+        owner_id, owner_name = first_owner(tmp_db)
         ambiguous_name = insert_ambiguous_people(tmp_db)
 
         class TestHandler(handler):
@@ -167,6 +187,21 @@ def main() -> int:
             assert payload["ok"] is True
             assert payload["automation"]["person_id"] == person_id
             assert task_count_for_person(tmp_db, person_id, content) == 1
+
+            owner_content = "Automation verifier owner task\n\nSource: Otter owner brief verifier"
+            assert task_count_for_owner(tmp_db, owner_id, owner_content) == 0
+            payload, status = probe.add_automation_owner_task(
+                {
+                    "owner_name": owner_name,
+                    "content": "Automation verifier owner task",
+                    "due_date": "2026-08-14",
+                    "source": "Otter owner brief verifier",
+                },
+            )
+            assert status == 200, payload
+            assert payload["ok"] is True
+            assert payload["automation"]["owner_id"] == owner_id
+            assert task_count_for_owner(tmp_db, owner_id, owner_content) == 1
 
             note_content = "Automation verifier note\n\nSource: Otter debrief verifier"
             assert note_count_for_person(tmp_db, person_id, note_content) == 0

@@ -2298,6 +2298,7 @@ function calendarActionCard(event) {
   const isCall = event.event_type === "call";
   const recordType = event.record_type || "";
   const recordId = event.record_id || "";
+  const canOpenRecord = recordType && recordId && detailTypeSupported(recordType);
   return `
     <article class="calendar-action-card ${event.bucket === "overdue" ? "is-overdue" : ""}">
       <div class="calendar-action-main">
@@ -2310,7 +2311,7 @@ function calendarActionCard(event) {
         ${event.notes ? `<p class="calendar-action-notes">${linkifyText(event.notes)}</p>` : ""}
       </div>
       <div class="calendar-action-buttons">
-        ${recordType && recordId ? `<button class="text-button record-button" type="button" data-type="${escapeHtml(recordType)}" data-id="${escapeHtml(recordId)}">Open</button>` : ""}
+        ${canOpenRecord ? `<button class="text-button record-button" type="button" data-type="${escapeHtml(recordType)}" data-id="${escapeHtml(recordId)}">Open</button>` : ""}
         ${
           isCall
             ? `<button class="text-button log-scheduled-call-button" type="button" data-id="${escapeHtml(event.source_id)}">Log Call</button>`

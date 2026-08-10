@@ -2633,6 +2633,10 @@ button {
   display: none;
 }
 
+.calendar-quick-add [hidden] {
+  display: none;
+}
+
 .calendar-quick-add label,
 .calendar-quick-add-detail {
   color: var(--muted);

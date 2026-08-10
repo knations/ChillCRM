@@ -2183,8 +2183,13 @@ function wireCalendarQuickAdd(root, renderFn) {
   typeInput.addEventListener("change", syncType);
   personInput.addEventListener("input", () => {
     clearError();
-    personIdInput.value = "";
     const value = personInput.value.trim();
+    const exactPerson = state.calendarPersonSuggestions.find((person) => calendarPersonOptionLabel(person).toLowerCase() === value.toLowerCase());
+    personIdInput.value = exactPerson?.source_id || "";
+    if (exactPerson) {
+      window.clearTimeout(state.calendarPersonDebounce);
+      return;
+    }
     window.clearTimeout(state.calendarPersonDebounce);
     state.calendarPersonDebounce = window.setTimeout(async () => {
       if (value.length < 2) {
@@ -2213,6 +2218,7 @@ function wireCalendarQuickAdd(root, renderFn) {
   saveButton.addEventListener("click", async () => {
     clearError();
     const person = selectedPerson();
+    if (person?.source_id) personIdInput.value = person.source_id;
     const detail = detailInput.value.trim();
     const date = dateInput.value.trim();
     if (!person?.source_id) {
@@ -2261,9 +2267,7 @@ function wireCalendarQuickAdd(root, renderFn) {
 }
 
 function calendarPersonOptionLabel(person) {
-  const name = person?.name || person?.label || "Unnamed person";
-  const detail = [person?.email, formatPhoneDisplay(person?.phone)].filter(Boolean).join(" · ");
-  return detail ? `${name} · ${detail}` : name;
+  return person?.name || person?.label || "Unnamed person";
 }
 
 function calendarQuickAddCallAt(date, time) {

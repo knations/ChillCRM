@@ -6672,6 +6672,20 @@ function personNextStepSection(detail) {
           ? `<div class="person-next-task-card">
               <span>${escapeHtml(nextMeta)}</span>
               <strong>${escapeHtml(nextTask.content || "Follow up")}</strong>
+              <button class="person-next-task-edit edit-next-task-button" type="button" data-id="${escapeHtml(nextTask.source_id)}">Edit</button>
+              <div class="person-next-task-editor task-edit-card" hidden>
+                <label class="task-dialog-field">
+                  <span>Task</span>
+                  <textarea class="task-edit-content note-input" rows="3">${escapeHtml(nextTask.content || "")}</textarea>
+                </label>
+                <label class="task-dialog-field">
+                  <span>Due Date</span>
+                  <input class="task-edit-due" type="date" value="${escapeHtml(taskDateInputValue(nextTask.due_date))}">
+                </label>
+                <div class="person-next-task-editor-actions">
+                  <button class="text-button save-task-button" type="button" data-id="${escapeHtml(nextTask.source_id)}">Save</button>
+                </div>
+              </div>
             </div>`
           : `<div class="person-next-task-card empty">
               <span>Clear</span>
@@ -8012,6 +8026,16 @@ function wireDetailForms(detail) {
   wireRecordFileControls(detail);
   wirePersonTagPicker(detail);
   wireArchiveButtons(els.detail);
+
+  document.querySelectorAll(".edit-next-task-button").forEach((button) => {
+    button.addEventListener("click", () => {
+      const editor = button.closest(".person-next-task-card")?.querySelector(".person-next-task-editor");
+      if (!editor) return;
+      editor.hidden = !editor.hidden;
+      button.textContent = editor.hidden ? "Edit" : "Close";
+      if (!editor.hidden) editor.querySelector(".task-edit-content")?.focus();
+    });
+  });
 
   document.querySelectorAll(".gmail-compose-button").forEach((button) => {
     button.addEventListener("click", (event) => {

@@ -20,7 +20,7 @@ on:
         required: true
         default: "30"
   schedule:
-    - cron: "15 17 * * *"
+    - cron: "15 */4 * * *"
 
 permissions:
   contents: read

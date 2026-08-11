@@ -88,7 +88,7 @@ If a transcript produces a useful suggestion but only identifies someone by a fi
 
 To avoid duplicate reviews, the bot records processed Drive file IDs and modified times in the `Transcript Intake Log` tab. A file is skipped after it has been scanned at the same modified time. If Otter updates the same document later, the changed modified time allows one new scan.
 
-The GitHub Action is `Scan Drive Transcripts To Approval Sheet`. It can be run manually from GitHub Actions, and it also runs daily at 10:00 AM Pacific during daylight time. Manual runs default to dry-run mode so the report can be checked before appending rows.
+The GitHub Action is `Scan Drive Transcripts To Approval Sheet`. It can be run manually from GitHub Actions, and it also runs every 4 hours. Manual runs default to dry-run mode so the report can be checked before appending rows.
 
 Required GitHub secret:
 
@@ -112,7 +112,7 @@ First-name-only or otherwise incomplete person matches are marked `NEEDS MATCH` 
 
 The bot records processed Granola note IDs and versions in the `Granola Intake Log` tab so it does not keep proposing the same note after it has already been scanned.
 
-The GitHub Action is `Scan Granola Notes To Approval Sheet`. Manual runs default to dry-run mode. The scheduled run starts shortly after the Drive transcript scanner so both sources feed the same approval lane.
+The GitHub Action is `Scan Granola Notes To Approval Sheet`. Manual runs default to dry-run mode. The scheduled run starts 15 minutes after the Drive transcript scanner every 4 hours so both sources feed the same approval lane without colliding.
 
 Required GitHub secret:
 

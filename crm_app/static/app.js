@@ -1213,7 +1213,7 @@ function viewDisplayLabel(view = state.view) {
       tags: "Tags",
       customFields: "Custom Fields",
       linkedResources: "Linked Resources",
-      archive: "Archive",
+      archive: "Files & History",
       followup: "Follow Up",
       activity: "Activity",
       exports: "Exports",
@@ -2672,7 +2672,7 @@ async function renderOperationsStatus() {
     <div class="section-header">
       <div>
         <h2>Operations</h2>
-        <p>CRM health, cleanup, backups, links, archive, and verification.</p>
+        <p>CRM health, cleanup, backups, links, files, and verification.</p>
       </div>
     </div>
     <div class="metric-grid">
@@ -4498,7 +4498,7 @@ function savedViewCountLabel(view) {
   const listNames = {
     tasks: "Follow Up",
     activity: "Activity",
-    archive: "Archive",
+    archive: "Files & History",
     linked_resources: "Linked Resources",
     tags: "Tags",
     custom_fields: "Custom Fields",
@@ -6144,7 +6144,7 @@ function renderArchiveItemDetail(detail) {
   state.currentDetail = null;
   state.currentArchiveItem = item;
   const title = item.title || item.label || "File or History Item";
-  const itemKind = item.item_type === "document" ? "File" : "History";
+  const itemKind = item.item_type === "document" ? "File" : "History Item";
   els.detail.innerHTML = `
     <div class="detail-content">
       ${detailHeader(title, `${item.label || archiveItemLabel(item.item_type)} · ${itemKind} #${item.id || ""}`, null, { mobileBackLabel: mobileDetailBackLabel() })}
@@ -6394,9 +6394,9 @@ function wireArchiveLinkForm(root, item) {
         showDetailActionError("Choose a target record before linking.");
         return;
       }
-      const ok = window.confirm(`Link archive item #${item.id} to ${labelize(recordType)} #${recordId}?`);
+      const ok = window.confirm(`Link this file/history item to ${labelize(recordType)} #${recordId}?`);
       if (!ok) return;
-      await runDetailAction(linkButton, { progress: "Linking archive item", success: "Archive item linked", failure: "Archive link failed" }, async () => {
+      await runDetailAction(linkButton, { progress: "Linking item", success: "Item linked", failure: "Link failed" }, async () => {
         const updated = await postJson("/api/link_archive_item", {
           id: Number(linkButton.dataset.id),
           record_type: recordType,
@@ -7395,7 +7395,7 @@ function recordSnapshot(detail) {
     purchases ? ["Purchases", formatNumber(purchases)] : null,
     tags ? ["Tags", formatNumber(tags)] : null,
     links ? ["Links", formatNumber(links)] : null,
-    archiveItems ? ["Archive", formatNumber(archiveItems)] : null,
+    archiveItems ? ["Files", formatNumber(archiveItems)] : null,
   ].filter(Boolean);
   if (!items.length) return "";
   return `
@@ -9364,7 +9364,7 @@ function activityTypeOptions() {
     ["note", "Notes"],
     ["task", "Open Tasks"],
     ["task_completed", "Completed Tasks"],
-    ["archive", "Archive"],
+    ["archive", "Files & History"],
     ["local_change", "Local Changes"],
     ["cleanup_decision", "Cleanup Decisions"],
     ["project_decision", "Project Decisions"],
@@ -9900,19 +9900,19 @@ async function renderArchive() {
     ${archiveReviewTriagePanel(data.archive_triage, data.triage_lane)}
     <div class="table-tools">
       <input id="archiveSearch" type="search" value="${escapeHtml(state.archiveQ)}" placeholder="Filter files, history, phones, or records">
-      <select id="archiveItemTypeFilter" aria-label="Archive item type">
+      <select id="archiveItemTypeFilter" aria-label="File or history type">
         <option value="" ${state.archiveItemType ? "" : "selected"}>All files/history</option>
         ${(data.item_type_counts || [])
           .map((item) => `<option value="${escapeHtml(item.value)}" ${state.archiveItemType === item.value ? "selected" : ""}>${escapeHtml(archiveItemLabel(item.value))} (${formatNumber(item.count)})</option>`)
           .join("")}
       </select>
-      <select id="archiveRecordTypeFilter" aria-label="Archive record type">
+      <select id="archiveRecordTypeFilter" aria-label="Linked record type">
         <option value="" ${state.archiveRecordType ? "" : "selected"}>All records</option>
         ${(data.record_type_counts || [])
           .map((item) => `<option value="${escapeHtml(item.value)}" ${state.archiveRecordType === item.value ? "selected" : ""}>${escapeHtml(item.value === "unlinked" ? "Unlinked" : labelize(item.value))} (${formatNumber(item.count)})</option>`)
           .join("")}
       </select>
-      <select id="archiveReviewStatusFilter" aria-label="Archive review status">
+      <select id="archiveReviewStatusFilter" aria-label="Review status">
         ${archiveReviewStatusOptions()
           .map(([value, label]) => {
             const count = (data.review_status_counts || []).find((item) => item.value === value)?.count;
@@ -9921,7 +9921,7 @@ async function renderArchive() {
           })
           .join("")}
       </select>
-      <select id="archiveTriageLaneFilter" aria-label="Archive triage lane">
+      <select id="archiveTriageLaneFilter" aria-label="Review group">
         ${archiveTriageLaneOptions()
           .map(([value, label]) => {
             const count = (data.archive_triage?.lane_counts || []).find((item) => item.triage_lane === value)?.count;
@@ -9932,11 +9932,11 @@ async function renderArchive() {
       </select>
       <label class="compact-date-filter">
         <span>From</span>
-        <input id="archiveDateFrom" type="date" value="${escapeHtml(state.archiveDateFrom)}" aria-label="Filter archive from date">
+        <input id="archiveDateFrom" type="date" value="${escapeHtml(state.archiveDateFrom)}" aria-label="Filter files and history from date">
       </label>
       <label class="compact-date-filter">
         <span>To</span>
-        <input id="archiveDateTo" type="date" value="${escapeHtml(state.archiveDateTo)}" aria-label="Filter archive to date">
+        <input id="archiveDateTo" type="date" value="${escapeHtml(state.archiveDateTo)}" aria-label="Filter files and history to date">
       </label>
       ${archiveSavedViewControls(savedViews)}
       <div class="pager">
@@ -11005,7 +11005,7 @@ function archiveItems(items, options = {}) {
     if (aTime !== bTime) return bTime - aTime;
     return Number(b.source_id || b.id || 0) - Number(a.source_id || a.id || 0);
   });
-  const sectionTitle = options.title || "Archive";
+  const sectionTitle = options.title || "Files";
   const countLabel = options.countLabel || "items";
   const sectionClass = options.sectionClass ? ` ${options.sectionClass}` : "";
   return `

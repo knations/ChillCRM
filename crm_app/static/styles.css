@@ -3484,7 +3484,7 @@ button {
 
 .person-detail-shell {
   display: grid;
-  gap: 18px;
+  gap: 22px;
 }
 
 .person-detail-overview {
@@ -3525,8 +3525,97 @@ button {
 .person-detail-layout {
   align-items: start;
   display: grid;
-  gap: 28px;
-  grid-template-columns: minmax(0, 1.45fr) minmax(300px, 0.85fr);
+  gap: 24px;
+  grid-template-columns: minmax(0, 1.3fr) minmax(300px, 0.8fr);
+}
+
+.person-focus-grid {
+  align-items: stretch;
+  display: grid;
+  gap: 16px;
+  grid-template-columns: minmax(0, 0.92fr) minmax(320px, 1.08fr);
+}
+
+.person-focus-grid > .detail-section,
+.person-work-column > .detail-section,
+.person-reference-column > .detail-section {
+  margin: 0;
+}
+
+.person-work-column,
+.person-reference-column {
+  display: grid;
+  gap: 18px;
+  min-width: 0;
+}
+
+.person-reference-column .detail-section {
+  background: #fffdf8;
+}
+
+.person-reference-stack {
+  display: grid;
+  gap: 12px;
+}
+
+.person-collapsible-section {
+  background: #fbfaf7;
+}
+
+.person-collapsible-section summary {
+  align-items: center;
+  cursor: pointer;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  list-style: none;
+}
+
+.person-collapsible-section summary::-webkit-details-marker {
+  display: none;
+}
+
+.person-collapsible-section summary::after {
+  color: var(--muted);
+  content: "Open";
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.person-collapsible-section[open] summary::after {
+  content: "Close";
+}
+
+.person-collapsible-section summary span {
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.person-collapsible-section summary strong {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 500;
+  margin-left: auto;
+}
+
+.person-collapsible-body {
+  display: grid;
+  gap: 16px;
+  padding-top: 16px;
+}
+
+.person-collapsible-body > .detail-section {
+  border: 0;
+  margin: 0;
+  padding: 0;
+}
+
+.person-collapsible-body > .detail-section + .detail-section {
+  border-top: 1px solid var(--line);
+  padding-top: 16px;
 }
 
 .person-vault-section summary span {
@@ -6609,6 +6698,7 @@ button {
   }
 
   .person-detail-overview,
+  .person-focus-grid,
   .person-detail-layout {
     grid-template-columns: 1fr;
   }

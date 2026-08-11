@@ -6818,20 +6818,35 @@ function dealNextActionPanel(detail) {
 function personDetailBody(detail) {
   const record = detail.record || {};
   const fileItems = [...(detail.record_files || []), ...(detail.archive_items || [])];
-  const mainSections = [
-    contactActions(detail, { title: "Contact" }),
-    personNextStepSection(detail),
-    personConversationSection(detail),
-    addressSection(detail, { title: "Addresses" }),
-    personTimelineSection(detail.timeline || []),
-    personVaultSection(detail),
-    editForm(detail),
+  const relatedSections = [
+    linkedResources(detail.linked_resources || []),
+    detail.company ? linkSection("Company", [detail.company], "company") : "",
+    detail.possible_person ? linkSection("Possible Match", [detail.possible_person], "person") : "",
+    detail.contact ? linkSection("Contact", [detail.contact], "person") : "",
+    detail.organization ? linkSection("Organization", [detail.organization], "company") : "",
+    detail.people?.length ? linkSection("People", detail.people, "person") : "",
+    detail.deals?.length ? linkSection("Deals", detail.deals, "deal") : "",
   ]
     .filter(Boolean)
     .join("");
-  const sidebarSections = [
-    tasksSection(detail.tasks || [], { title: "Task List", compact: true }),
+  const systemSections = [
+    recordLifecycleSection(detail),
+    reviewFlagsSection(detail.review_flags || []),
+    personPortalSection(detail.portal || null, record.id),
+  ]
+    .filter(Boolean)
+    .join("");
+  const profileSections = [editForm(detail), personVaultSection(detail)].filter(Boolean).join("");
+  const workColumn = [
+    addressSection(detail, { title: "Addresses" }),
+    personConversationSection(detail),
+    personTimelineSection(detail.timeline || []),
+  ]
+    .filter(Boolean)
+    .join("");
+  const referenceColumn = [
     purchasesSection(detail.purchases || []),
+    personAdditionalTasksSection(detail),
     archiveItems(fileItems, {
       title: "Files",
       countLabel: "files",
@@ -6843,36 +6858,67 @@ function personDetailBody(detail) {
       sectionClass: "files-section",
     }),
     detailTags(detail, detail.tags || []),
-    linkedResources(detail.linked_resources || []),
-    recordLifecycleSection(detail),
-    reviewFlagsSection(detail.review_flags || []),
-    personPortalSection(detail.portal || null, record.id),
-    detail.company ? linkSection("Company", [detail.company], "company") : "",
-    detail.possible_person ? linkSection("Possible Match", [detail.possible_person], "person") : "",
-    detail.contact ? linkSection("Contact", [detail.contact], "person") : "",
-    detail.organization ? linkSection("Organization", [detail.organization], "company") : "",
-    detail.people?.length ? linkSection("People", detail.people, "person") : "",
-    detail.deals?.length ? linkSection("Deals", detail.deals, "deal") : "",
+    relatedSections ? personCollapsibleSection("Related", "Linked records and resources", relatedSections) : "",
+  ]
+    .filter(Boolean)
+    .join("");
+  const lowerSections = [
+    profileSections ? personCollapsibleSection("Profile", "Editable fields and stored intel", profileSections) : "",
+    systemSections ? personCollapsibleSection("System", "Status, portal, and review controls", systemSections) : "",
   ]
     .filter(Boolean)
     .join("");
   return `
     <div class="person-detail-shell">
+      <div class="person-focus-grid">
+        ${contactActions(detail, { title: "Contact" })}
+        ${personNextStepSection(detail)}
+      </div>
       <div class="person-detail-layout">
-        <div class="person-detail-main">
-          ${mainSections}
+        <div class="person-detail-main person-work-column">
+          ${workColumn}
         </div>
-        <div class="person-detail-sidebar">
-          ${sidebarSections}
+        <div class="person-detail-sidebar person-reference-column">
+          ${referenceColumn}
         </div>
       </div>
+      ${lowerSections ? `<div class="person-reference-stack">${lowerSections}</div>` : ""}
     </div>
   `;
 }
 
+function personCollapsibleSection(title, subtitle, body) {
+  if (!body) return "";
+  return `
+    <details class="detail-section person-collapsible-section">
+      <summary>
+        <span>${escapeHtml(title)}</span>
+        ${subtitle ? `<strong>${escapeHtml(subtitle)}</strong>` : ""}
+      </summary>
+      <div class="person-collapsible-body">
+        ${body}
+      </div>
+    </details>
+  `;
+}
+
+function personOpenTasks(detail) {
+  return (detail.tasks || []).filter((task) => !task.completed);
+}
+
+function personPrimaryTask(detail) {
+  return [...personOpenTasks(detail)].sort((a, b) => String(a.due_date || "9999-12-31").localeCompare(String(b.due_date || "9999-12-31")))[0] || null;
+}
+
+function personAdditionalTasksSection(detail) {
+  const primaryTask = personPrimaryTask(detail);
+  const additionalTasks = (detail.tasks || []).filter((task) => String(task.source_id || "") !== String(primaryTask?.source_id || ""));
+  return tasksSection(additionalTasks, { title: primaryTask ? "More Tasks" : "Tasks", compact: true });
+}
+
 function personNextStepSection(detail) {
-  const openTasks = (detail.tasks || []).filter((task) => !task.completed);
-  const nextTask = [...openTasks].sort((a, b) => String(a.due_date || "9999-12-31").localeCompare(String(b.due_date || "9999-12-31")))[0] || null;
+  const openTasks = personOpenTasks(detail);
+  const nextTask = personPrimaryTask(detail);
   const nextMeta = nextTask?.due_date ? `Due ${formatDate(nextTask.due_date)}` : "No due date";
   return `
     <div class="detail-section person-action-section">

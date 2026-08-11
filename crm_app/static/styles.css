@@ -2726,7 +2726,7 @@ button {
 
 .calendar-action-list {
   display: grid;
-  gap: 10px;
+  gap: 8px;
 }
 
 .calendar-action-card,
@@ -2734,23 +2734,23 @@ button {
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: 8px;
-  padding: 12px;
+  padding: 10px 12px;
 }
 
 .calendar-action-card {
   align-items: start;
   display: grid;
-  gap: 12px;
+  gap: 10px;
   grid-template-columns: minmax(0, 1fr) auto;
 }
 
 .calendar-action-card.is-overdue {
-  border-color: rgba(191, 75, 45, 0.35);
+  border-color: rgba(191, 75, 45, 0.28);
 }
 
 .calendar-action-main {
   display: grid;
-  gap: 6px;
+  gap: 5px;
   min-width: 0;
 }
 
@@ -2764,8 +2764,8 @@ button {
 .dashboard-task-title {
   color: var(--text);
   display: block;
-  font-size: 16px;
-  font-weight: 500;
+  font-size: 14px;
+  font-weight: 430;
   line-height: 1.35;
 }
 
@@ -2784,7 +2784,7 @@ button {
   align-items: center;
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 7px;
 }
 
 .calendar-action-buttons {
@@ -6844,7 +6844,25 @@ button {
   }
 
   .calendar-action-card {
+    gap: 8px;
     grid-template-columns: 1fr;
+    padding: 10px;
+  }
+
+  .calendar-action-title,
+  .dashboard-task-title {
+    font-size: 13px;
+    font-weight: 420;
+    line-height: 1.34;
+  }
+
+  .calendar-action-main {
+    gap: 4px;
+  }
+
+  .calendar-action-buttons .text-button {
+    min-height: 34px;
+    padding: 6px 10px;
   }
 
   .followup-task-card {

@@ -323,7 +323,15 @@ Transcript:
             response_payload = json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as exc:
         raw_error = exc.read().decode("utf-8", errors="replace")
-        raise RuntimeError(f"OpenAI transcript review failed with HTTP {exc.code}: {raw_error}") from exc
+        try:
+            parsed_error = json.loads(raw_error)
+            error = parsed_error.get("error", {})
+            error_type = clean_text(error.get("type"), 120)
+            error_code = clean_text(error.get("code"), 120)
+            detail = f"type={error_type or 'unknown'} code={error_code or 'unknown'}"
+        except json.JSONDecodeError:
+            detail = "unparseable_error_body"
+        raise RuntimeError(f"OpenAI transcript review failed with HTTP {exc.code}: {detail}") from exc
     raw_text = openai_response_text(response_payload)
     parsed = json.loads(raw_text)
     return [row for row in (normalize_suggestion(item_payload, item) for item_payload in parsed.get("suggestions", [])) if row]

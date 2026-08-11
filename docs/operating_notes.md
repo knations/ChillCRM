@@ -86,7 +86,7 @@ The bot adds tentative `PENDING` rows only to the `Awaiting Approval` Sheet. It 
 
 To avoid duplicate reviews, the bot records processed Drive file IDs and modified times in the `Transcript Intake Log` tab. A file is skipped after it has been scanned at the same modified time. If Otter updates the same document later, the changed modified time allows one new scan.
 
-The GitHub Action is `Scan Drive Transcripts To Approval Sheet`. It can be run manually from GitHub Actions, and it also runs daily at 10:30 AM Pacific during daylight time. Manual runs default to dry-run mode so the report can be checked before appending rows.
+The GitHub Action is `Scan Drive Transcripts To Approval Sheet`. It can be run manually from GitHub Actions, and it also runs daily at 10:00 AM Pacific during daylight time. Manual runs default to dry-run mode so the report can be checked before appending rows.
 
 Required GitHub secret:
 

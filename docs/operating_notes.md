@@ -78,6 +78,30 @@ The Google Sheet approval queue is designed to run without daily copy/paste:
 
 The approval queue Sheet is `Awaiting Approval` in spreadsheet `1IDZbgwlAMts05cgKwmcF5ACPDeJKcArC7mu8v38UnTQ`.
 
+## Transcript Intake Bot
+
+The transcript intake bot scans the Google Drive folder `My Drive/AAA BUSINESS BLUEPRINT/Otter Transcripts` and its subfolders for Google Docs or text transcript files. Its default Drive folder ID is `1TQR1D0dxTEitoUNDHVoR8bg3bRrdhiaZ`.
+
+The bot adds tentative `PENDING` rows only to the `Awaiting Approval` Sheet. It never writes directly to CHILLCRM. Approved rows are still posted later by the approval queue processor.
+
+To avoid duplicate reviews, the bot records processed Drive file IDs and modified times in the `Transcript Intake Log` tab. A file is skipped after it has been scanned at the same modified time. If Otter updates the same document later, the changed modified time allows one new scan.
+
+The GitHub Action is `Scan Drive Transcripts To Approval Sheet`. It can be run manually from GitHub Actions, and it also runs daily at 10:30 AM Pacific during daylight time. Manual runs default to dry-run mode so the report can be checked before appending rows.
+
+Required GitHub secret:
+
+```text
+GOOGLE_SERVICE_ACCOUNT_JSON
+```
+
+Recommended GitHub secret for higher-quality transcript analysis:
+
+```text
+OPENAI_API_KEY
+```
+
+If `OPENAI_API_KEY` is missing or temporarily fails, the bot falls back to conservative name/action heuristics.
+
 ## Files
 
 Files added to a Person should stay attached to that Person. Hosted production file access is private and served through authenticated app routes and short-lived storage links.

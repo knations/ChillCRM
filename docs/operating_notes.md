@@ -68,6 +68,16 @@ These endpoints require the server-side `CHILLCRM_AUTOMATION_TOKEN` and accept i
 
 Owner tasks use `/api/automation/add_owner_task` and identify an active app user by `owner_id`, exact `owner_email`, or exact case-insensitive `owner_name`. Owner tasks appear in the dashboard/calendar work queue without attaching to a Person, Company, Lead, or Deal.
 
+The Google Sheet approval queue is designed to run without daily copy/paste:
+
+- `PENDING` rows stay in the sheet.
+- `APPROVE` rows are posted to CHILLCRM through the narrow automation endpoints, then removed from the sheet after a successful post.
+- `DELETE` rows are removed from the sheet without posting.
+- Failed rows stay in the sheet for review.
+- The scheduled GitHub Action uses repository secrets `CHILLCRM_AUTOMATION_TOKEN` and `GOOGLE_SERVICE_ACCOUNT_JSON`; it does not use the production database URL.
+
+The approval queue Sheet is `Awaiting Approval` in spreadsheet `1IDZbgwlAMts05cgKwmcF5ACPDeJKcArC7mu8v38UnTQ`.
+
 ## Files
 
 Files added to a Person should stay attached to that Person. Hosted production file access is private and served through authenticated app routes and short-lived storage links.

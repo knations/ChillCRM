@@ -18195,6 +18195,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                 FROM notes
                 WHERE record_type = ? AND record_id = ?
                   AND coalesce(note_type, '') != 'call_log'
+                  AND content NOT LIKE 'Shopping cart purchase received via Zapier.%'
                 ORDER BY created_at DESC
                 """,
                 (record_type, record_id),
@@ -18899,7 +18900,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                 f"link:{resource.get('url')}:{resource.get('source_label')}",
             )
 
-        if record.get("created_at"):
+        if record.get("created_at") and not (purchases and not record.get("zendesk_contact_id")):
             add(
                 self.timeline_event(
                     "created",

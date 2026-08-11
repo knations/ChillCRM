@@ -102,6 +102,20 @@ OPENAI_API_KEY
 
 If `OPENAI_API_KEY` is missing or temporarily fails, the bot falls back to conservative name/action heuristics.
 
+## Granola Intake Bot
+
+The Granola intake bot scans accessible Granola notes through the Granola API and adds tentative `PENDING` rows only to the same `Awaiting Approval` Sheet. It follows the same review boundary as the Otter/Drive transcript bot: no direct CHILLCRM writes, no CRM record changes, and approved rows are still handled later by the approval queue processor.
+
+The bot records processed Granola note IDs and versions in the `Granola Intake Log` tab so it does not keep proposing the same note after it has already been scanned.
+
+The GitHub Action is `Scan Granola Notes To Approval Sheet`. Manual runs default to dry-run mode. The scheduled run starts shortly after the Drive transcript scanner so both sources feed the same approval lane.
+
+Required GitHub secret:
+
+```text
+GRANOLA_API_KEY
+```
+
 ## Files
 
 Files added to a Person should stay attached to that Person. Hosted production file access is private and served through authenticated app routes and short-lived storage links.

@@ -444,7 +444,7 @@ def analyze_with_openai(transcript_text: str, item: dict[str, Any], model: str) 
         "required": ["suggestions"],
     }
     prompt = f"""
-Review this Otter/Zoom transcript for CHILLCRM. Propose tentative CRM entries only when a named client/person is clearly discussed.
+Review this meeting transcript for CHILLCRM. Propose tentative CRM entries only when a named client/person is clearly discussed.
 
 Rules:
 - Output TASK, NOTE, or CALL rows only.

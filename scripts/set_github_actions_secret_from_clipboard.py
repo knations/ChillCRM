@@ -44,6 +44,21 @@ def validate_automation_token(raw_token: str) -> str:
     return token
 
 
+def validate_granola_api_key(raw_token: str) -> str:
+    token = raw_token.strip()
+    if not token:
+        raise ValueError("Granola API key is blank.")
+    if token.startswith("{") or '"type"' in token or '"private_key"' in token or '"client_email"' in token:
+        raise ValueError("Clipboard looks like Google service-account JSON, not a Granola API key.")
+    if "\n" in token or "\r" in token:
+        raise ValueError("Granola API key should be a single line.")
+    if not token.startswith("grn_"):
+        raise ValueError("Granola API key should begin with grn_.")
+    if len(token) < 20:
+        raise ValueError("Granola API key looks too short.")
+    return token
+
+
 def set_github_secret(secret_name: str, secret_value: str) -> None:
     gh = shutil.which("gh")
     if not gh:
@@ -74,6 +89,11 @@ def main() -> int:
             value = validate_automation_token(raw_value)
             print()
             print("Automation token validated.")
+            print()
+        elif secret_name == "GRANOLA_API_KEY":
+            value = validate_granola_api_key(raw_value)
+            print()
+            print("Granola API key validated.")
             print()
         else:
             print(f"Unsupported secret name: {secret_name}")

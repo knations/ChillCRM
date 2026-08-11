@@ -548,6 +548,13 @@ def rows_for_sheet(suggestions: list[dict[str, str]], existing_ids: set[str]) ->
     return rows
 
 
+def row_dicts_for_report(rows: list[list[str]]) -> list[dict[str, str]]:
+    output = []
+    for row in rows:
+        output.append({header: str(row[index]) if index < len(row) else "" for index, header in enumerate(APPROVAL_HEADERS)})
+    return output
+
+
 def log_rows_for_files(files: list[dict[str, Any]], status: str, analyzer: str, suggestion_count: int) -> list[list[str]]:
     now = datetime.now(timezone.utc).isoformat(timespec="seconds")
     rows = []
@@ -627,6 +634,7 @@ def main() -> int:
         "openai_enabled": bool(os.environ.get("OPENAI_API_KEY", "").strip()),
         "secret_values_stored": "no",
         "crm_record_writes": "no",
+        "planned_rows": row_dicts_for_report(appended_rows),
         "file_results": file_results,
     }
     Path(args.report).write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")

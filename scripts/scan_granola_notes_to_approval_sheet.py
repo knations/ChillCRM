@@ -24,6 +24,7 @@ from scan_drive_transcripts_to_approval_sheet import (
     google_token_from_service_account,
     processed_log,
     read_sheet_values,
+    row_dicts_for_report,
     rows_for_sheet,
     transcript_suggestions,
 )
@@ -238,6 +239,7 @@ def main() -> int:
         "openai_enabled": bool(os.environ.get("OPENAI_API_KEY", "").strip()),
         "secret_values_stored": "no",
         "crm_record_writes": "no",
+        "planned_rows": row_dicts_for_report(appended_rows),
         "note_results": note_results,
     }
     Path(args.report).write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")

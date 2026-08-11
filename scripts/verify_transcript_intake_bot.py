@@ -12,6 +12,7 @@ from scan_drive_transcripts_to_approval_sheet import (
     heuristic_suggestions,
     proposed_detail_format_requests,
     processed_log,
+    row_dicts_for_report,
     rows_for_sheet,
 )
 
@@ -53,6 +54,9 @@ def main() -> int:
     rows = rows_for_sheet(suggestions, set())
     assert rows
     assert len(rows[0]) == len(APPROVAL_HEADERS)
+    row_report = row_dicts_for_report(rows)
+    assert row_report[0]["STATUS"] == "PENDING"
+    assert set(row_report[0]) == set(APPROVAL_HEADERS)
 
     duplicate_rows = rows_for_sheet(suggestions, {row[8] for row in rows})
     assert duplicate_rows == []

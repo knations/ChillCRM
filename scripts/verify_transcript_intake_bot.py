@@ -10,6 +10,7 @@ from scan_drive_transcripts_to_approval_sheet import (
     clean_format_request,
     existing_suggestion_ids,
     heuristic_suggestions,
+    normalize_suggestion,
     proposed_detail_format_requests,
     processed_log,
     row_dicts_for_report,
@@ -60,6 +61,21 @@ def main() -> int:
 
     duplicate_rows = rows_for_sheet(suggestions, {row[8] for row in rows})
     assert duplicate_rows == []
+
+    needs_match = normalize_suggestion(
+        {
+            "person_name": "Scott",
+            "type": "CALL",
+            "date": "2026-08-11",
+            "due_date": "",
+            "proposed_detail": "Discussed a useful follow-up from the call.",
+            "match_confidence": "high",
+        },
+        item,
+    )
+    assert needs_match is not None
+    assert needs_match["STATUS"] == "NEEDS MATCH"
+    assert needs_match["MATCH CONFIDENCE"] == "needs_full_name"
 
     clean_request = clean_format_request(123, 20, 11)
     assert clean_request["repeatCell"]["cell"]["userEnteredFormat"]["backgroundColor"] == {"red": 1, "green": 1, "blue": 1}

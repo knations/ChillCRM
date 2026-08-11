@@ -386,6 +386,7 @@ def normalize_suggestion(raw: dict[str, Any], item: dict[str, Any]) -> dict[str,
     detail = clean_text(raw.get("proposed_detail") or raw.get("detail"), 1200)
     if not person_name or not detail:
         return None
+    needs_match = len(person_name.split()) < 2
     due_date = clean_text(raw.get("due_date"), 20)
     date = clean_text(raw.get("date"), 20) or source_date(item)
     confidence = clean_text(raw.get("match_confidence") or raw.get("confidence") or "ai", 80)
@@ -395,12 +396,12 @@ def normalize_suggestion(raw: dict[str, Any], item: dict[str, Any]) -> dict[str,
         "DATE": date if row_type == "CALL" else "",
         "DUE DATE": due_date if row_type == "TASK" else "",
         "PROPOSED DETAIL": detail,
-        "STATUS": "PENDING",
+        "STATUS": "NEEDS MATCH" if needs_match else "PENDING",
         "SOURCE FILE NAME": str(item.get("name") or ""),
         "SOURCE FILE URL": str(item.get("webViewLink") or ""),
         "SUGGESTION ID": suggestion_id(str(item.get("id") or ""), row_type, person_name, detail),
         "PERSON ID CANDIDATE": "",
-        "MATCH CONFIDENCE": confidence,
+        "MATCH CONFIDENCE": "needs_full_name" if needs_match else confidence,
     }
 
 
@@ -449,7 +450,7 @@ Review this meeting transcript for CHILLCRM. Propose tentative CRM entries only 
 Rules:
 - Output TASK, NOTE, or CALL rows only.
 - Use first and last names when available.
-- Never invent a person.
+- Never invent a person. If only a first name or nickname is available, still return the useful suggestion, but keep the name exactly as known.
 - TASK means Kevin/Alicia should do something later. Include a due_date only if the transcript clearly gives or strongly implies one; otherwise blank.
 - NOTE means stable state-of-client intelligence: wins, needs, risks, missing pieces, decisions, or useful context.
 - CALL means a client-specific call/conversation occurred and should be logged; make the detail a concise call summary.

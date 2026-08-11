@@ -84,6 +84,8 @@ The transcript intake bot scans the Google Drive folder `My Drive/AAA BUSINESS B
 
 The bot adds tentative `PENDING` rows only to the `Awaiting Approval` Sheet. It never writes directly to CHILLCRM. Approved rows are still posted later by the approval queue processor.
 
+If a transcript produces a useful suggestion but only identifies someone by a first name or nickname, the row is marked `NEEDS MATCH` instead of `PENDING` so the Person name can be corrected before approval.
+
 To avoid duplicate reviews, the bot records processed Drive file IDs and modified times in the `Transcript Intake Log` tab. A file is skipped after it has been scanned at the same modified time. If Otter updates the same document later, the changed modified time allows one new scan.
 
 The GitHub Action is `Scan Drive Transcripts To Approval Sheet`. It can be run manually from GitHub Actions, and it also runs daily at 10:00 AM Pacific during daylight time. Manual runs default to dry-run mode so the report can be checked before appending rows.
@@ -105,6 +107,8 @@ If `OPENAI_API_KEY` is missing or temporarily fails, the bot falls back to conse
 ## Granola Intake Bot
 
 The Granola intake bot scans accessible Granola notes through the Granola API and adds tentative `PENDING` rows only to the same `Awaiting Approval` Sheet. It follows the same review boundary as the Otter/Drive transcript bot: no direct CHILLCRM writes, no CRM record changes, and approved rows are still handled later by the approval queue processor.
+
+First-name-only or otherwise incomplete person matches are marked `NEEDS MATCH` so they remain visible for review without being eligible for automatic posting.
 
 The bot records processed Granola note IDs and versions in the `Granola Intake Log` tab so it does not keep proposing the same note after it has already been scanned.
 

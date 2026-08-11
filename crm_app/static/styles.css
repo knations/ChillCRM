@@ -124,6 +124,46 @@ button {
   gap: 6px;
 }
 
+.nav-tools {
+  border-top: 1px solid rgba(255, 250, 240, 0.14);
+  margin-top: 6px;
+  padding-top: 8px;
+}
+
+.nav-tools summary {
+  border-radius: 8px;
+  color: rgba(255, 250, 240, 0.7);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 700;
+  list-style: none;
+  padding: 10px 12px;
+}
+
+.nav-tools summary::-webkit-details-marker {
+  display: none;
+}
+
+.nav-tools summary::after {
+  content: "▾";
+  float: right;
+  opacity: 0.72;
+}
+
+.nav-tools:not([open]) summary::after {
+  content: "▸";
+}
+
+.nav-tools summary:hover {
+  background: rgba(255, 250, 240, 0.08);
+}
+
+.nav-tools .nav-button {
+  color: rgba(255, 250, 240, 0.82);
+  font-size: 14px;
+  min-height: 36px;
+}
+
 .nav-button {
   width: 100%;
   min-height: 40px;
@@ -6792,6 +6832,38 @@ button {
     padding-bottom: 2px;
     scrollbar-width: none;
     scroll-snap-type: x proximity;
+  }
+
+  .nav-tools {
+    align-items: center;
+    border-top: 0;
+    display: flex;
+    flex: 0 0 auto;
+    gap: 8px;
+    margin-top: 0;
+    padding-top: 0;
+  }
+
+  .nav-tools summary {
+    background: rgba(118, 118, 128, 0.12);
+    color: #3a3a3c;
+    min-height: 34px;
+    padding: 8px 13px;
+    white-space: nowrap;
+  }
+
+  .nav-tools summary::after {
+    margin-left: 8px;
+  }
+
+  .nav-tools[open] {
+    padding-right: 8px;
+  }
+
+  .nav-tools .nav-button {
+    color: #3a3a3c;
+    font-size: 14px;
+    min-height: 34px;
   }
 
   .nav::-webkit-scrollbar {

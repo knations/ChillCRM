@@ -1119,6 +1119,10 @@ function setView(view) {
   els.navButtons.forEach((button) => {
     button.classList.toggle("active", button.dataset.view === view);
   });
+  document.querySelectorAll(".nav-tools").forEach((group) => {
+    const hasActiveTool = Boolean(group.querySelector(".nav-button.active"));
+    if (hasActiveTool) group.open = true;
+  });
   const activeView = ["people", "companies", "leads", "deals"].includes(view)
     ? els.list
     : {

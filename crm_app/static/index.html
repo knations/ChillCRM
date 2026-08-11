@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>ChillCRM</title>
-    <link rel="stylesheet" href="/static/styles.css?v=20260810-people-history-cleanup-1">
+    <link rel="stylesheet" href="/static/styles.css?v=20260810-clean-sidebar-tools-1">
   </head>
   <body>
     <div class="app-shell">
@@ -25,14 +25,17 @@
           <button class="nav-button" data-view="deals">Deals</button>
           <button class="nav-button" data-view="pipeline">Pipeline</button>
           <button class="nav-button" data-view="tags">Tags</button>
-          <button class="nav-button" data-view="customFields">Custom Fields</button>
-          <button class="nav-button" data-view="linkedResources">Linked Resources</button>
           <button class="nav-button" data-view="archive">Files & History</button>
           <button class="nav-button" data-view="followup">Follow Up</button>
-          <button class="nav-button" data-view="activity">Activity</button>
-          <button class="nav-button" data-view="exports">Exports</button>
-          <button class="nav-button owner-only-nav" data-view="users" hidden>Users</button>
-          <button class="nav-button" data-view="cleanup">Cleanup</button>
+          <details class="nav-tools">
+            <summary>Tools</summary>
+            <button class="nav-button" data-view="customFields">Custom Fields</button>
+            <button class="nav-button" data-view="linkedResources">Linked Resources</button>
+            <button class="nav-button" data-view="activity">Activity</button>
+            <button class="nav-button" data-view="exports">Exports</button>
+            <button class="nav-button owner-only-nav" data-view="users" hidden>Users</button>
+            <button class="nav-button" data-view="cleanup">Cleanup</button>
+          </details>
         </nav>
       </aside>
 
@@ -157,6 +160,6 @@
       </form>
     </div>
 
-    <script src="/static/app.js?v=20260810-people-history-cleanup-1"></script>
+    <script src="/static/app.js?v=20260810-clean-sidebar-tools-1"></script>
   </body>
 </html>

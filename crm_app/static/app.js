@@ -7133,20 +7133,23 @@ function personTimelineSection(events) {
 function personTimelineEvent(event) {
   const type = event.event_type || "activity";
   const label = event.label || labelize(type);
-  const meta = Array.isArray(event.meta) ? event.meta.filter(Boolean) : [];
+  const rawMeta = Array.isArray(event.meta) ? event.meta.filter(Boolean) : [];
+  const dueLabel = timelineDueLabel(rawMeta);
+  const meta = cleanTimelineMeta(rawMeta, { dueLabel });
   const title = event.title || label;
-  const body = event.body && event.body !== title ? event.body : "";
+  const body = timelineBody(title, event.body);
   const action = timelineRecordAction(event);
   const urlLabel = event.url_label || (type === "call" ? "Recording" : "Open");
+  const displayDate = timelineDisplayDate(event, dueLabel);
   return `
     <div class="person-timeline-event ${timelineEventClass(type)}">
       <div class="person-timeline-marker" aria-hidden="true"></div>
       <div class="person-timeline-card">
         <div class="person-timeline-head">
           <span class="timeline-type-pill">${escapeHtml(label)}</span>
-          <span class="muted">${escapeHtml(formatDateTime(event.occurred_at || ""))}</span>
+          <span class="muted">${escapeHtml(displayDate)}</span>
         </div>
-        <strong>${escapeHtml(title)}</strong>
+        <strong class="person-timeline-title">${escapeHtml(title)}</strong>
         ${body ? `<p>${linkifyText(body)}</p>` : ""}
         ${
           meta.length || event.url || action
@@ -7160,6 +7163,56 @@ function personTimelineEvent(event) {
       </div>
     </div>
   `;
+}
+
+function normalizeTimelineText(value) {
+  return String(value || "").replace(/\s+/g, " ").trim().toLowerCase();
+}
+
+function timelineBody(title, body) {
+  const rawTitle = String(title || "").trim();
+  const rawBody = String(body || "").trim();
+  if (!rawBody) return "";
+  const normalizedTitle = normalizeTimelineText(rawTitle);
+  const normalizedBody = normalizeTimelineText(rawBody);
+  if (!normalizedTitle || normalizedBody === normalizedTitle) return "";
+  if (normalizedBody.startsWith(normalizedTitle)) {
+    const remainder = rawBody.slice(rawTitle.length).replace(/^[\s:.-]+/, "").trim();
+    return normalizeTimelineText(remainder) === normalizedTitle ? "" : remainder;
+  }
+  return rawBody;
+}
+
+function timelineDueLabel(meta) {
+  const dueMeta = (meta || []).find((item) => /^due\s+/i.test(String(item || "").trim()));
+  if (!dueMeta) return "";
+  const rawDue = String(dueMeta).replace(/^due\s+/i, "").trim();
+  const dateOnly = rawDue.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  return dateOnly ? `Due ${formatDate(`${dateOnly[1]}-${dateOnly[2]}-${dateOnly[3]}`)}` : `Due ${formatDate(rawDue)}`;
+}
+
+function cleanTimelineMeta(meta, options = {}) {
+  const dueLabel = options.dueLabel || "";
+  const blocked = new Set(["local", "imported", "0", "open", "completed"]);
+  return (meta || [])
+    .map((item) => String(item || "").trim())
+    .filter((item) => {
+      if (!item) return false;
+      const normalized = item.toLowerCase();
+      if (blocked.has(normalized)) return false;
+      if (dueLabel && /^due\s+/i.test(item)) return false;
+      return true;
+    });
+}
+
+function timelineDisplayDate(event, dueLabel) {
+  const type = String(event.event_type || "").toLowerCase();
+  if (type === "task" && dueLabel) return dueLabel;
+  if (type === "task_completed") {
+    const completed = formatDateTime(event.occurred_at || "");
+    return completed ? `Completed ${completed}` : "Completed";
+  }
+  return formatDateTime(event.occurred_at || "");
 }
 
 function timelineRecordAction(event) {

@@ -3664,18 +3664,24 @@ button {
   border: 1px solid var(--line);
   border-radius: 8px;
   display: grid;
-  gap: 8px;
+  gap: 7px;
   min-width: 0;
-  padding: 12px;
+  padding: 11px 12px;
 }
 
-.person-timeline-card strong {
+.person-timeline-title {
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.35;
   overflow-wrap: anywhere;
 }
 
 .person-timeline-card p {
   color: var(--muted);
   display: -webkit-box;
+  font-size: 13px;
+  font-weight: 400;
   line-height: 1.45;
   margin: 0;
   overflow: hidden;
@@ -3690,33 +3696,37 @@ button {
   align-items: center;
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 6px;
 }
 
 .person-timeline-head {
   justify-content: space-between;
 }
 
+.person-timeline-head .muted {
+  font-size: 12px;
+}
+
 .timeline-type-pill,
 .person-timeline-foot span {
-  background: var(--chip);
+  background: transparent;
   border-radius: 999px;
   color: var(--muted);
-  font-size: 12px;
+  font-size: 11px;
   line-height: 1.2;
-  padding: 5px 8px;
+  padding: 0;
 }
 
 .timeline-type-pill {
-  color: var(--text);
-  font-weight: 700;
+  color: var(--muted);
+  font-weight: 600;
 }
 
 .person-timeline-foot a,
 .person-timeline-foot .text-button {
-  font-size: 13px;
+  font-size: 12px;
   line-height: 1.2;
-  padding: 5px 0;
+  padding: 2px 0;
 }
 
 .timeline-event-purchase .person-timeline-marker {

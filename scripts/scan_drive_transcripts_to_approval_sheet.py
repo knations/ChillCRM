@@ -34,6 +34,7 @@ APPROVAL_HEADERS = [
     "PERSON ID CANDIDATE",
     "MATCH CONFIDENCE",
 ]
+STATUS_OPTIONS = ["PENDING", "APPROVE", "DELETE", "NEEDS MATCH"]
 
 GOOGLE_DOC_MIME = "application/vnd.google-apps.document"
 GOOGLE_FOLDER_MIME = "application/vnd.google-apps.folder"
@@ -231,6 +232,68 @@ def proposed_detail_format_requests(sheet_id: int, used_rows: int) -> list[dict[
     ]
 
 
+def approval_control_format_requests(sheet_id: int, row_count: int) -> list[dict[str, Any]]:
+    end_row = max(row_count, 2)
+    return [
+        {
+            "setDataValidation": {
+                "range": {
+                    "sheetId": sheet_id,
+                    "startRowIndex": 1,
+                    "endRowIndex": end_row,
+                    "startColumnIndex": 3,
+                    "endColumnIndex": 4,
+                },
+                "rule": {
+                    "condition": {"type": "DATE_IS_VALID"},
+                    "inputMessage": "Choose a due date or leave blank.",
+                    "strict": False,
+                    "showCustomUi": True,
+                },
+            }
+        },
+        {
+            "repeatCell": {
+                "range": {
+                    "sheetId": sheet_id,
+                    "startRowIndex": 1,
+                    "endRowIndex": end_row,
+                    "startColumnIndex": 3,
+                    "endColumnIndex": 4,
+                },
+                "cell": {
+                    "userEnteredFormat": {
+                        "numberFormat": {
+                            "type": "DATE",
+                            "pattern": "mm/dd/yyyy",
+                        }
+                    }
+                },
+                "fields": "userEnteredFormat.numberFormat",
+            }
+        },
+        {
+            "setDataValidation": {
+                "range": {
+                    "sheetId": sheet_id,
+                    "startRowIndex": 1,
+                    "endRowIndex": end_row,
+                    "startColumnIndex": 5,
+                    "endColumnIndex": 6,
+                },
+                "rule": {
+                    "condition": {
+                        "type": "ONE_OF_LIST",
+                        "values": [{"userEnteredValue": value} for value in STATUS_OPTIONS],
+                    },
+                    "strict": True,
+                    "showCustomUi": True,
+                },
+            }
+        },
+    ]
+
+
 def apply_clean_sheet_format(token: str, spreadsheet_id: str, sheet_names: list[str], approval_sheet_name: str) -> None:
     requests = []
     for sheet in sheet_metadata(token, spreadsheet_id).get("sheets", []):
@@ -242,7 +305,9 @@ def apply_clean_sheet_format(token: str, spreadsheet_id: str, sheet_names: list[
         sheet_id = int(props["sheetId"])
         requests.append(clean_format_request(sheet_id, int(grid.get("rowCount") or 1000), int(grid.get("columnCount") or 26)))
         if title == approval_sheet_name:
+            row_count = int(grid.get("rowCount") or 1000)
             used_rows = len(read_sheet_values(token, spreadsheet_id, approval_sheet_name, "A:K"))
+            requests.extend(approval_control_format_requests(sheet_id, row_count))
             requests.extend(proposed_detail_format_requests(sheet_id, used_rows))
     if requests:
         url = f"https://sheets.googleapis.com/v4/spreadsheets/{spreadsheet_id}:batchUpdate"

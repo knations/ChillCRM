@@ -5,6 +5,8 @@ from __future__ import annotations
 
 from scan_drive_transcripts_to_approval_sheet import (
     APPROVAL_HEADERS,
+    STATUS_OPTIONS,
+    approval_control_format_requests,
     clean_format_request,
     existing_suggestion_ids,
     heuristic_suggestions,
@@ -63,6 +65,18 @@ def main() -> int:
     assert detail_requests[0]["repeatCell"]["cell"]["userEnteredFormat"]["wrapStrategy"] == "WRAP"
     assert detail_requests[1]["updateDimensionProperties"]["properties"]["pixelSize"] == 620
     assert detail_requests[2]["autoResizeDimensions"]["dimensions"]["dimension"] == "ROWS"
+
+    control_requests = approval_control_format_requests(123, 100)
+    due_date_validation = control_requests[0]["setDataValidation"]["rule"]
+    assert due_date_validation["condition"]["type"] == "DATE_IS_VALID"
+    assert due_date_validation["showCustomUi"] is True
+    due_date_format = control_requests[1]["repeatCell"]["cell"]["userEnteredFormat"]["numberFormat"]
+    assert due_date_format == {"type": "DATE", "pattern": "mm/dd/yyyy"}
+    status_validation = control_requests[2]["setDataValidation"]["rule"]
+    assert status_validation["condition"]["type"] == "ONE_OF_LIST"
+    assert [value["userEnteredValue"] for value in status_validation["condition"]["values"]] == STATUS_OPTIONS
+    assert status_validation["strict"] is True
+    assert status_validation["showCustomUi"] is True
 
     print("transcript_intake_bot_verification_passed")
     return 0

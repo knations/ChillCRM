@@ -134,6 +134,36 @@ def insert_ambiguous_people(db_path: Path) -> str:
     return ambiguous_name
 
 
+def insert_active_inactive_name_collision(db_path: Path) -> tuple[str, int]:
+    shared_name = "Automation Active Wins Person"
+    timestamp = datetime.now(timezone.utc).isoformat()
+    with sqlite3.connect(db_path) as conn:
+        next_id = int(conn.execute("SELECT COALESCE(max(id), 0) + 1 FROM people").fetchone()[0])
+        rows = [
+            (next_id, shared_name, "active-wins@example.local", timestamp, timestamp, "{}"),
+            (next_id + 1, shared_name, "inactive-wins@example.local", timestamp, timestamp, "{}"),
+        ]
+        conn.executemany(
+            """
+            INSERT INTO people (id, name, email, created_at, updated_at, source_json)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            rows,
+        )
+        conn.execute(
+            """
+            INSERT INTO local_record_lifecycle (
+                record_type, record_id, lifecycle_status, lifecycle_note,
+                created_at, updated_at, deactivated_at, reactivated_at
+            )
+            VALUES ('person', ?, 'inactive', 'automation verifier inactive duplicate', ?, ?, ?, NULL)
+            """,
+            (next_id + 1, timestamp, timestamp, timestamp),
+        )
+        conn.commit()
+    return shared_name, next_id
+
+
 def main() -> int:
     env_backup = {
         key: os.environ.get(key)
@@ -155,6 +185,7 @@ def main() -> int:
         person_id = first_person_id(tmp_db)
         owner_id, owner_name = first_owner(tmp_db)
         ambiguous_name = insert_ambiguous_people(tmp_db)
+        active_collision_name, active_collision_id = insert_active_inactive_name_collision(tmp_db)
 
         class TestHandler(handler):
             db_path = tmp_db
@@ -265,6 +296,15 @@ def main() -> int:
             assert status == 400, payload
             assert payload["code"] == "person_match_ambiguous"
             assert len(payload["possible_matches"]) == 2
+
+            active_collision_content = "Automation verifier active collision task"
+            assert task_count_for_person(tmp_db, active_collision_id, active_collision_content) == 0
+            payload, status = probe.add_automation_person_task(
+                {"person_name": active_collision_name, "content": active_collision_content},
+            )
+            assert status == 200, payload
+            assert payload["automation"]["person_id"] == active_collision_id
+            assert task_count_for_person(tmp_db, active_collision_id, active_collision_content) == 1
 
             payload, status = probe.add_automation_person_note(
                 {"person_name": ambiguous_name, "content": "Should not create"},

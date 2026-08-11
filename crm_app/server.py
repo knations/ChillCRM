@@ -26110,54 +26110,70 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                 rows = rows_to_dicts(
                     conn.execute(
                         """
-                        SELECT id, name, email
+                        SELECT people.id, people.name, people.email,
+                               coalesce(lrl.lifecycle_status, 'active') AS lifecycle_status
                         FROM people
+                        LEFT JOIN local_record_lifecycle lrl
+                          ON lrl.record_type = 'person'
+                         AND lrl.record_id = people.id
                         WHERE lower(trim(email)) = lower(trim(?))
-                        ORDER BY name COLLATE NOCASE, id
+                        ORDER BY coalesce(lrl.lifecycle_status, 'active') = 'active' DESC,
+                                 name COLLATE NOCASE, id
                         """,
                         (person_email,),
                     ).fetchall()
                 )
-                if len(rows) == 1:
-                    return rows[0], None, 200
-                if len(rows) > 1:
+                active_rows = [row for row in rows if str(row.get("lifecycle_status") or "active").lower() != "inactive"]
+                if len(active_rows) == 1:
+                    return active_rows[0], None, 200
+                if len(active_rows) > 1:
                     return (
                         None,
                         {
                             "ok": False,
                             "error": "Multiple People matched person_email; automation will not guess.",
                             "code": "person_match_ambiguous",
-                            "possible_matches": rows[:10],
+                            "possible_matches": active_rows[:10],
                         },
                         400,
                     )
+                if rows:
+                    return None, {"ok": False, "error": "Only inactive People matched person_email.", "code": "person_inactive_only"}, 404
                 return None, {"ok": False, "error": "No Person matched person_email.", "code": "person_not_found"}, 404
 
             if person_name:
                 rows = rows_to_dicts(
                     conn.execute(
                         """
-                        SELECT id, name, email
+                        SELECT people.id, people.name, people.email,
+                               coalesce(lrl.lifecycle_status, 'active') AS lifecycle_status
                         FROM people
+                        LEFT JOIN local_record_lifecycle lrl
+                          ON lrl.record_type = 'person'
+                         AND lrl.record_id = people.id
                         WHERE lower(trim(name)) = lower(trim(?))
-                        ORDER BY name COLLATE NOCASE, id
+                        ORDER BY coalesce(lrl.lifecycle_status, 'active') = 'active' DESC,
+                                 name COLLATE NOCASE, id
                         """,
                         (person_name,),
                     ).fetchall()
                 )
-                if len(rows) == 1:
-                    return rows[0], None, 200
-                if len(rows) > 1:
+                active_rows = [row for row in rows if str(row.get("lifecycle_status") or "active").lower() != "inactive"]
+                if len(active_rows) == 1:
+                    return active_rows[0], None, 200
+                if len(active_rows) > 1:
                     return (
                         None,
                         {
                             "ok": False,
                             "error": "Multiple People matched person_name; automation will not guess.",
                             "code": "person_match_ambiguous",
-                            "possible_matches": rows[:10],
+                            "possible_matches": active_rows[:10],
                         },
                         400,
                     )
+                if rows:
+                    return None, {"ok": False, "error": "Only inactive People matched person_name.", "code": "person_inactive_only"}, 404
                 return None, {"ok": False, "error": "No Person matched person_name.", "code": "person_not_found"}, 404
 
         return None, {"ok": False, "error": "Provide person_id, person_email, or person_name.", "code": "person_resolution_required"}, 400

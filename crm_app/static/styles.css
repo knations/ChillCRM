@@ -3518,13 +3518,13 @@ button {
 }
 
 .person-next-task-card {
-  background: #f2fbf6;
-  border: 1px solid #b7d7c5;
+  background: #fbfffd;
+  border: 1px solid #cce2d5;
   border-radius: 8px;
   display: grid;
-  gap: 5px;
+  gap: 4px;
   margin-bottom: 12px;
-  padding: 12px 14px;
+  padding: 11px 13px;
   position: relative;
 }
 
@@ -3535,16 +3535,17 @@ button {
 
 .person-next-task-card span {
   color: var(--muted);
-  font-size: 11px;
-  font-weight: 700;
+  font-size: 10px;
+  font-weight: 650;
   text-transform: uppercase;
 }
 
 .person-next-task-card strong {
   display: block;
-  font-size: 15px;
-  font-weight: 550;
-  line-height: 1.4;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 450;
+  line-height: 1.38;
   overflow-wrap: anywhere;
 }
 
@@ -3554,8 +3555,8 @@ button {
   padding: 0;
   min-height: auto;
   color: var(--accent);
-  font-size: 11px;
-  font-weight: 650;
+  font-size: 10px;
+  font-weight: 600;
 }
 
 .person-next-task-editor {

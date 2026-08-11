@@ -186,8 +186,12 @@ def google_request(token: str, url: str, method: str = "GET", payload: dict[str,
         data = json.dumps(payload).encode("utf-8")
         headers["Content-Type"] = "application/json"
     request = urllib.request.Request(url, data=data, headers=headers, method=method)
-    with urllib.request.urlopen(request, timeout=30) as response:
-        raw = response.read().decode("utf-8")
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            raw = response.read().decode("utf-8")
+    except urllib.error.HTTPError as exc:
+        raw_error = exc.read().decode("utf-8", errors="replace")
+        raise RuntimeError(f"Google API request failed with HTTP {exc.code}: {raw_error}") from exc
     return json.loads(raw) if raw else {}
 
 

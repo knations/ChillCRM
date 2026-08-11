@@ -143,17 +143,110 @@ def download_transcript_text(token: str, item: dict[str, Any]) -> str:
 
 
 def sheet_metadata(token: str, spreadsheet_id: str) -> dict[str, Any]:
-    fields = urllib.parse.quote("sheets(properties(sheetId,title,hidden))", safe="")
+    fields = urllib.parse.quote("sheets(properties(sheetId,title,hidden,gridProperties(rowCount,columnCount)))", safe="")
     url = f"https://sheets.googleapis.com/v4/spreadsheets/{spreadsheet_id}?fields={fields}"
     return google_request(token, url)
 
 
-def sheet_id_by_name(token: str, spreadsheet_id: str, sheet_name: str) -> int | None:
+def sheet_properties_by_name(token: str, spreadsheet_id: str, sheet_name: str) -> dict[str, Any] | None:
     for sheet in sheet_metadata(token, spreadsheet_id).get("sheets", []):
         props = sheet.get("properties", {})
         if props.get("title") == sheet_name:
-            return int(props["sheetId"])
+            return props
     return None
+
+
+def sheet_id_by_name(token: str, spreadsheet_id: str, sheet_name: str) -> int | None:
+    props = sheet_properties_by_name(token, spreadsheet_id, sheet_name)
+    return int(props["sheetId"]) if props else None
+
+
+def clean_format_request(sheet_id: int, row_count: int, column_count: int) -> dict[str, Any]:
+    return {
+        "repeatCell": {
+            "range": {
+                "sheetId": sheet_id,
+                "startRowIndex": 0,
+                "endRowIndex": max(row_count, 1),
+                "startColumnIndex": 0,
+                "endColumnIndex": max(column_count, 1),
+            },
+            "cell": {
+                "userEnteredFormat": {
+                    "backgroundColor": {"red": 1, "green": 1, "blue": 1},
+                    "textFormat": {
+                        "foregroundColor": {"red": 0, "green": 0, "blue": 0},
+                        "bold": False,
+                    },
+                }
+            },
+            "fields": "userEnteredFormat.backgroundColor,userEnteredFormat.textFormat.foregroundColor,userEnteredFormat.textFormat.bold",
+        }
+    }
+
+
+def proposed_detail_format_requests(sheet_id: int, used_rows: int) -> list[dict[str, Any]]:
+    end_row = max(used_rows, 2)
+    return [
+        {
+            "repeatCell": {
+                "range": {
+                    "sheetId": sheet_id,
+                    "startRowIndex": 0,
+                    "endRowIndex": end_row,
+                    "startColumnIndex": 4,
+                    "endColumnIndex": 5,
+                },
+                "cell": {
+                    "userEnteredFormat": {
+                        "wrapStrategy": "WRAP",
+                        "verticalAlignment": "TOP",
+                    }
+                },
+                "fields": "userEnteredFormat.wrapStrategy,userEnteredFormat.verticalAlignment",
+            }
+        },
+        {
+            "updateDimensionProperties": {
+                "range": {
+                    "sheetId": sheet_id,
+                    "dimension": "COLUMNS",
+                    "startIndex": 4,
+                    "endIndex": 5,
+                },
+                "properties": {"pixelSize": 620},
+                "fields": "pixelSize",
+            }
+        },
+        {
+            "autoResizeDimensions": {
+                "dimensions": {
+                    "sheetId": sheet_id,
+                    "dimension": "ROWS",
+                    "startIndex": 1,
+                    "endIndex": end_row,
+                }
+            }
+        },
+    ]
+
+
+def apply_clean_sheet_format(token: str, spreadsheet_id: str, sheet_names: list[str], approval_sheet_name: str) -> None:
+    requests = []
+    for sheet in sheet_metadata(token, spreadsheet_id).get("sheets", []):
+        props = sheet.get("properties", {})
+        title = props.get("title")
+        if title not in sheet_names:
+            continue
+        grid = props.get("gridProperties", {})
+        sheet_id = int(props["sheetId"])
+        requests.append(clean_format_request(sheet_id, int(grid.get("rowCount") or 1000), int(grid.get("columnCount") or 26)))
+        if title == approval_sheet_name:
+            used_rows = len(read_sheet_values(token, spreadsheet_id, approval_sheet_name, "A:K"))
+            requests.extend(proposed_detail_format_requests(sheet_id, used_rows))
+    if requests:
+        url = f"https://sheets.googleapis.com/v4/spreadsheets/{spreadsheet_id}:batchUpdate"
+        google_request(token, url, method="POST", payload={"requests": requests})
 
 
 def ensure_sheet(token: str, spreadsheet_id: str, sheet_name: str, headers: list[str], hidden: bool = False) -> int:
@@ -451,6 +544,8 @@ def main() -> int:
         append_sheet_rows(token, args.google_sheet_id, args.approval_sheet_name, appended_rows)
     if log_rows and not args.dry_run:
         append_sheet_rows(token, args.google_sheet_id, args.log_sheet_name, log_rows)
+    if not args.dry_run:
+        apply_clean_sheet_format(token, args.google_sheet_id, [args.approval_sheet_name, args.log_sheet_name], args.approval_sheet_name)
 
     report = {
         "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),

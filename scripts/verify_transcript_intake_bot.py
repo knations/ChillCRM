@@ -5,8 +5,10 @@ from __future__ import annotations
 
 from scan_drive_transcripts_to_approval_sheet import (
     APPROVAL_HEADERS,
+    clean_format_request,
     existing_suggestion_ids,
     heuristic_suggestions,
+    proposed_detail_format_requests,
     processed_log,
     rows_for_sheet,
 )
@@ -52,6 +54,15 @@ def main() -> int:
 
     duplicate_rows = rows_for_sheet(suggestions, {row[8] for row in rows})
     assert duplicate_rows == []
+
+    clean_request = clean_format_request(123, 20, 11)
+    assert clean_request["repeatCell"]["cell"]["userEnteredFormat"]["backgroundColor"] == {"red": 1, "green": 1, "blue": 1}
+    assert clean_request["repeatCell"]["cell"]["userEnteredFormat"]["textFormat"]["bold"] is False
+
+    detail_requests = proposed_detail_format_requests(123, 12)
+    assert detail_requests[0]["repeatCell"]["cell"]["userEnteredFormat"]["wrapStrategy"] == "WRAP"
+    assert detail_requests[1]["updateDimensionProperties"]["properties"]["pixelSize"] == 620
+    assert detail_requests[2]["autoResizeDimensions"]["dimensions"]["dimension"] == "ROWS"
 
     print("transcript_intake_bot_verification_passed")
     return 0

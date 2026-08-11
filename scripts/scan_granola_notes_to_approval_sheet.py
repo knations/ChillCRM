@@ -212,10 +212,19 @@ def main() -> int:
             existing_ids.update(row[8] for row in rows if len(row) > 8)
             appended_rows.extend(rows)
             log_rows.append(log_row_for_note(full_note, "processed", analyzer, len(rows)))
-            note_results.append({"note_id": note_id, "title": note_title(full_note), "ok": True, "analyzer": analyzer, "suggestions": len(rows)})
+            note_results.append(
+                {
+                    "note_id": note_id,
+                    "version": note_version(full_note),
+                    "title": note_title(full_note),
+                    "ok": True,
+                    "analyzer": analyzer,
+                    "suggestions": len(rows),
+                }
+            )
         except Exception as exc:
             failures += 1
-            note_results.append({"note_id": note_id, "title": note_title(note), "ok": False, "error": str(exc)})
+            note_results.append({"note_id": note_id, "version": note_version(note), "title": note_title(note), "ok": False, "error": str(exc)})
 
     if appended_rows and not args.dry_run:
         append_sheet_rows(google_token, args.google_sheet_id, args.approval_sheet_name, appended_rows)

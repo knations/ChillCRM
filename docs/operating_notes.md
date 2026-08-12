@@ -75,6 +75,7 @@ The Google Sheet approval queue is designed to run without daily copy/paste:
 - `DELETE` rows are removed from the sheet without posting.
 - Failed rows stay in the sheet for review.
 - The scheduled GitHub Action uses repository secrets `CHILLCRM_AUTOMATION_TOKEN` and `GOOGLE_SERVICE_ACCOUNT_JSON`; it does not use the production database URL.
+- The approval queue processor runs every 4 hours, after the transcript scanners. It only posts rows already marked `APPROVE`; it does not post `PENDING` or `NEEDS MATCH` rows.
 
 The approval queue Sheet is `Awaiting Approval` in spreadsheet `1IDZbgwlAMts05cgKwmcF5ACPDeJKcArC7mu8v38UnTQ`.
 

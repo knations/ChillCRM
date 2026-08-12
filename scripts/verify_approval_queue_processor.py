@@ -7,7 +7,7 @@ import json
 from pathlib import Path
 import tempfile
 
-from process_sheet_approval_rows_once import endpoint_payload, rows_from_sheet_values
+from process_sheet_approval_rows_once import endpoint_payload, normalize_call_at, normalize_date, rows_from_sheet_values
 
 
 def main() -> int:
@@ -64,6 +64,19 @@ def main() -> int:
             "",
             "",
         ],
+        [
+            "Dax Moy",
+            "CALL",
+            "46245",
+            "",
+            "Call summary.",
+            "APPROVE",
+            "Granola",
+            "https://notes.granola.ai/example",
+            "call1",
+            "",
+            "high",
+        ],
     ]
     rows = rows_from_sheet_values(values)
     assert rows[0]["row_number"] == 2
@@ -75,11 +88,17 @@ def main() -> int:
     assert payload["person_id"] == 738
     assert payload["due_date"] == "2026-08-11"
     assert "Otter transcript.txt" in payload["source"]
+    assert normalize_date("46245") == "2026-08-11"
+    assert normalize_call_at("46245") == "2026-08-11T12:00:00"
 
     owner_path, owner_payload = endpoint_payload(rows[1])
     assert owner_path == "/api/automation/add_owner_task"
     assert owner_payload["owner_name"] == "Kevin Nations"
     assert owner_payload["due_date"] == "2026-08-12"
+
+    call_path, call_payload = endpoint_payload(rows[3])
+    assert call_path == "/api/automation/add_person_call"
+    assert call_payload["date"] == "2026-08-11T12:00:00"
 
     with tempfile.TemporaryDirectory() as tmpdir:
         report = Path(tmpdir) / "result.json"

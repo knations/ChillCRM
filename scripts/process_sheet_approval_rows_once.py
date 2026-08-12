@@ -14,7 +14,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -56,12 +56,34 @@ def normalize_date(value: Any) -> str:
     text = str(value or "").strip()
     if not text:
         return ""
+    if re.fullmatch(r"\d+(?:\.\d+)?", text):
+        try:
+            serial = float(text)
+        except ValueError:
+            serial = 0
+        if serial > 0:
+            return (datetime(1899, 12, 30) + timedelta(days=serial)).date().isoformat()
     for fmt in ("%Y-%m-%d", "%m/%d/%Y", "%m/%d/%y"):
         try:
             return datetime.strptime(text, fmt).date().isoformat()
         except ValueError:
             pass
     return text
+
+
+def normalize_call_at(value: Any) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    candidate = text.replace(" ", "T")
+    if "T" in candidate:
+        if candidate.endswith("Z"):
+            return f"{candidate[:-1]}+00:00"
+        return candidate
+    normalized = normalize_date(text)
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", normalized):
+        return f"{normalized}T12:00:00"
+    return normalized
 
 
 def source_text(row: dict[str, Any]) -> str:
@@ -116,7 +138,7 @@ def endpoint_payload(row: dict[str, Any]) -> tuple[str, dict[str, Any]]:
     if row_type == "TASK" and due_date:
         payload["due_date"] = due_date
     if row_type == "CALL":
-        payload["date"] = date
+        payload["date"] = normalize_call_at(row.get("date"))
         payload["summary"] = detail[:120]
     return TYPE_ENDPOINTS[row_type], payload
 

@@ -41,12 +41,31 @@ def granola_request(api_key: str, path: str, params: dict[str, str] | None = Non
         headers={"Authorization": f"Bearer {api_key}", "Accept": "application/json"},
         method="GET",
     )
-    try:
-        with urllib.request.urlopen(request, timeout=45) as response:
-            raw = response.read().decode("utf-8")
-    except urllib.error.HTTPError as exc:
-        raw_error = exc.read().decode("utf-8", errors="replace")
-        raise RuntimeError(f"Granola API request failed with HTTP {exc.code}: {raw_error}") from exc
+    retry_delays = [2, 4, 8]
+    for attempt in range(len(retry_delays) + 1):
+        try:
+            with urllib.request.urlopen(request, timeout=45) as response:
+                raw = response.read().decode("utf-8")
+            break
+        except urllib.error.HTTPError as exc:
+            raw_error = exc.read().decode("utf-8", errors="replace")
+            retryable = exc.code == 429 or 500 <= exc.code < 600
+            if not retryable or attempt >= len(retry_delays):
+                raise RuntimeError(f"Granola API request failed with HTTP {exc.code}: {raw_error}") from exc
+            delay = float(retry_delays[attempt])
+            retry_after = exc.headers.get("Retry-After") if exc.code == 429 and exc.headers else None
+            if retry_after:
+                try:
+                    delay = min(max(float(retry_after), 0.0), 30.0)
+                except ValueError:
+                    pass
+            print(f"Granola API {path} returned HTTP {exc.code}; retry {attempt + 1}/{len(retry_delays)} in {delay:g}s.", flush=True)
+        except (urllib.error.URLError, TimeoutError, ConnectionError) as exc:
+            if attempt >= len(retry_delays):
+                raise
+            delay = float(retry_delays[attempt])
+            print(f"Granola API {path} network error ({exc}); retry {attempt + 1}/{len(retry_delays)} in {delay:g}s.", flush=True)
+        time.sleep(delay)
     return json.loads(raw) if raw else {}
 
 

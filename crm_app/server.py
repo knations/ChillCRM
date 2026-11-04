@@ -1128,6 +1128,10 @@ def ensure_runtime_schema(db_path: Path) -> None:
             ON portal_client_notes(person_id, visibility_status, updated_at DESC);
             """
         )
+        for table in ("people", "leads"):
+            columns = {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}
+            if columns and "birthday" not in columns:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN birthday TEXT")
         columns = {row[1] for row in conn.execute("PRAGMA table_info(review_flags)")}
         if "resolved_at" not in columns:
             conn.execute("ALTER TABLE review_flags ADD COLUMN resolved_at TEXT")
@@ -10946,9 +10950,9 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         if export_type == "custom_field_summary":
             return {"filename": "local_crm_custom_field_summary_filtered.csv", "rows": self.export_custom_field_summary_rows(params)}
         queries = {
-            "people": "SELECT p.id, p.zendesk_contact_id, p.company_id, p.name, p.first_name, p.last_name, p.email, p.phone, p.mobile, p.title, p.owner_user_id, u.name AS owner_name, u.email AS owner_email, p.customer_status, p.prospect_status, p.created_at, p.updated_at FROM people p LEFT JOIN users u ON u.zendesk_user_id = p.owner_user_id ORDER BY p.name COLLATE NOCASE",
+            "people": "SELECT p.id, p.zendesk_contact_id, p.company_id, p.name, p.first_name, p.last_name, p.email, p.phone, p.mobile, p.birthday, p.title, p.owner_user_id, u.name AS owner_name, u.email AS owner_email, p.customer_status, p.prospect_status, p.created_at, p.updated_at FROM people p LEFT JOIN users u ON u.zendesk_user_id = p.owner_user_id ORDER BY p.name COLLATE NOCASE",
             "companies": "SELECT c.id, c.zendesk_contact_id, c.name, c.email, c.phone, c.website, c.owner_user_id, u.name AS owner_name, u.email AS owner_email, c.customer_status, c.prospect_status, c.created_at, c.updated_at FROM companies c LEFT JOIN users u ON u.zendesk_user_id = c.owner_user_id ORDER BY c.name COLLATE NOCASE",
-            "leads": "SELECT l.id, l.zendesk_lead_id, l.possible_person_id, l.name, l.first_name, l.last_name, l.organization_name, l.email, l.phone, l.mobile, l.status, l.owner_user_id, u.name AS owner_name, u.email AS owner_email, l.created_at, l.updated_at FROM leads l LEFT JOIN users u ON u.zendesk_user_id = l.owner_user_id ORDER BY l.updated_at DESC",
+            "leads": "SELECT l.id, l.zendesk_lead_id, l.possible_person_id, l.name, l.first_name, l.last_name, l.organization_name, l.email, l.phone, l.mobile, l.birthday, l.status, l.owner_user_id, u.name AS owner_name, u.email AS owner_email, l.created_at, l.updated_at FROM leads l LEFT JOIN users u ON u.zendesk_user_id = l.owner_user_id ORDER BY l.updated_at DESC",
             "deals": "SELECT d.id, d.zendesk_deal_id, d.name, d.value, d.currency, s.name AS stage, p.name AS person, c.name AS company, d.hot, d.estimated_close_date, d.created_at, d.updated_at FROM deals d LEFT JOIN stages s ON s.id = d.stage_id LEFT JOIN people p ON p.id = d.person_id LEFT JOIN companies c ON c.id = d.company_id ORDER BY d.updated_at DESC",
             "tasks": "SELECT id, record_type, record_id, content, completed, completed_at, due_date, remind_at, created_at, updated_at FROM tasks ORDER BY updated_at DESC",
             "notes": "SELECT id, record_type, record_id, content, note_type, is_important, created_at, updated_at FROM notes ORDER BY created_at DESC",
@@ -23518,6 +23522,8 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         for field, value in updates.items():
             if field in {"owner_user_id", "company_id", "person_id", "stage_id"}:
                 cleaned[field] = self.clean_update_id(conn, field, value)
+            elif field == "birthday":
+                cleaned[field] = self.clean_birthday(value)
             elif field == "value":
                 cleaned[field] = self.optional_float(value)
             elif field == "hot":
@@ -25199,10 +25205,10 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             f"""
             INSERT INTO people (
                 {id_column}zendesk_contact_id, company_id, first_name, last_name, name, normalized_name,
-                email, normalized_email, phone, mobile, title, owner_user_id,
+                email, normalized_email, phone, mobile, birthday, title, owner_user_id,
                 customer_status, prospect_status, created_at, updated_at, source_json
             )
-            VALUES ({id_placeholder}?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES ({id_placeholder}?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 *((hosted_id,) if hosted_id is not None else ()),
@@ -25216,6 +25222,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                 normalize_text(email),
                 self.clean_optional(fields.get("phone")),
                 self.clean_optional(fields.get("mobile")),
+                self.clean_birthday(fields.get("birthday")),
                 self.clean_optional(fields.get("title")),
                 owner_user_id,
                 self.clean_optional(fields.get("customer_status")) or "none",
@@ -25288,10 +25295,10 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             f"""
             INSERT INTO leads (
                 {id_column}zendesk_lead_id, possible_person_id, first_name, last_name, name, normalized_name,
-                organization_name, email, normalized_email, phone, mobile, status, source_id,
+                organization_name, email, normalized_email, phone, mobile, birthday, status, source_id,
                 unqualified_reason_id, owner_user_id, created_at, updated_at, source_json
             )
-            VALUES ({id_placeholder}?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES ({id_placeholder}?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 *((hosted_id,) if hosted_id is not None else ()),
@@ -25306,6 +25313,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                 normalize_text(email),
                 self.clean_optional(fields.get("phone")),
                 self.clean_optional(fields.get("mobile")),
+                self.clean_birthday(fields.get("birthday")),
                 self.clean_optional(fields.get("status")) or "New",
                 None,
                 None,
@@ -25393,6 +25401,21 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         )
         return hosted_id if hosted_id is not None else conn.execute("SELECT last_insert_rowid()").fetchone()[0]
 
+    @staticmethod
+    def clean_birthday(value: Any) -> str | None:
+        value = str(value or "").strip()
+        if not value:
+            return None
+        try:
+            parsed = date.fromisoformat(value)
+        except ValueError:
+            raise ValueError("Birthday must be a valid date in YYYY-MM-DD format.") from None
+        if parsed.isoformat() != value:
+            raise ValueError("Birthday must be a valid date in YYYY-MM-DD format.")
+        if parsed > date.today():
+            raise ValueError("Birthday cannot be in the future.")
+        return value
+
     def editable_fields(self, record_type: str) -> tuple[str, set[str]]:
         if record_type == "person":
             return "people", {
@@ -25402,6 +25425,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                 "email",
                 "phone",
                 "mobile",
+                "birthday",
                 "company_id",
                 "title",
                 "customer_status",
@@ -25418,6 +25442,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                 "email",
                 "phone",
                 "mobile",
+                "birthday",
                 "status",
                 "owner_user_id",
             }

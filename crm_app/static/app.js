@@ -5624,9 +5624,9 @@ async function renderCreateForm(listType) {
 }
 
 function createFields(type) {
-  if (type === "person") return ["name", "first_name", "last_name", "email", "phone", "mobile", "company_id", "title", "customer_status", "prospect_status"];
+  if (type === "person") return ["name", "first_name", "last_name", "email", "phone", "mobile", "birthday", "company_id", "title", "customer_status", "prospect_status"];
   if (type === "company") return ["name", "email", "phone", "website", "owner_user_id", "customer_status", "prospect_status"];
-  if (type === "lead") return ["name", "first_name", "last_name", "organization_name", "email", "phone", "mobile", "status", "owner_user_id"];
+  if (type === "lead") return ["name", "first_name", "last_name", "organization_name", "email", "phone", "mobile", "birthday", "status", "owner_user_id"];
   if (type === "deal") return ["name", "person_id", "company_id", "stage_id", "value", "currency", "hot", "estimated_close_date"];
   return [];
 }
@@ -7987,9 +7987,9 @@ function editForm(detail) {
 }
 
 function editableFields(type) {
-  if (type === "person") return ["name", "first_name", "last_name", "email", "phone", "mobile", "company_id", "title", "customer_status", "prospect_status"];
+  if (type === "person") return ["name", "first_name", "last_name", "email", "phone", "mobile", "birthday", "company_id", "title", "customer_status", "prospect_status"];
   if (type === "company") return ["name", "email", "phone", "website", "owner_user_id", "customer_status", "prospect_status"];
-  if (type === "lead") return ["name", "first_name", "last_name", "organization_name", "email", "phone", "mobile", "status", "owner_user_id"];
+  if (type === "lead") return ["name", "first_name", "last_name", "organization_name", "email", "phone", "mobile", "birthday", "status", "owner_user_id"];
   if (type === "deal") return ["name", "person_id", "company_id", "stage_id", "value", "currency", "hot", "estimated_close_date"];
   return [];
 }
@@ -8042,13 +8042,13 @@ function editFieldControl(detail, field) {
       </label>
     `;
   }
-  const type = field === "value" ? "number" : field.endsWith("_date") ? "date" : ["person_id", "company_id"].includes(field) ? "number" : "text";
+  const type = field === "value" ? "number" : (field === "birthday" || field.endsWith("_date")) ? "date" : ["person_id", "company_id"].includes(field) ? "number" : "text";
   const step = field === "value" ? ` step="0.01"` : "";
   const current = linkedRecordHint(detail, field);
   return `
     <label>
       <span>${escapeHtml(label)}</span>
-      <input name="${escapeHtml(field)}" type="${type}"${step} value="${escapeHtml(field.endsWith("_date") ? taskDateInputValue(value) : value)}">
+      <input name="${escapeHtml(field)}" type="${type}"${step} value="${escapeHtml((field === "birthday" || field.endsWith("_date")) ? taskDateInputValue(value) : value)}">
       ${current ? `<small class="muted">${escapeHtml(current)}</small>` : ""}
     </label>
   `;

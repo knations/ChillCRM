@@ -347,6 +347,10 @@ def receive_webhook(conn, payload):
     blocked = {'email.bounced': 'bounced', 'email.complained': 'complained'}
     if kind in blocked and address:
         conn.execute('UPDATE email_contacts SET status = ?, updated_at = ? WHERE email = ?', (blocked[kind], stamp(), address))
+    if kind in {'suppression.added', 'email.suppressed'} and address:
+        suppression_status = {'bounce': 'bounced', 'complaint': 'complained'}.get(data.get('origin'), 'unsubscribed')
+        conn.execute("UPDATE email_contacts SET status = ?, updated_at = ? WHERE email = ? AND status NOT IN ('bounced', 'complained')",
+                     (suppression_status, stamp(), address))
     if kind in {'contact.updated', 'contact.deleted'}:
         if data.get('unsubscribed') is True or kind == 'contact.deleted':
             if address:

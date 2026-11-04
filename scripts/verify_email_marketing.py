@@ -246,6 +246,19 @@ class EmailTests(unittest.TestCase):
             self.assertEqual(em.audience(c)['count'], 0)
             self.assertEqual(c.execute('SELECT count(*) FROM email_events').fetchone()[0], 2)
 
+    def test_provider_suppression_blocks_and_removal_never_resubscribes(self):
+        for origin, expected in [('manual', 'unsubscribed'), ('bounce', 'bounced'), ('complaint', 'complained')]:
+            address = origin + '@example.test'
+            self.contact(address)
+            with self.db() as c:
+                em.receive_webhook(c, {'_verified_id': origin, 'type': 'suppression.added',
+                                      'data': {'email': address, 'origin': origin}})
+                em.receive_webhook(c, {'_verified_id': origin + '-removed', 'type': 'suppression.removed',
+                                      'data': {'email': address}})
+                em.receive_webhook(c, {'_verified_id': origin + '-suppressed', 'type': 'email.suppressed',
+                                      'data': {'to': [address]}})
+                self.assertEqual(em.row(c, 'SELECT status FROM email_contacts WHERE email=?', (address,))['status'], expected)
+
     def test_auth_and_write_lock_routes(self):
         self.assertEqual(access_control.POST_PERMISSION_ACTIONS['/api/email/action'], 'manage_email_marketing')
         self.assertNotIn('staff', access_control.ACTION_ROLE_PERMISSIONS['manage_email_marketing'])

@@ -2,7 +2,7 @@
 
 ## Approval boundary
 
-Kevin approved the draft-only deployment on November 4, 2026, and subsequently authorized committing and pushing completed, verified changes as the standing workflow. This document itself does not authorize webhook creation, provider-secret installation, customer sending, or a recurring dispatcher. The first release adds the owner/admin Email workspace in **draft-only mode**.
+Kevin approved the draft-only deployment on November 4, 2026, subsequently authorized committing and pushing completed, verified changes as the standing workflow, and separately requested the Resend webhook connection. The webhook signing secret is installed as an encrypted production variable. Customer sending, provider sending-key installation, and a recurring dispatcher remain outside this rollout approval. The first release adds the owner/admin Email workspace in **draft-only mode**.
 
 Target: existing Vercel project `chillcrm` (`prj_BW7lf5NVtOGjZ8eA28pIVOBIACgh`), public host `https://chillcrm.app`. Base: GitHub `knations/ChillCRM`, `main`, commit `167355c34ac74c5b228b6e3cb1d01e5a1d47a99d`; confirmed current remotely during preparation. Release source is the reviewed patch on that base, frozen in the generated release manifest; the publication receipt records the resulting commit and deployment.
 
@@ -64,7 +64,7 @@ No recurring dispatcher is installed in either prepared Stage 1 or the manual te
 
 ## Verification evidence
 
-- 16 synthetic email checks pass, covering consent, repeatable import, suppression exclusions, permissions, signatures, provider templates, chunked dispatch, cancellation, ambiguous failures, test-only gating, stale queued work, and changed identities.
+- 17 synthetic email checks pass, covering consent, repeatable import, suppression exclusions, permissions, signatures, provider templates, chunked dispatch, cancellation, ambiguous failures, test-only gating, stale queued work, changed identities, and account-level provider suppressions. Suppression-removal events do not resubscribe contacts.
 - Python compilation, JavaScript syntax checks, backend boundaries, operational CRM verifier, and current app workflows pass.
 - Read-only hosted Postgres preview passes: zero eligible test contacts, 1,642 excluded by the test-mode gate, zero pending jobs; preview completed in 0.53 seconds.
 - Desktop 1440px and mobile 390px previews show disabled send controls without page overflow. Synthetic preview data only.

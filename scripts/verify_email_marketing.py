@@ -11,7 +11,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
@@ -258,6 +258,76 @@ class EmailTests(unittest.TestCase):
                 em.receive_webhook(c, {'_verified_id': origin + '-suppressed', 'type': 'email.suppressed',
                                       'data': {'to': [address]}})
                 self.assertEqual(em.row(c, 'SELECT status FROM email_contacts WHERE email=?', (address,))['status'], expected)
+
+    def test_dispatcher_route_auth_methods_and_locks(self):
+        h = CRMRequestHandler.__new__(CRMRequestHandler)
+        h.path = '/api/email/dispatch'
+        h.command = 'GET'
+        h.headers = {}
+        responses = []
+        h.send_json = lambda data, status=200: responses.append(status)
+        h.send_server_error = lambda exc: self.fail(str(exc))
+        h.db = self.db
+        h.should_block_remote_write = lambda path: False
+        h.should_block_local_write = lambda path: False
+        h.send_remote_write_locked = lambda path: responses.append(423)
+        h.send_local_write_frozen = lambda path: responses.append(423)
+        with patch.dict(os.environ, {'CRON_SECRET': 's' * 32}), patch.object(em, 'dispatch') as work:
+            h.do_GET()
+            self.assertEqual(responses[-1], 401)
+            h.headers = {'Authorization': 'Bearer ' + 's' * 32}
+            h.command = 'HEAD'
+            h.do_HEAD()
+            self.assertEqual(responses[-1], 405)
+            h.command = 'GET'
+            h.should_block_remote_write = lambda path: True
+            h.do_GET()
+            self.assertEqual(responses[-1], 423)
+            h.should_block_remote_write = lambda path: False
+            h.should_block_local_write = lambda path: True
+            h.do_GET()
+            self.assertEqual(responses[-1], 423)
+            work.assert_not_called()
+            h.should_block_local_write = lambda path: False
+            work.return_value = {'ok': True}
+            h.do_GET()
+            work.assert_called_once_with(self.db)
+        self.assertFalse(em.dispatch_authorized('Bearer '))
+        self.assertIn(h.path, CRMRequestHandler.local_write_freeze_post_paths)
+
+    def test_dispatcher_hosted_session_lock(self):
+        os.environ['CHILLCRM_EMAIL_DISPATCH_ENABLED'] = 'true'
+        keeper = MagicMock()
+        keeper.execute.return_value.fetchone.return_value = [False]
+        with patch.object(em, 'process_one', return_value=True) as work:
+            self.assertTrue(em.dispatch(lambda: keeper)['busy'])
+            work.assert_not_called()
+            keeper.commit.assert_called_once()
+            keeper.close.assert_called_once()
+            keeper.reset_mock()
+            keeper.execute.return_value.fetchone.return_value = [True]
+            self.assertTrue(em.dispatch(lambda: keeper)['processed'])
+            work.assert_called_once()
+            keeper.commit.assert_called_once()
+            keeper.close.assert_called_once()
+
+    def test_dispatcher_bounded_overlap_and_failure(self):
+        with patch.object(em, 'process_one', return_value=True) as work:
+            self.assertTrue(em.dispatch(self.db)['disabled'])
+            work.assert_not_called()
+            os.environ['CHILLCRM_EMAIL_DISPATCH_ENABLED'] = 'true'
+            em._DISPATCH_LOCK.acquire()
+            try:
+                self.assertTrue(em.dispatch(self.db)['busy'])
+                work.assert_not_called()
+            finally:
+                em._DISPATCH_LOCK.release()
+            self.assertTrue(em.dispatch(self.db)['processed'])
+            work.assert_called_once()
+            work.side_effect = RuntimeError('synthetic failure')
+            with self.assertRaises(RuntimeError):
+                em.dispatch(self.db)
+            self.assertFalse(em._DISPATCH_LOCK.locked())
 
     def test_auth_and_write_lock_routes(self):
         self.assertEqual(access_control.POST_PERMISSION_ACTIONS['/api/email/action'], 'manage_email_marketing')

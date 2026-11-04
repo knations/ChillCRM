@@ -72,3 +72,23 @@ The supervised provider integration test also passed: ChillCRM's real outbox sen
 The first deployment is draft-only: all three sending/enrollment flags remain false. After that smoke check, the separately approved test configuration enables only allowlisted addresses. Until a recurring dispatcher is approved and installed, use the explicit bounded operator command above for supervised tests; this release is not ready for unattended customer campaigns or autoresponders.
 
 Provider references: [automations](https://resend.com/docs/dashboard/automations/introduction), [send-email steps](https://resend.com/docs/dashboard/automations/send-email), [automation API](https://resend.com/docs/api-reference/automations/get-automation), [template API](https://resend.com/docs/api-reference/templates/get-template).
+
+## Automatic dispatcher
+
+Vercel cron calls `GET /api/email/dispatch` every minute. Set an encrypted
+`CRON_SECRET` of at least 32 random characters and
+`CHILLCRM_EMAIL_DISPATCH_ENABLED=true` only for an approved deployment. Vercel
+supplies the bearer header. HEAD requests are rejected without processing work.
+The master sending gate, recipient allowlist, and CRM write locks still apply.
+Each invocation advances one outbox job (broadcast synchronization remains
+limited to 20 contacts per step). A PostgreSQL session advisory lock prevents
+overlapping scheduled runs across instances; local runs use a process lock.
+The keeper commits immediately so no idle transaction spans network work.
+A crashed processing job requires provider reconciliation before operator retry.
+No schema migration is needed. Turning off the dispatcher flag pauses future
+runs; it does not cancel an already submitted provider broadcast or sequence.
+
+The first enabled release must keep customer sends disabled, allow only
+kevinnations@gmail.com and alicianations@gmail.com, and use the verified
+`Kevin Nations <kevin@chillionaire.com>` sender. Owner UI sign-in and live
+scheduled delivery verification remain release checks.

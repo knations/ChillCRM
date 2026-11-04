@@ -6,11 +6,13 @@ explicit operator actions. Historical imports never enqueue automation events.
 from __future__ import annotations
 
 import hashlib
+import hmac
 import html
 import json
 import os
 import re
 import time
+import threading
 import urllib.parse
 import uuid
 from datetime import datetime, timezone
@@ -113,6 +115,7 @@ def status(conn, query=""):
             'provider_configured': bool(os.environ.get('RESEND_API_KEY')),
             'sender_configured': bool(os.environ.get('RESEND_FROM')),
             'webhook_configured': bool(os.environ.get('RESEND_WEBHOOK_SECRET')),
+            'dispatcher_enabled': flag('CHILLCRM_EMAIL_DISPATCH_ENABLED'),
             'automations_enabled': flag('CHILLCRM_EMAIL_AUTOMATIONS_ENABLED'),
             'customer_sends_enabled': flag('CHILLCRM_EMAIL_CUSTOMER_SENDS_ENABLED')}
     if not ready:
@@ -547,3 +550,42 @@ def contact_events(conn, address):
     if not address or not installed(conn):
         return []
     return rows(conn, 'SELECT event_type, occurred_at FROM email_events WHERE email = ? ORDER BY received_at DESC LIMIT 50', (str(address).strip().lower(),))
+
+
+_DISPATCH_LOCK = threading.Lock()
+_DISPATCH_LOCK_ID = 7146281107
+
+
+def dispatch_authorized(authorization):
+    secret = os.environ.get('CRON_SECRET', '')
+    return len(secret) >= 32 and hmac.compare_digest(
+        str(authorization or '').encode('utf-8'), ('Bearer ' + secret).encode('utf-8'))
+
+
+def dispatch(conn_factory, client=None):
+    """Run one durable queue step. Never overlap scheduled provider requests.
+
+    Session advisory locks survive commits, avoiding an idle transaction while
+    the worker uses its own connections. Closing the keeper releases the lock
+    after a crash. Uncertain claimed jobs still require operator reconciliation.
+    """
+    if not flag('CHILLCRM_EMAIL_DISPATCH_ENABLED'):
+        return {'ok': True, 'disabled': True, 'processed': False}
+    require_live()
+    if not _DISPATCH_LOCK.acquire(blocking=False):
+        return {'ok': True, 'busy': True, 'processed': False}
+    keeper = None
+    try:
+        keeper = conn_factory()
+        if hasattr(keeper, 'conn'):
+            acquired = keeper.execute('SELECT pg_try_advisory_lock(?)', (_DISPATCH_LOCK_ID,)).fetchone()[0]
+            keeper.commit()
+            if not acquired:
+                return {'ok': True, 'busy': True, 'processed': False}
+        return {'ok': True, 'processed': process_one(conn_factory, client)}
+    finally:
+        try:
+            if keeper is not None:
+                keeper.close()
+        finally:
+            _DISPATCH_LOCK.release()

@@ -13,6 +13,7 @@ async function renderEmail() {
     root.innerHTML = `<div class="email-workspace">
       <div class="email-heading"><div><h2>Email</h2><p>Broadcasts and follow-up sequences connected to your CRM.</p></div>
         <span class="pill">${live ? (data.customer_sends_enabled ? "Customer sending enabled" : "Test mode · approved recipients only") : "Draft mode · sending disabled"}</span></div>
+      <p class="email-notice">Automatic queue processing: ${data.dispatcher_enabled ? "enabled · checks every minute" : "paused"}.</p>
       ${!data.customer_sends_enabled ? '<p class="email-notice">Customer sends are disabled. Broadcast audiences and autoresponder enrollments are limited to the approved test addresses.</p>' : ''}
       <nav class="email-tabs" aria-label="Email sections">${tabs.map(([key, label]) => `<button type="button" class="${emailWorkspace.tab === key ? "" : "secondary"}" data-email-tab="${key}" aria-pressed="${emailWorkspace.tab === key}">${label}</button>`).join("")}</nav>
       <p class="email-notice" role="status">${e(emailWorkspace.notice)}</p>

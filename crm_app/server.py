@@ -1178,6 +1178,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
     write_locked_post_paths = frozenset(
         {
             "/api/email/action",
+            "/api/email/dispatch",
             "/api/webhooks/resend",
             "/api/update_record",
             "/api/create_record",
@@ -3513,6 +3514,18 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         params = urllib.parse.parse_qs(parsed.query)
 
         try:
+            if path == "/api/email/dispatch":
+                if self.command != "GET":
+                    self.send_json({"error": "GET required."}, 405)
+                elif not email_marketing.dispatch_authorized(self.headers.get("Authorization")):
+                    self.send_json({"error": "Unauthorized dispatcher request."}, 401)
+                elif self.should_block_remote_write(path):
+                    self.send_remote_write_locked(path)
+                elif self.should_block_local_write(path):
+                    self.send_local_write_frozen(path)
+                else:
+                    self.send_json(email_marketing.dispatch(self.db))
+                return
             auth_user = self.current_auth_user()
             if path == "/api/auth/status":
                 self.send_json(self.auth_status_payload())

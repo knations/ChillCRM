@@ -144,7 +144,7 @@ Agents must:
 - avoid destructive git commands unless approved
 - avoid force-pushes unless approved
 
-Agents should not create commits unless Kevin asks for them.
+Kevin has authorized agents to commit and push completed, verified changes as part of the normal workflow (confirmed November 4, 2026). Keep commits focused, summarize the exact scope before committing, and exclude credentials, customer data, generated/private files, and unrelated local work. Deployment still requires its own approval under the deployment rules below.
 
 The main ChillCRM repo is `https://github.com/knations/ChillCRM.git` on branch `main`. Before pushing, agents must check repo status, avoid staging unrelated local helper files, and summarize exactly what will be committed.
 

@@ -32,6 +32,8 @@ from pathlib import Path
 from typing import Any
 
 try:
+    from crm_app import email_marketing
+    from crm_app.resend_client import verify_webhook
     from crm_app import access_control
     from crm_app.auth_tokens import (
         b64url_decode,
@@ -59,6 +61,8 @@ try:
     from crm_app import request_io
     from crm_app import responses
 except ImportError:  # pragma: no cover - supports direct local execution
+    import email_marketing  # type: ignore
+    from resend_client import verify_webhook  # type: ignore
     import access_control  # type: ignore
     from auth_tokens import (  # type: ignore
         b64url_decode,
@@ -1169,6 +1173,8 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
     login_throttle_attempts: dict[str, dict[str, float]] = {}
     write_locked_post_paths = frozenset(
         {
+            "/api/email/action",
+            "/api/webhooks/resend",
             "/api/update_record",
             "/api/create_record",
             "/api/set_record_lifecycle",
@@ -3407,6 +3413,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
 
     def get_json_route_handlers(self, params: dict[str, list[str]]) -> dict[str, Any]:
         return {
+            "/api/email/status": lambda: self.email_status(params),
             "/api/summary": self.summary,
             "/api/owner_brief": self.owner_brief,
             "/api/operations_status": self.operations_status,
@@ -3446,6 +3453,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
 
     def post_json_route_handlers(self, payload: dict[str, Any], auth_user: dict[str, Any] | None, action_key: str | None) -> dict[str, Any]:
         return {
+            "/api/email/action": lambda: self.email_action(payload, auth_user),
             "/api/update_record": lambda: self.update_record(payload, auth_user, action_key),
             "/api/create_record": lambda: self.create_record(payload, auth_user, action_key),
             "/api/set_record_lifecycle": lambda: self.set_record_lifecycle(payload, auth_user, action_key),
@@ -3589,6 +3597,25 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
             if not self.post_origin_allowed():
                 self.send_origin_denied()
                 return
+            if path == "/api/webhooks/resend":
+                if self.should_block_remote_write(path):
+                    self.send_remote_write_locked(path)
+                    return
+                if self.should_block_local_write(path):
+                    self.send_local_write_frozen(path)
+                    return
+                raw = self.read_body_text().encode("utf-8")
+                try:
+                    event = verify_webhook(raw, self.headers, os.environ.get("RESEND_WEBHOOK_SECRET", ""))
+                except ValueError:
+                    self.send_json({"error": "Invalid email webhook signature."}, 401)
+                    return
+                with self.db() as conn:
+                    if not email_marketing.installed(conn):
+                        self.send_json({"error": "Email schema is not installed."}, 503)
+                        return
+                    self.send_json(email_marketing.receive_webhook(conn, event))
+                return
             if path == "/api/auth/login":
                 self.login_response(self.read_json_body())
                 return
@@ -3697,6 +3724,18 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
 
     def read_webhook_body(self) -> dict[str, Any]:
         return request_io.read_webhook_body(self.rfile, self.headers, MAX_JSON_BODY_BYTES)
+
+    def email_status(self, params: dict[str, list[str]] | None = None) -> dict[str, Any]:
+        with self.db() as conn:
+            return email_marketing.status(conn, ((params or {}).get("q") or [""])[0])
+
+    def email_action(self, payload: dict[str, Any], actor: dict[str, Any] | None) -> dict[str, Any]:
+        def audit(conn: Any, operation: str, user: dict[str, Any] | None) -> None:
+            self.insert_audit_log(conn, action="email_" + operation, record_type="email",
+                                  note="Email control action", actor_user=user,
+                                  permission_action="manage_email_marketing")
+        with self.db() as conn:
+            return email_marketing.action(conn, payload, actor, audit=audit)
 
     def saved_views(self, params: dict[str, list[str]]) -> dict[str, Any]:
         list_type = (params.get("type", ["people"])[0] or "people").lower()
@@ -17772,6 +17811,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                 record_files,
                 archive_items,
                 deals,
+                email_marketing.contact_events(conn, record.get("email")),
             ),
             "tags": tags,
             "addresses": self.public_addresses(address_info["addresses"]),
@@ -18743,8 +18783,12 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
         record_files: list[dict[str, Any]],
         archive_items: list[dict[str, Any]],
         deals: list[dict[str, Any]],
+        email_events: list[dict[str, Any]] | None = None,
     ) -> list[dict[str, Any]]:
-        events: list[dict[str, Any]] = []
+        events: list[dict[str, Any]] = [
+            self.timeline_event("email", item["event_type"].replace(".", " ").title(), item["occurred_at"], meta=["Resend"])
+            for item in (email_events or [])
+        ]
         seen: set[str] = set()
         call_note_ids = {str(call.get("source_id")) for call in call_logs if call.get("source_id")}
 
@@ -23792,6 +23836,15 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                 actor_user=actor_user,
                 permission_action=permission_action,
             )
+            if record_type == "person":
+                previous = {str(tag).casefold() for tag in existing}
+                added = [tag for tag in submitted if tag.casefold() not in previous]
+                email_marketing.queue_crm_event(conn, record_id, "tag_added", timestamp, added)
+                if email_marketing.installed(conn):
+                    person = conn.execute("SELECT email FROM people WHERE id = ?", (record_id,)).fetchone()
+                    if person:
+                        conn.execute("UPDATE email_contacts SET tags_json = ?, updated_at = ? WHERE person_id = ? AND email = ?",
+                                     (json.dumps(submitted), timestamp, record_id, str(person["email"] or "").strip().lower()))
             conn.commit()
         return {"ok": True, "backup": str(backup_path), "detail": self.record_detail({"type": [record_type], "id": [str(record_id)]})}
 
@@ -24744,6 +24797,7 @@ class CRMRequestHandler(BaseHTTPRequestHandler):
                 actor_user=actor_user,
                 permission_action="inbound_purchase_webhook",
             )
+            email_marketing.queue_crm_event(conn, person_id, "purchase", summary["purchase_identity"])
             conn.commit()
         return {
             "ok": True,

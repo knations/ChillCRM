@@ -4,6 +4,7 @@ from __future__ import annotations
 
 
 ACTION_ROLE_PERMISSIONS = {
+    "manage_email_marketing": frozenset({"owner", "admin"}),
     "view_dashboard_reports": frozenset({"owner", "admin", "staff", "read_only", "migration_operator"}),
     "search_filter_save_views": frozenset({"owner", "admin", "staff"}),
     "export_csv_reports": frozenset({"owner", "admin", "staff", "migration_operator"}),
@@ -32,6 +33,7 @@ ACTION_ROLE_PERMISSIONS = {
 
 
 GET_PERMISSION_ACTIONS = {
+    "/api/email/status": "manage_email_marketing",
     "/api/summary": "view_dashboard_reports",
     "/api/owner_brief": "view_owner_brief",
     "/api/operations_status": "view_dashboard_reports",
@@ -71,6 +73,7 @@ GET_PERMISSION_ACTIONS = {
 
 
 POST_PERMISSION_ACTIONS = {
+    "/api/email/action": "manage_email_marketing",
     "/api/update_record": "create_edit_records",
     "/api/create_record": "create_edit_records",
     "/api/set_record_lifecycle": "create_edit_records",

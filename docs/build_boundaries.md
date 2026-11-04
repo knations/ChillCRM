@@ -16,6 +16,8 @@ These files are the live app surface:
 - `crm_app/request_io.py`
 - `crm_app/responses.py`
 - `crm_app/runtime_health.py`
+- `crm_app/email_marketing.py`
+- `crm_app/resend_client.py`
 - `crm_app/static/`
 - `requirements.txt`
 - `vercel.json`

@@ -8023,3 +8023,38 @@ button {
     grid-template-columns: 1fr;
   }
 }
+
+/* Email workspace */
+.email-workspace { padding: 22px; min-width: 0; }
+.email-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.email-heading h2 { margin: 0 0 6px; }
+.email-heading p, .email-card > p, .email-form > p { color: var(--muted, #72767d); line-height: 1.5; }
+.email-tabs, .email-actions, .email-counts { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; margin: 16px 0; }
+.email-tabs button { min-height: 40px; }
+.email-counts > span { padding: 8px 12px; border: 1px solid var(--line); border-radius: 8px; }
+.email-columns { display: grid; grid-template-columns: minmax(260px, .9fr) minmax(300px, 1.1fr); gap: 18px; align-items: start; }
+.email-card { min-width: 0; padding: 20px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface, #fff); }
+.email-card h3 { margin-top: 0; }
+.email-form, .email-test { display: grid; gap: 12px; }
+.email-workspace label { display: grid; gap: 6px; min-width: 0; font-size: 13px; }
+.email-workspace input, .email-workspace select, .email-workspace textarea { width: 100%; min-width: 0; max-width: 100%; box-sizing: border-box; padding: 10px; border: 1px solid var(--line); border-radius: 7px; font: inherit; }
+.email-workspace textarea { resize: vertical; }
+.email-workspace .email-check { display: flex; align-items: start; gap: 8px; }
+.email-workspace .email-check input { width: auto; margin-top: 2px; }
+.email-item { padding: 15px 0; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
+.email-item h4 { margin: 0 0 5px; }
+.email-item .email-test { margin: 12px 0; }
+.email-item input[readonly] { font-family: monospace; font-size: 11px; }
+.email-notice { overflow-wrap: anywhere; }
+.email-table-wrap { overflow-x: auto; max-width: 100%; }
+.email-table-wrap table { width: 100%; border-collapse: collapse; text-align: left; font-size: 13px; }
+.email-table-wrap th, .email-table-wrap td { padding: 10px; vertical-align: top; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; min-width: 100px; max-width: 320px; }
+.email-sample { overflow-wrap: anywhere; }
+@media (max-width: 1100px) { .email-columns { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 600px) { .email-workspace { padding: 12px; } .email-card { padding: 14px; } .email-tabs { gap: 6px; } .email-tabs button { flex: 1 1 40%; } }
+.email-workspace button { padding: 9px 14px; border: 1px solid var(--accent); border-radius: 8px; background: var(--accent); color: #fff; font-weight: 600; }
+.email-workspace button.secondary { border-color: var(--line); background: var(--surface); color: var(--text); }
+.email-workspace button:disabled { opacity: .45; cursor: not-allowed; }
+.email-workspace button:focus-visible, .email-workspace input:focus-visible, .email-workspace textarea:focus-visible, .email-workspace select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.email-workspace a { color: var(--accent); }
+@media (min-width: 1041px) { .app-shell.email-workspace-open { grid-template-columns: 232px minmax(0, 1fr); } .app-shell.email-workspace-open > .detail-panel { display: none; } }

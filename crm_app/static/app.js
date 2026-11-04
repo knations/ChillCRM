@@ -136,6 +136,7 @@ const els = {
   operationsStatus: document.querySelector("#operationsStatusView"),
   pipeline: document.querySelector("#pipelineView"),
   list: document.querySelector("#listView"),
+  email: document.querySelector("#emailView"),
   tags: document.querySelector("#tagsView"),
   customFields: document.querySelector("#customFieldsView"),
   linkedResources: document.querySelector("#linkedResourcesView"),
@@ -825,6 +826,9 @@ function currentUserCanEditTags() {
 }
 
 function updateOwnerNavigation() {
+  document.querySelectorAll(".email-nav").forEach((button) => {
+    button.hidden = Boolean(state.auth?.auth_required) && !["owner", "admin"].some((role) => currentUserRoles().has(role));
+  });
   const canManageUsers = currentUserCanManageUsers();
   document.querySelectorAll(".owner-only-nav").forEach((button) => {
     button.hidden = !canManageUsers;
@@ -1113,6 +1117,7 @@ function setView(view) {
     view = "dashboard";
   }
   state.view = view;
+  els.shell?.classList.toggle("email-workspace-open", view === "email");
   state.page = 1;
   state.mobileDetailReturnLabel = viewDisplayLabel(view);
   updateOwnerNavigation();
@@ -1131,6 +1136,7 @@ function setView(view) {
         ownerBrief: els.ownerBrief,
         operationsStatus: els.operationsStatus,
         pipeline: els.pipeline,
+        email: els.email,
         tags: els.tags,
         customFields: els.customFields,
         linkedResources: els.linkedResources,
@@ -1163,6 +1169,8 @@ function setView(view) {
     renderList();
   } else if (view === "followup") {
     renderFollowup();
+  } else if (view === "email") {
+    renderEmail();
   } else if (view === "tags") {
     state.tagPage = 1;
     renderTags();
@@ -1217,6 +1225,7 @@ function viewDisplayLabel(view = state.view) {
       followup: "Follow Up",
       activity: "Activity",
       exports: "Exports",
+      email: "Email",
       users: "Users",
       cleanup: "Cleanup",
     }[view] ||

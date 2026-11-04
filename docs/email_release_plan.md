@@ -48,10 +48,10 @@ After Stage 1 works, prepare the exact provider/settings changes for approval:
 
 - Install `RESEND_API_KEY` and `RESEND_WEBHOOK_SECRET` as encrypted Vercel secrets, never public or plain-text variables.
 - Sender: `Kevin Nations <kevin@chillionaire.com>`. Chillionaire.com is verified and two direct provider tests were reported delivered. The KevinNations.com team conflict is separate and remains unresolved.
-- Allowlist: `kevinnations@gmail.com,alicianations@gmail.com` only.
+- Allowlist: the two owner-approved test inboxes, recorded only in private configuration.
 - Register `https://chillcrm.app/api/webhooks/resend` in Resend after the route exists, subscribing only to supported email delivery/bounce/complaint/engagement and contact update/deletion events. Confirm the current API event names before creation. Store the returned signing secret privately.
 - Enable the master flag only for supervised testing, keep `CHILLCRM_EMAIL_CUSTOMER_SENDS_ENABLED=false`, and leave autoresponder enrollment off until its specific test is prepared.
-- Add only the approved test marketing contacts, with owner-requested test consent and no customer modifications. Neither test email is currently an eligible marketing contact; the new production read-only preview correctly excluded all 1,642 customer contacts.
+- Use only the two approved test marketing contacts, with recorded owner-requested test consent and no customer modifications. The initial production read-only preview correctly excluded all 1,642 imported customer contacts; the supervised tests subsequently added only the two approved test contacts without creating CRM people.
 - Run a bounded manual dispatcher from a trusted operator environment with secrets loaded privately:
 
 ```sh
@@ -68,7 +68,9 @@ No recurring dispatcher is installed in either prepared Stage 1 or the manual te
 - Python compilation, JavaScript syntax checks, backend boundaries, operational CRM verifier, and current app workflows pass.
 - Read-only hosted Postgres preview passes: zero eligible test contacts, 1,642 excluded by the test-mode gate, zero pending jobs; preview completed in 0.53 seconds.
 - Desktop 1440px and mobile 390px previews show disabled send controls without page overflow. Synthetic preview data only.
-- Real Resend direct delivery was verified earlier; actual broadcast, automation, and webhook integration through the deployed app remain Stage 2 tests. They are not claimed as already passed.
+- Real Resend direct delivery, the native broadcast/autoresponder operator paths, and live signed-webhook receipt/replay tests pass. Authenticated owner web UI testing is a separate check and is not claimed by these operator tests.
+
+The supervised operator tests are complete: the real application outbox sent the native two-recipient broadcast and one-email native autoresponder, and Resend reported all deliveries successful. A preliminary preview was also delivered. The test automation is paused locally and disabled at the provider. The public webhook accepted a real provider event, rejected a bad signature, and deduplicated a provider replay. All actual test inboxes and provider receipt IDs remain in private local evidence. No customer sends, recurring dispatcher, or web UI sending flags were enabled by these tests; Vercel stays draft-only.
 
 ## Risks and rollback
 

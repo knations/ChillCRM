@@ -6543,7 +6543,12 @@ function renderDetail(detail) {
   els.detail.innerHTML = `
     <div class="detail-content">
       ${detailHeader(record.name || "(blank)", subtitle || detail.type, detail, {
-        headerMeta: operatorAvatar ? [{ label: "Operator Avatar", value: operatorAvatar }] : [],
+        headerMeta: [
+          ...(operatorAvatar ? [{ label: "Operator Avatar", value: operatorAvatar }] : []),
+          ...(["person", "lead"].includes(detail.type) && String(record.birthday || "").trim()
+            ? [{ label: "Birthday", value: formatDate(record.birthday) }]
+            : []),
+        ],
       })}
       <div id="detailActionError" class="form-error" hidden></div>
       ${detail.type === "person" ? personDetailBody(detail) : detail.type === "deal" ? dealDetailBody(detail) : defaultDetailBody(detail)}
